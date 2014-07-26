@@ -1,0 +1,14 @@
+%% -*- erlang -*-
+{application, schedule,
+ [
+  {description, ""},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+		  rvi_common
+                 ]},
+  {mod, { schedule_app, []}},
+  {start_phases, [{init, []}]}
+ ]}.
