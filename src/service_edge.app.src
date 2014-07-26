@@ -1,0 +1,14 @@
+%% -*- erlang -*-
+{application, service_edge,
+ [
+  {description, ""},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+		  rvi_common
+                 ]},
+  {mod, { service_edge_app, []}},
+  {start_phases, [{init, []}]}
+ ]}.
