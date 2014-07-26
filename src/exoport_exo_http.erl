@@ -1,12 +1,10 @@
 %%
-%% Copyright (C) 2014, Jaguar Land Rover
+%% Copyright (C) 2014, Feuerlabs 
 %%
 %% This program is licensed under the terms and conditions of the
 %% Mozilla Public License, version 2.0.  The full text of the 
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
-
-
 -module(exoport_exo_http).
 -export([instance/3,
 	 handle_body/4,
@@ -88,61 +86,6 @@ handle_rpc(Mod, Method, Args) ->
             ?error("post_request() CRASHED: Stack:    ~p", [erlang:get_stacktrace()]),
 	    {error, {internal_error, Crash}}
     end.
-
-
-%% call_cb_rpc(CBMod, Mod, Method, Args, Meta) when is_atom(CBMod) ->
-%%     CBMod:handle_rpc(Mod, Method, Args, Meta);
-%% call_cb_rpc({CBMod, St}, Mod, Method, Args, Meta) ->
-%%     CBMod:handle_rpc(Mod, Method, Args, Meta, St).
-
-
-%% json_rpc(Req) ->
-%%     json_rpc(Req, []).
-
-%% json_rpc({call, _Id, Method, {struct, Args}}, CB) ->
-%%     case re:split(Method, ":", [{return, list}]) of
-%% 	[ModS, FunS] ->
-%% 	    try Mod = list_to_existing_atom("yang_rvspec_" ++ ModS),
-%% 		 case Mod:rpc(list_to_binary(FunS)) of
-%% 		     error ->
-%% 			 {error, method_not_found};
-%% 		     {rpc, _, _, Data} ->
-%% 			 {input,_,_,InputElems} = lists:keyfind(input,1,Data),
-%% 			 try yang_json:validate_rpc_request(
-%% 			       InputElems, Args) of
-%% 			     {ok, Elems, Meta} ->
-%% 				 handle_rpc(CB, list_to_binary(ModS),
-%% 					    list_to_binary(FunS),
-%% 					    Elems, Meta);
-%% 			     {error, _Reason} ->
-%% 				 {error, parse_error}
-%% 			 catch
-%% 			     error:E ->
-%% 				 io:fwrite("Validation crash~n"
-%% 					   "error:~p, ~p~n",
-%% 					   [E, erlang:get_stacktrace()]),
-%% 				 {error, invalid_request}
-%% 			 end
-%% 		 end
-%% 	    catch
-%% 		error:_ ->
-%% 		    {error, method_not_found}
-%% 	    end;
-%% 	_ ->
-%% 	    {error, method_not_found}
-%%     end.
-
-%% validate_rpc_result(Result, Mod, Method) ->
-%%     ErlMod = list_to_existing_atom("yang_spec_" ++ binary_to_list(Mod)),
-%%     case ErlMod:rpc(Method) of
-%% 	{rpc, _, _, Data} ->
-%% 	    %% This really should be FIXed; output is not mandatory
-%% 	    {output, _, _, Elems} = lists:keyfind(output, 1, Data),
-%% 	    JSON = data_to_json(Elems, [], Result),
-%% 	    {ok, {struct, JSON}};
-%% 	error ->
-%% 	    {error, method_not_found}
-%%     end.
 
 success_response(Socket, Id, Reply) ->
     JSON = {struct, [{"jsonrpc", "2.0"},
