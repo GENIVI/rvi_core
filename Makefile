@@ -10,13 +10,13 @@ SETUP_GEN=$(shell ./find_setup_gen.sh)
 all: deps compile
 
 deps:
-	rebar get-deps
+	./rebar get-deps
 
 compile:
-	rebar  compile
+	./rebar  compile
 
 recomp:
-	rebar  compile skip_deps=true
+	./rebar  compile skip_deps=true
 
 setup_device:
 	ERL_LIBS=$(PWD)/deps:$(ERL_LIBS):$(PWD) \
@@ -51,7 +51,7 @@ run_device: setup_device
 
 
 doc:
-        REBAR_DOC=1 rebar skip_deps=true get-deps doc
+        ./REBAR_DOC=1 ./rebar skip_deps=true get-deps doc
 
 clean:
-	rebar clean
+	./rebar clean
