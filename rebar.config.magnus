@@ -1,0 +1,17 @@
+%% -*- erlang -*-
+
+%%
+%% Top level app that controls other apps.
+%%
+{erl_opts, [debug_info]}.
+{deps,
+ [
+  {setup, ".*", {git, "https://github.com/uwiger/setup.git", "HEAD"}},
+  {protocol, ".*", {git, "file:///home/magnus/work/jlr/rvi/protocol.git", "master"}},
+  {data_link_device, ".*", {git, "file:///home/magnus/work/jlr/rvi/data_link_device.git", "master"}},
+  {data_link_backend, ".*", {git, "file:///home/magnus/work/jlr/rvi/data_link_backend.git", "master"}},
+  {authorize, ".*", {git, "file:///home/magnus/work/jlr/rvi/authorize.git", "master"}},
+  {schedule, ".*", {git, "file:///home/magnus/work/jlr/rvi/schedule.git", "master"}},
+  {service_edge, ".*", {git, "file:///home/magnus/work/jlr/rvi/service_edge.git", "master"}},
+  {service_discovery, ".*", {git, "file:///home/magnus/work/jlr/rvi/service_discovery.git", "master"}}
+ ]}.

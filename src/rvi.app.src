@@ -1,0 +1,20 @@
+%% -*- erlang -*-
+{application, rvi,
+ [
+  {description, ""},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+		  schedule,
+		  rvi_common,
+		  service_edge,
+		  service_discovery,
+		  authorize,
+		  data_link_backend,
+		  data_link_device,
+		  protocol
+                 ]},
+  {mod, { rvi_app, []}}
+ ]}.
