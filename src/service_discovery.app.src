@@ -1,0 +1,14 @@
+%% -*- erlang -*-
+{application, service_discovery,
+ [
+  {description, ""},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+		  rvi_common
+                 ]},
+  {mod, { service_discovery_app, []}},
+  {start_phases, [{init, []}]}
+ ]}.
