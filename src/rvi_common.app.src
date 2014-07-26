@@ -1,0 +1,15 @@
+%% -*- erlang -*-
+{application, rvi_common,
+ [
+  {description, ""},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { rvi_common_app, []}},
+  {env, [
+	 {yang_spec_modules, [{"$PRIV_DIR/yang", "yang_spec_*.beam"}]}
+	]}
+ ]}.
