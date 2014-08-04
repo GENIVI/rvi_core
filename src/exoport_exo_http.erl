@@ -69,13 +69,13 @@ handle_body(Socket, _Request, _Body, _AppMod) ->
 
 %% Validated RPC
 handle_rpc(Mod, Method, Args) ->
-    ?debug("exo_http_server:handle_rpc(): Mod:       ~p", [Mod]),
-    ?debug("exo_http_server:handle_rpc(): Method:    ~p", [Method]),
-    ?debug("exo_http_server:handle_rpc(): Args:      ~p", [Args]),
+    ?debug("exoport_exo_http_server:handle_rpc(): Mod:       ~p", [Mod]),
+    ?debug("exoport_exo_http_server:handle_rpc(): Method:    ~p", [Method]),
+    ?debug("exoport_exo_http_server:handle_rpc(): Args:      ~p", [Args]),
 
     try Mod:handle_rpc(Method, Args) of
 	{ok, Result} ->
-	    ?debug("exo_http_server:handle_rpc(ok): Result:   ~p", [Result]),
+	    ?debug("exoport_exo_http_server:handle_rpc(ok): Result:   ~p", [Result]),
 	    {ok, Result};
 	
 	{error, Reason} ->

@@ -19,9 +19,11 @@
 -export([json_rpc_status/1]).
 -export([get_json_element/2]).
 -export([sanitize_service_string/1]).
--export([service_to_string/1]).
--export([service_to_string/2]).
--export([service_prefix/0]).
+-export([local_service_to_string/1]).
+-export([local_service_to_string/2]).
+-export([remote_service_to_string/1]).
+-export([remote_service_to_string/2]).
+-export([local_service_prefix/0]).
 -export([is_backend_service/1]).
 -export([backend_address_string/0]).
 -export([node_address_string/0]).
@@ -62,6 +64,13 @@ json_rpc_status(3) ->
 json_rpc_status("3") ->
     not_online;
 
+json_rpc_status(4) ->
+    internal;
+
+json_rpc_status("4") ->
+    internal;
+
+
 json_rpc_status(Unknown) when is_integer(Unknown)->
     undefined;
 
@@ -79,6 +88,9 @@ json_rpc_status(not_found) ->
 
 json_rpc_status(not_online) ->
     3;
+
+json_rpc_status(internal) ->
+    4;
 
 json_rpc_status(_) ->
     999.
@@ -262,13 +274,19 @@ sanitize_service_string(Service) when is_list(Service) ->
 	    Res
     end.
 
-service_to_string(Type, Service) ->
-    atom_to_list(Type) ++ ":" ++ service_prefix() ++ Service.
+local_service_to_string(Type, Service) ->
+    atom_to_list(Type) ++ ":" ++ local_service_prefix() ++ Service.
 
-service_to_string(Service) ->
-    service_prefix() ++ Service.
+local_service_to_string(Service) ->
+    local_service_prefix() ++ Service.
 
-service_prefix() ->
+remote_service_to_string(Type, Service) ->
+    atom_to_list(Type) ++ ":" ++ Service.
+
+remote_service_to_string(Service) ->
+    Service.
+
+local_service_prefix() ->
     Prefix = 
 	case application:get_env(rvi, ?NODE_SERVICE_PREFIX) of
 	    {ok, P} when is_atom(P) -> atom_to_list(P);
