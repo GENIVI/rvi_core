@@ -32,7 +32,7 @@ register_service(Service, Address) ->
     ?debug("service_edge_rpc:register_service(): address: ~p ", [Address]),
 
     case 
-	rvi_common:send_component_request(service_discovery, register_service,
+	rvi_common:send_component_request(service_discovery, register_local_service,
 					  [
 					   {service, Service}, 
 					   {network_address, Address}
@@ -91,19 +91,24 @@ handle_local_message(Target, Timeout, Parameters, CallingService) ->
 			    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
 			Err -> 
-			    ?debug("service_edge_rpc:register_service() Failed at scheduling: ~p", 
+			    ?debug("service_edge_rpc:handle_local_message() Failed at scheduling: ~p", 
 				      [ Err ]),
-			    Err
+			    { ok, [ { status, rvi_common:json_rpc_status(internal)} ] }
 		    end;
 
+		{ok, not_found, _, _} ->
+		    ?debug("service_edge_rpc:handle_local_message() Service ~p not found", 
+			   [ Target ]),
+		    { ok, [ { status, rvi_common:json_rpc_status(not_found)} ] };
+		    
 		Err ->  
-		    ?debug("service_edge_rpc:register_service() Failed at service discovery: ~p", 
+		    ?debug("service_edge_rpc:handle_local_message() Failed at service discovery: ~p", 
 			      [ Err ]),
-		    Err
+		    { ok, [ { status, rvi_common:json_rpc_status(internal)} ] }
 	    end;
 
 	Err -> 
-	    ?debug("service_edge_rpc:register_service() Failed at authorize: ~p", 
+	    ?debug("service_edge_rpc:handle_local_message() Failed at authorize: ~p", 
 		      [ Err ]),
 	    Err
     end.
@@ -147,7 +152,7 @@ handle_remote_message(Target, Timeout, Parameters, Signature, Certificate) ->
 			    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
 			%% Request delivered (with no status reply)
-			{ok,  undefined } ->
+			{ok,  undefined  } ->
 			    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
 			%% status returned was an error code.
