@@ -34,13 +34,26 @@ init() ->
     ok.
 
 
-register_service(Service, NetworkAddress) ->
-    ?debug("service_discovery_rpc:register_service(): service:         ~p ~n", [Service]),
-    ?debug("service_discovery_rpc:register_service(): network_address: ~p ~n", [NetworkAddress]),
+register_remote_service(Service, NetworkAddress) ->
+    ?debug("service_discovery_rpc:register_remote_service(): service:         ~p ~n", [Service]),
+    ?debug("service_discovery_rpc:register_remote_service(): network_address: ~p ~n", [NetworkAddress]),
 
     ets:insert(?SERVICE_TABLE, 
 	       #service_entry {
-		  service = rvi_common:service_to_string(Service),
+		  service = rvi_common:remote_service_to_string(Service),
+		  network_address = NetworkAddress
+		 }),
+
+    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
+
+
+register_local_service(Service, NetworkAddress) ->
+    ?debug("service_discovery_rpc:register_local_service(): service:         ~p ~n", [Service]),
+    ?debug("service_discovery_rpc:register_local_service(): network_address: ~p ~n", [NetworkAddress]),
+
+    ets:insert(?SERVICE_TABLE, 
+	       #service_entry {
+		  service = rvi_common:local_service_to_string(Service),
 		  network_address = NetworkAddress
 		 }),
 
@@ -99,10 +112,17 @@ get_services() ->
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
-handle_rpc("register_service", Args) ->
+handle_rpc("register_local_service", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
-    register_service(Service, Address);
+    register_local_service(Service, Address);
+
+
+%% CAlled by local exo http server
+handle_rpc("register_remote_service", Args) ->
+    {ok, Service} = rvi_common:get_json_element(["service"], Args),
+    {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
+    register_remote_service(Service, Address);
 
 handle_rpc("resolve_service", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
