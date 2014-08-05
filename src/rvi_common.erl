@@ -145,9 +145,6 @@ send_component_request(Component, Service, ArgList, ReturnParams) ->
     end.
 
 send_http_request(Url,Method, Args) ->
-    ?debug("rvi_common:send_http_request(): Url:      ~p", [ Url ]),
-    ?debug("rvi_common:send_http_request(): Method:   ~p", [ Method ]),
-    ?debug("rvi_common:send_http_request(): Args:     ~p", [ Args ]),
 
     Req = binary_to_list(
 	    iolist_to_binary(
@@ -158,7 +155,6 @@ send_http_request(Url,Method, Args) ->
 				       ]
 			      }))),
 
-    ?debug("rvi_common:send_http_request(): Req:      ~p", [Req ]),
     Hdrs = [{'Content-Type', "application/json"} ],
     try
         exo_http:wpost(Url, {1,1}, Hdrs, Req, 1000)

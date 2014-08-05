@@ -33,13 +33,6 @@ instance(SupMod, AppMod, Opts) ->
 
 
 handle_body(Socket, Request, Body, AppMod) when Request#http_request.method == 'POST' ->
-    Url = Request#http_request.uri,
-    ?debug("exoport_exo_http: handle_body(): Url:       ~p", [Url]),
-    ?debug("exoport_exo_http: handle_body(): Socket:    ~p", [Socket]),
-    ?debug("exoport_exo_http: handle_body(): AppMod:    ~p", [AppMod]),
-    ?debug("exoport_exo_http: handle_body(): Request:   ~p", [Request]),
-    ?debug("exoport_exo_http: handle_body(): Body:      ~p", [Body]),
-
     try decode_json(Body) of
 	{call, Id, Method, Args} ->
 	    case handle_rpc(AppMod, Method, Args) of
