@@ -19,21 +19,9 @@ curl -u $USER_AUTH -k -X POST  $URL -d @- << EOF
     "id": "1",
     "params":
     {
-      "service": "hvac/set_fan_speed",
+      "service": "hvac/publish_fan_speed",
       "network_address": "http://localhost:8901"
     }
 }
 EOF
 
-#curl -u $USER_AUTH -k -X POST  $URL -d @- << EOF
-#{
-#    "jsonrpc": "2.0",
-#    "method": "register_service",
-#    "id": "1",
-#    "params":
-#    {
-#      "service": "hvac/set_temperature",
-#      "network_address": "http://localhost:8901"
-#    }
-#}
-#EOF

@@ -20,7 +20,7 @@ curl -u $USER_AUTH -k -X POST  $URL -d @- << EOF
     "params":
     {
       "calling_service": "hvac_app",
-      "target": "rpc:jlr.com/vin/1234/hvac/set_fan_speed",
+      "target": "jlr.com/vin/1234/hvac/set_fan_speed",
       "timeout": 1405099531,
       "parameters": [ 
         { "speed": 5 }

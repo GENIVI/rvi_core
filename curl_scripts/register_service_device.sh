@@ -19,8 +19,8 @@ curl -u $USER_AUTH -k -X POST  $URL -d @- << EOF
     "id": "1",
     "params":
     {
-      "service": "hvac",
-      "network_address": "http://localhost:8901"
+      "service": "hvac/set_fan_speed",
+      "network_address": "http://localhost:8902"
     }
-}
+ }
 EOF
