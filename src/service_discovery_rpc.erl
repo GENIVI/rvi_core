@@ -35,29 +35,31 @@ init() ->
 
 
 register_remote_service(Service, NetworkAddress) ->
-    ?debug("service_discovery_rpc:register_remote_service(): service:         ~p ~n", [Service]),
-    ?debug("service_discovery_rpc:register_remote_service(): network_address: ~p ~n", [NetworkAddress]),
+    ?debug("service_discovery_rpc:register_remote_service(): service:         ~p", [Service]),
+    ?debug("service_discovery_rpc:register_remote_service(): network_address: ~p", [NetworkAddress]),
 
+    FullSvcName = rvi_common:remote_service_to_string(Service),
     ets:insert(?SERVICE_TABLE, 
 	       #service_entry {
-		  service = rvi_common:remote_service_to_string(Service),
+		  service = FullSvcName,
 		  network_address = NetworkAddress
 		 }),
 
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
+    {ok, [ {service, FullSvcName}, { status, rvi_common:json_rpc_status(ok)}]}.
 
 
 register_local_service(Service, NetworkAddress) ->
-    ?debug("service_discovery_rpc:register_local_service(): service:         ~p ~n", [Service]),
-    ?debug("service_discovery_rpc:register_local_service(): network_address: ~p ~n", [NetworkAddress]),
+    ?debug("service_discovery_rpc:register_local_service(): service:         ~p", [Service]),
+    ?debug("service_discovery_rpc:register_local_service(): network_address: ~p", [NetworkAddress]),
 
+    FullSvcName = rvi_common:local_service_to_string(Service),
     ets:insert(?SERVICE_TABLE, 
 	       #service_entry {
-		  service = rvi_common:local_service_to_string(Service),
+		  service = FullSvcName,
 		  network_address = NetworkAddress
 		 }),
 
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
+    {ok, [ { service, FullSvcName }, { status, rvi_common:json_rpc_status(ok) }]}.
 
 
 resolve_service(RawService) ->
@@ -77,12 +79,15 @@ resolve_service(RawService) ->
 	    %% Check if this is a service residing on the backend server
 	    case rvi_common:is_backend_service(Service) of
 		false -> %% Not found
-		    ?debug("service_discovery_rpc:resolve_service(~p): Service not found backend~n", [Service]),
+		    ?debug("service_discovery_rpc:resolve_service(~p): Service not found backend~n", 
+			   [Service]),
 		    
 		    { ok, [ { status, rvi_common:json_rpc_status(not_found) }]};
 
 		true -> %% FOund
-			    ?debug("service_discovery_rpc:resolve_service(~p): Service is backend~n", [Service]),	    {ok, [ { status, rvi_common:json_rpc_status(ok) },
+			    ?debug("service_discovery_rpc:resolve_service(~p): Service is backend~n", 
+				   [Service]),
+		    {ok, [ { status, rvi_common:json_rpc_status(ok) },
 			   { network_address, rvi_common:backend_address_string() }]}
 	    end;
 
