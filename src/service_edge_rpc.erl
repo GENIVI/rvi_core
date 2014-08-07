@@ -36,9 +36,10 @@ register_service(Service, Address) ->
 					  [
 					   {service, Service}, 
 					   {network_address, Address}
-					  ]) of
-	{ ok, JSONStatus, _JSON} -> 
-	    { ok, [ {status, rvi_common:json_rpc_status(JSONStatus)} ] };
+					  ], [service]) of
+	{ ok, JSONStatus, [ FullSvcName], _JSON} -> 
+	    { ok, [ {service, FullSvcName}, 
+		    {status, rvi_common:json_rpc_status(JSONStatus)} ] };
 
 	Err -> 
 	    ?debug("service_edge_rpc:register_service() Failed at service_discovery(): ~p", 
@@ -139,12 +140,19 @@ handle_remote_message(Target, Timeout, Parameters, Signature, Certificate) ->
 						  [ { service, Target } ],
 						  [ network_address ]) of
 		{ ok, ok, [ NetworkAddress], _SDJSON } -> 
+		    SvcName = string:substr(Target, 
+					    length(rvi_common:local_service_prefix())),
 		    case 
+			%% Strip our node prefix from target so that
+			%% the service receiving the JSON rpc call will have
+			%% a target that is identical to the service name
+			%% it registered with.
+
 			%% Deliver the message to the local service
 			rvi_common:get_request_result(
 			  rvi_common:send_http_request(NetworkAddress, 
 						        "message", 
-						       [ { target, Target },
+						       [ { target, SvcName },
 							 { parameters, Parameters }])) of
 
 			%% Request delivered.
