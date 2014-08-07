@@ -1,0 +1,6 @@
+In doc and code, convert JSON-RPC param "parameters" to "arguments" in order to avoid
+   confusion with JSON-RPC "params"
+
+In doc and code, rename "target" "service" or potentially "target service"
+
+   

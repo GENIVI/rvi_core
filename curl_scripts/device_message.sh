@@ -20,10 +20,11 @@ curl -u $USER_AUTH -k -X POST  $URL -d @- << EOF
     "params":
     {
       "calling_service": "hvac_app",
-      "target": "jlr.com/backend/hvac/publish_fan_speed",
+      "target": "jlr.com/backend/hvac/subscribe",
       "timeout": 1405099531,
       "parameters": [ 
-        { "speed": 5 }
+        { "vin": 1234 },
+        { "subscribing_service": "jlr.com/vin/1234/hvac/updates" }
       ]
     }
 }
