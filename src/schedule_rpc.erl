@@ -28,12 +28,12 @@ init() ->
     ok.
 
 schedule_message(Target, Timeout, NetworkAddress, Parameters, Signature, Certificate) ->
-    ?debug("schedule_rpc:schedule_request(): target:          ~p", [ Target]),
-    ?debug("schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
-    ?debug("schedule_rpc:schedule_request(): network_address: ~p", [ NetworkAddress]),
-    ?debug("schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
-    ?debug("schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
-    ?debug("schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
+    ?debug("    schedule_rpc:schedule_request(): target:          ~p", [ Target]),
+    ?debug("    schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
+    ?debug("    schedule_rpc:schedule_request(): network_address: ~p", [ NetworkAddress]),
+    ?debug("    schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
+    ?debug("    schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
+    ?debug("    schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
     schedule:schedule_message(Target, 
 			      Timeout, 
 			      NetworkAddress, 
@@ -43,15 +43,15 @@ schedule_message(Target, Timeout, NetworkAddress, Parameters, Signature, Certifi
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 data_link_up(NetworkAddress, AvailableServices) ->
-    ?debug("schedule_rpc:data_link_up(): network_address: ~p", [ NetworkAddress]),
-    ?debug("schedule_rpc:data_link_up(): services:        ~p", [ AvailableServices]),
+    ?debug("    schedule_rpc:data_link_up(): network_address: ~p", [ NetworkAddress]),
+    ?debug("    schedule_rpc:data_link_up(): services:        ~p", [ AvailableServices]),
     schedule:data_link_up(NetworkAddress, AvailableServices),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
 data_link_down(NetworkAddress, DiscountinuedServices) ->
-    ?debug("schedule_rpc:data_link_down(): network_address: ~p", [ NetworkAddress]),
-    ?debug("schedule_rpc:data_link_down(): services         ~p", [ DiscountinuedServices]),
+    ?debug("    schedule_rpc:data_link_down(): network_address: ~p", [ NetworkAddress]),
+    ?debug("    schedule_rpc:data_link_down(): services         ~p", [ DiscountinuedServices]),
     schedule:data_link_down(NetworkAddress, DiscountinuedServices),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
@@ -83,6 +83,6 @@ handle_rpc("data_link_down", Args) ->
     data_link_down(NetworkAddress, DiscountinuedServices);
 
 handle_rpc(Other, _Args) ->
-    ?debug("schedule_rpc:handle_rpc(~p): unknown", [ Other ]),
+    ?debug("    schedule_rpc:handle_rpc(~p): unknown", [ Other ]),
     {ok, [ {status, rvi_common:json_rpc_status(invalid_command)}]}.
 

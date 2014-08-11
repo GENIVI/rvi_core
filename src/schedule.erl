@@ -142,13 +142,13 @@ handle_cast( { schedule_message,
 	       Signature,
 	       Certificate
 	     }, St) ->
-    ?debug("schedule:sched_msg(): target:            ~p", [Target]),
-    ?debug("schedule:sched_msg(): timeout:           ~p", [Timeout]),
-    ?debug("schedule:sched_msg(): network_address: ~p", [NetworkAddress]),
-    ?debug("schedule:sched_msg(): parameters:       ~p", [Parameters]),
-    ?debug("schedule:sched_msg(): signature:         ~p", [Signature]),
-    ?debug("schedule:sched_msg(): certificate:       ~p", [Certificate]),
-    ?debug("schedule:sched_msg(): St:                ~p", [St]),
+    ?debug("    schedule:sched_msg(): target:            ~p", [Target]),
+    ?debug("    schedule:sched_msg(): timeout:           ~p", [Timeout]),
+    ?debug("    schedule:sched_msg(): network_address: ~p", [NetworkAddress]),
+    ?debug("    schedule:sched_msg(): parameters:       ~p", [Parameters]),
+    ?debug("    schedule:sched_msg(): signature:         ~p", [Signature]),
+    ?debug("    schedule:sched_msg(): certificate:       ~p", [Certificate]),
+    ?debug("    schedule:sched_msg(): St:                ~p", [St]),
 
     %% Queue the message. The result will tell us if the target service
     %% is available.
@@ -163,7 +163,7 @@ handle_cast( { schedule_message,
     NSt = %% Get the new state from queue_message
 	case queue_message(Target, Msg, St) of
 	    { first_message, TmpSt } ->
-		?debug("schedule:sched_msg(): Queued message is the first one. "
+		?debug("    schedule:sched_msg(): Queued message is the first one. "
 		       "Bring up data link"),
 		rvi_common:send_component_request(data_link, setup_data_link, 
 						  [
@@ -173,12 +173,12 @@ handle_cast( { schedule_message,
 		TmpSt;
 	    
 	    { send_now, NetworkAddress, TmpSt } ->
-		?debug("schedule:sched_msg(): Servivce is already available. Send now."),
+		?debug("    schedule:sched_msg(): Servivce is already available. Send now."),
 		ok = send_message(NetworkAddress, Target, Timeout, 
 				  Parameters, Signature, Certificate),
 		TmpSt;
 	    { ok, TmpSt } ->
-		?debug("schedule:sched_msg(): Message queued."),
+		?debug("    schedule:sched_msg(): Message queued."),
 		
 		TmpSt
 	end,
@@ -195,7 +195,7 @@ handle_cast( {data_link_up, NetworkAddress, AvailableServices}, St) ->
 
 
 handle_cast( {data_link_down, _NetworkAddress, DiscontinuedServices}, St) ->
-    ?debug("schedule:data_link_down(): NetworkAddress: ~p DiscontinuedServices: ~p",
+    ?debug("    schedule:data_link_down(): NetworkAddress: ~p DiscontinuedServices: ~p",
 	      [_NetworkAddress, DiscontinuedServices]),
 
     {ok, NSt } = multiple_services_unavailable(DiscontinuedServices, St),
@@ -264,11 +264,11 @@ code_change(_OldVsn, St, _Extra) ->
 queue_message(Target, Msg, St) ->
 
 
-    ?debug("schedule:sched_msg(): target:              ~p", [Target]),
-    ?debug("schedule:sched_msg(): msg.timeout:         ~p", [Msg#message.timeout]),
-    ?debug("schedule:sched_msg(): msg.parameters:      ~p", [Msg#message.parameters]),
-    ?debug("schedule:sched_msg(): msg.signature:       ~p", [Msg#message.signature]),
-    ?debug("schedule:sched_msg(): msg.certificate:     ~p", [Msg#message.certificate]),
+    ?debug("    schedule:sched_msg(): target:              ~p", [Target]),
+    ?debug("    schedule:sched_msg(): msg.timeout:         ~p", [Msg#message.timeout]),
+    ?debug("    schedule:sched_msg(): msg.parameters:      ~p", [Msg#message.parameters]),
+    ?debug("    schedule:sched_msg(): msg.signature:       ~p", [Msg#message.signature]),
+    ?debug("    schedule:sched_msg(): msg.certificate:     ~p", [Msg#message.certificate]),
 
     
     %% Does the service even exist?
@@ -278,7 +278,7 @@ queue_message(Target, Msg, St) ->
 	%% Create it with a single message in a freshly created queue.
 	%%
 	not_found -> 
-	    ?debug("schedule:sched_msg(): New service"),
+	    ?debug("    schedule:sched_msg(): New service"),
 
 	    %% Create a queue with one element in it.
 	    Q = queue:in(Msg, queue:new()),
@@ -305,11 +305,11 @@ queue_message(Target, Msg, St) ->
 
 	    case queue:is_empty(Svc#service.queue) of
 		true -> %% Nothing to send
-		    ?debug("schedule:sched_msg(): Unavailable - first messge"),
+		    ?debug("    schedule:sched_msg(): Unavailable - first messge"),
 		    { first_message, NSt };
 
 		false -> %% There are already elements in the queue.
-		    ?debug("schedule:sched_msg(): Unavailable - additional messsge"),
+		    ?debug("    schedule:sched_msg(): Unavailable - additional messsge"),
 		    { ok, NSt }
 			
 	    end;
@@ -317,8 +317,8 @@ queue_message(Target, Msg, St) ->
 				  
 	%% Service exists, and has a network address. Do not queue. Send now.
 	{available, #service { network_address = NetworkAddress } = Svc }->  
-	    ?debug("schedule:sched_msg(): SEND NOW: ~p", [Svc]),
-	    ?debug("schedule:sched_msg(): SEND NOW: ~p", [NetworkAddress]),
+	    ?debug("    schedule:sched_msg(): SEND NOW: ~p", [Svc]),
+	    ?debug("    schedule:sched_msg(): SEND NOW: ~p", [NetworkAddress]),
 	    { send_now, NetworkAddress, St }
     end.
     
@@ -332,23 +332,23 @@ queue_message(Target, Msg, St) ->
 %%  if messages for the given service are now ready to be sent.
 %%
 service_available(Target, NetworkAddress, St) ->
-    ?debug("schedule:service_available(): target:            ~p~n", [ Target ]),
-    ?debug("schedule:service_available(): network_address:   ~p~n",  [ NetworkAddress ]),
+    ?debug("    schedule:service_available(): target:            ~p~n", [ Target ]),
+    ?debug("    schedule:service_available(): network_address:   ~p~n",  [ NetworkAddress ]),
 								    
     case find_service(Target, St) of 
 	not_found -> 	%% The given service does not exist, create it.
-	    ?debug("schedule:service_available(): New service. Adding.~n"),
+	    ?debug("    schedule:service_available(): New service. Adding.~n"),
 	    { ok, modify_service(Target, NetworkAddress, St) };
 	
 	{ _, Svc }  ->
 	    %% Check if we have elements ready to transmit
 	    case queue:is_empty(Svc#service.queue) of
 		true -> %% Nothing to send. Add service and return ok
-		    ?debug("schedule:service_available(): Existing service. No pending messages.~n"),
+		    ?debug("    schedule:service_available(): Existing service. No pending messages.~n"),
 		    { ok, modify_service(Target, NetworkAddress, Svc#service.queue, St) };
 
 		false -> %% We have elements to send. Add service and report send.
-		    ?debug("schedule:service_available(): Existing service. Pending messages.~n"),
+		    ?debug("    schedule:service_available(): Existing service. Pending messages.~n"),
 		    { send_messages, modify_service(Target, NetworkAddress, Svc#service.queue, St) }
 	    end
     end.
@@ -361,10 +361,10 @@ modify_service(Target, NetworkAddress, St) ->
 %% Add or modify a service with a carried over queue.
 %% Any existing services with the same target name is replaced.
 modify_service(Target, NetworkAddress, Queue, St) ->
-    ?debug("schedule:modify_service(): Target:           ~p", [ Target]),
-    ?debug("schedule:modify_service(): NetworkAddress:  ~p", [ NetworkAddress]),
-    ?debug("schedule:modify_service(): Queue:            ~p", [ Queue]),
-    ?debug("schedule:modify_service(): St:                ~p", [ St]),
+    ?debug("    schedule:modify_service(): Target:           ~p", [ Target]),
+    ?debug("    schedule:modify_service(): NetworkAddress:  ~p", [ NetworkAddress]),
+    ?debug("    schedule:modify_service(): Queue:            ~p", [ Queue]),
+    ?debug("    schedule:modify_service(): St:                ~p", [ St]),
 
     %% Delete old service
     NewSvcs = lists:keydelete(Target, #service.target, St#st.services),
@@ -376,10 +376,10 @@ modify_service(Target, NetworkAddress, Queue, St) ->
 			    queue = Queue } | NewSvcs ] }.
     
 modify_service(SvcRec, St) ->
-    ?debug("schedule:modify_service(rec): Target:           ~p", [ SvcRec#service.target]),
-    ?debug("schedule:modify_service(rec): NetworkAddress:  ~p", [ SvcRec#service.network_address]),
-    ?debug("schedule:modify_service(rec): Queue:            ~p", [ SvcRec#service.queue]),
-    ?debug("schedule:modify_service(rec): St:                ~p", [ St]),
+    ?debug("    schedule:modify_service(rec): Target:           ~p", [ SvcRec#service.target]),
+    ?debug("    schedule:modify_service(rec): NetworkAddress:  ~p", [ SvcRec#service.network_address]),
+    ?debug("    schedule:modify_service(rec): Queue:            ~p", [ SvcRec#service.queue]),
+    ?debug("    schedule:modify_service(rec): St:                ~p", [ St]),
 
     %% Delete old service
     NewSvcs = lists:keydelete(SvcRec#service.target, #service.target, St#st.services),
@@ -395,23 +395,23 @@ modify_service(SvcRec, St) ->
 send_message(unavailable, _Target, _Timeout, 
 	     _Parameters, _Signature, _Certificate) ->
 
-    ?debug("schedule:send_message(): network_address:   UNAVAILABLE"),
-    ?debug("schedule:send_message(): target:            ~p", [_Target]),
-    ?debug("schedule:send_message(): timeout:           ~p", [_Timeout]),
-    ?debug("schedule:send_message(): parameters:       ~p", [_Parameters]),
-    ?debug("schedule:send_message(): signature:         ~p", [_Signature]),
-    ?debug("schedule:send_message(): certificate:        ~p", [_Certificate]),
+    ?debug("    schedule:send_message(): network_address:   UNAVAILABLE"),
+    ?debug("    schedule:send_message(): target:            ~p", [_Target]),
+    ?debug("    schedule:send_message(): timeout:           ~p", [_Timeout]),
+    ?debug("    schedule:send_message(): parameters:       ~p", [_Parameters]),
+    ?debug("    schedule:send_message(): signature:         ~p", [_Signature]),
+    ?debug("    schedule:send_message(): certificate:        ~p", [_Certificate]),
     {error, unavailable};
 
 send_message(NetworkAddress, Target, Timeout, 
 	     Parameters, Signature, Certificate) ->
 
-    ?debug("schedule:send_message(): network_address: ~p", [NetworkAddress]),
-    ?debug("schedule:send_message(): target:            ~p", [Target]),
-    ?debug("schedule:send_message(): timeout:           ~p", [Timeout]),
-    ?debug("schedule:send_message(): parameters:       ~p", [Parameters]),
-    ?debug("schedule:send_message(): signature:         ~p", [Signature]),
-    ?debug("schedule:send_message(): certificate:       ~p", [Certificate]),
+    ?debug("    schedule:send_message(): network_address: ~p", [NetworkAddress]),
+    ?debug("    schedule:send_message(): target:            ~p", [Target]),
+    ?debug("    schedule:send_message(): timeout:           ~p", [Timeout]),
+    ?debug("    schedule:send_message(): parameters:       ~p", [Parameters]),
+    ?debug("    schedule:send_message(): signature:         ~p", [Signature]),
+    ?debug("    schedule:send_message(): certificate:       ~p", [Certificate]),
 
     case rvi_common:send_component_request(
 	   protocol, send_message, 
@@ -432,9 +432,9 @@ send_messages(#service { network_address = NetworkAddress,
 			 target = Target,
 			 queue = Queue } = Svc) ->
 
-    ?debug("schedule:send_messages(): target:            ~p", [Target]),
-    ?debug("schedule:send_messages(): network_address:   ~p", [NetworkAddress]),
-    ?debug("schedule:send_messages(): queue_size:        ~p", [queue:len(Queue)]),
+    ?debug("    schedule:send_messages(): target:            ~p", [Target]),
+    ?debug("    schedule:send_messages(): network_address:   ~p", [NetworkAddress]),
+    ?debug("    schedule:send_messages(): queue_size:        ~p", [queue:len(Queue)]),
 
     case queue:out(Queue) of
 	{{ value, Msg }, NQ } ->
@@ -458,7 +458,7 @@ send_messages(#service { network_address = NetworkAddress,
 
 	%% No more elements in the queue
 	{ empty, _ } ->
-	    ?debug("schedule:send_messages(). All forwarded: ~p", [Svc]),
+	    ?debug("    schedule:send_messages(). All forwarded: ~p", [Svc]),
 	    Svc
 end.
 
@@ -470,7 +470,7 @@ end.
 %% service.
 %%
 multiple_services_available([], _NetworkAddress, St) ->
-    ?debug("schedule:multiple_services_available():  St: ~p", [ St]),
+    ?debug("    schedule:multiple_services_available():  St: ~p", [ St]),
     {ok, St};
 
 multiple_services_available([ Svc | T], NetworkAddress, St) ->
@@ -505,7 +505,7 @@ multiple_services_unavailable([ Svc | T], St) ->
     multiple_services_unavailable(T, NSt).
 
 find_service(Target, #st { services = Svcs } = _St) ->
-    ?debug("schedule:find_service(): St: ~p", [ _St]),
+    ?debug("    schedule:find_service(): St: ~p", [ _St]),
     case lists:keyfind(Target, #service.target, Svcs) of
 	false ->  %% The given service does not exist, create it.
 	    not_found;
