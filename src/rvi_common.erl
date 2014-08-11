@@ -24,10 +24,9 @@
 -export([remote_service_to_string/1]).
 -export([remote_service_to_string/2]).
 -export([local_service_prefix/0]).
--export([is_backend_service/1]).
--export([backend_address_string/0]).
+-export([find_static_node/1]).
+-export([is_local_service/1]).
 -export([node_address_string/0]).
--export([backend_address_tuple/0]).
 -export([node_address_tuple/0]).
 -export([get_request_result/1]).
 -export([get_component_config/1]).
@@ -36,9 +35,8 @@
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
 -define(NODE_ADDRESS, node_address).
+-define(STATIC_NODES, static_nodes).
 
--define(BACKEND_SERVICE_PREFIX, backend_service_prefix).
--define(BACKEND_ADDRESS, backend_address).
 
 json_rpc_status(0) ->
     ok;
@@ -113,9 +111,9 @@ get_request_result({error, Reason})->
 get_request_result(Other)->
     ?error("get_request_result(): Unhandled result: ~p", [Other]),    
     { error, format}.
+  
 
-    
-
+			
 %% Send a request to another component (service_edge, authorize, etc).
 send_component_request(Component, Service, ArgList) ->
     case send_component_request(Component, Service, ArgList, []) of
@@ -128,11 +126,11 @@ send_component_request(Component, Service, ArgList) ->
 send_component_request(Component, Service, ArgList, ReturnParams) ->
     Address = rvi_common:find_component_address(Component),
 
-    ?debug("send_component_request(): Component:      ~p", [ Component]),
-    ?debug("send_component_request(): Address:        ~p", [ Address ]),
-    ?debug("send_component_request(): Service:        ~p", [ Service]),
-    ?debug("send_component_request(): ArgList:        ~p", [ ArgList]),
-    ?debug("send_component_request(): ReturnParams:   ~p", [ ReturnParams]),
+    %% ?debug("send_component_request(): Component:      ~p", [ Component]),
+    %% ?debug("send_component_request(): Address:        ~p", [ Address ]),
+    %% ?debug("send_component_request(): Service:        ~p", [ Service]),
+    %% ?debug("send_component_request(): ArgList:        ~p", [ ArgList]),
+    %% ?debug("send_component_request(): ReturnParams:   ~p", [ ReturnParams]),
 
     case get_request_result(
 	   send_http_request(Address, atom_to_list(Service),  ArgList)
@@ -156,6 +154,7 @@ send_http_request(Url,Method, Args) ->
 			      }))),
 
     Hdrs = [{'Content-Type', "application/json"} ],
+    ?debug("rvi_common:send_http_request() Sending:      ~p", [Req]),
     try
         exo_http:wpost(Url, {1,1}, Hdrs, Req, 1000)
     catch
@@ -176,7 +175,6 @@ find_component_address(Component) when is_atom(Component) ->
 	{ok, URL } -> URL;
 	_ -> undefined
     end.
-
 
 
 %% If Path is just a single element, convert to list and try again.
@@ -270,17 +268,25 @@ sanitize_service_string(Service) when is_list(Service) ->
 	    Res
     end.
 
-local_service_to_string(Type, Service) ->
-    atom_to_list(Type) ++ ":" ++ local_service_prefix() ++ Service.
 
-local_service_to_string(Service) ->
-    local_service_prefix() ++ Service.
 
-remote_service_to_string(Type, Service) ->
-    atom_to_list(Type) ++ ":" ++ Service.
+local_service_to_string(Type, Svc) ->
+    Type ++ ":" ++ local_service_to_string(Svc).
+
+
+%% Make sure we don't get two slashes between the prefix and the service name
+local_service_to_string([ $/ | Service]) ->
+    local_service_prefix() ++ Service;
+
+%% Make sure we don't get two slashes
+local_service_to_string(Svc) ->
+    local_service_prefix() ++ Svc.
 
 remote_service_to_string(Service) ->
     Service.
+
+remote_service_to_string(Type, Service) ->
+    Type ++ ":" ++ Service.
 
 local_service_prefix() ->
     Prefix = 
@@ -300,44 +306,74 @@ local_service_prefix() ->
 	_ -> Prefix ++ "/"
     end.
 
-is_backend_service(Service) ->
-    case application:get_env(rvi, ?BACKEND_SERVICE_PREFIX) of
-	{ok, P} when is_list(P) -> 
-	    case string:str(Service, P) of
-		1 -> 
-		    ?debug("is_backend_service(~p): Is backend", [ Service ]),
-		    true;				
+%% Locate the statically configured node whose service(s) prefix-
+%% matches the provided service.
+find_static_node(Service) ->
+	case application:get_env(rvi, ?STATIC_NODES) of
 
-		Err -> 
-		    ?debug("is_backend_service(~p): Not backend: ~p", [ Service, Err ]),
+	    {ok, NodeList} when is_list(NodeList) -> 
+		find_static_node(Service, NodeList);
 
-		    false
-	    end;
+	    undefined -> 
+		?debug("No ~p configured under rvi.", [?STATIC_NODES]),
+		not_found
+	end.
+
+find_static_node(_Service, []) ->
+    not_found;
+
+%% Validate that argumenst are all lists.
+find_static_node(Service, [{ SvcPrefix, NetworkAddress} | T ]) when 
+      not is_list(Service); not is_list(SvcPrefix); not is_list(NetworkAddress) ->
+    ?warning("rvi_common:find_static_node(): Could not resolve ~p against {~p, ~p}:"
+	     "One or more elements not strings.",  [ Service, SvcPrefix, NetworkAddress]),
+    find_static_node(Service, T );
+    
+
+%% If the service we are trying to resolve has a shorter name than
+%% the prefix we are comparing with, ignore.
+find_static_node(Service, [{ SvcPrefix, _NetworkAddress } | T ]) when 
+      length(Service) < length(SvcPrefix) ->
+    ?debug("rvi_common:find_static_node(): Service: ~p is shorter than prefix ~p. Ignore.",
+	   [ Service, SvcPrefix]),
+    find_static_node(Service, T );
+
+find_static_node(Service, [{ SvcPrefix, NetworkAddress} | T] ) ->
+    case string:str(Service, SvcPrefix) of
+	1 ->
+	    ?debug("rvi_common:find_static_node(): Service: ~p -> { ~p, ~p}.",
+		   [ Service, SvcPrefix, NetworkAddress]),
+	    NetworkAddress;
+	_ ->
+	    ?debug("rvi_common:find_static_node(): Service: ~p != { ~p, ~p}.",
+		   [ Service, SvcPrefix, NetworkAddress]),
+	    find_static_node(Service, T )
+    end.
 	    
-	undefined -> 
-	    ?warning("WARNING: Please set application rvi environment ~p", 
-		      [?BACKEND_SERVICE_PREFIX]),
-	    false
-    end.
-	
+%% Return true if the provided service is locally connected to this
+%% node. In such cases, service edge should just bounce the request
+%% off directly to the targeted service without invoking the rest of
+%% the RVI structure.
+%%
+is_local_service(Service) ->
+     case application:get_env(rvi, ?NODE_SERVICE_PREFIX) of
+ 	{ok, P} when is_list(P) -> 
+	     case string:str(sanitize_service_string(Service), P) of
+ 		1 -> 
+ 		    ?debug("is_local_service(~p): Is local", [ Service ]),
+ 		    true;				
 
-backend_address_string() ->
-    case application:get_env(rvi, ?BACKEND_ADDRESS) of
-	{ok, P} when is_atom(P) -> atom_to_list(P);
-	{ok, P} when is_list(P) -> P;
-	undefined -> 
-	    ?warning("WARNING: Please set application rvi environment ~p", 
-		      [?BACKEND_ADDRESS]),
-	    error({missing_env, ?BACKEND_ADDRESS})
-    end.
+ 		Err -> 
+ 		    ?debug("is_local_service(~p): Not local: ~p", [ Service, Err ]),
+ 		    false
+ 	    end;
+	    
+ 	undefined -> 
+ 	    ?warning("WARNING: Please set application rvi environment ~p", 
+ 		      [?NODE_SERVICE_PREFIX]),
+ 	    false
+     end.
 
-backend_address_tuple() ->
-    case backend_address_string() of
-	{missing_env, _} = Err -> Err;
-	Addr ->
-	    [ Address, Port ] = string:tokens(Addr, ":"),	
-	    { Address, list_to_integer(Port) }
-    end.
 
 node_address_string() ->
     case application:get_env(rvi, ?NODE_ADDRESS) of
