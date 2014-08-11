@@ -28,8 +28,8 @@ init() ->
 
 
 register_service(Service, Address) ->
-    ?debug("service_edge_rpc:register_service(): service: ~p ", [Service]),
-    ?debug("service_edge_rpc:register_service(): address: ~p ", [Address]),
+    ?debug("    service_edge_rpc:register_service(): service: ~p ", [Service]),
+    ?debug("    service_edge_rpc:register_service(): address: ~p ", [Address]),
 
     case 
 	rvi_common:send_component_request(service_discovery, register_local_service,
@@ -42,7 +42,7 @@ register_service(Service, Address) ->
 		    {status, rvi_common:json_rpc_status(JSONStatus)} ] };
 
 	Err -> 
-	    ?debug("service_edge_rpc:register_service() Failed at service_discovery(): ~p", 
+	    ?debug("    service_edge_rpc:register_service() Failed at service_discovery(): ~p", 
 		      [ Err ]),
 	    Err
     end.
@@ -52,10 +52,10 @@ register_service(Service, Address) ->
 %% to be forwarded to a remote service.
 %%
 handle_local_message(Target, Timeout, Parameters, CallingService) ->
-    ?debug("service_edge_rpc:call(): target:          ~p", [Target]),
-    ?debug("service_edge_rpc:call(): timeout:         ~p", [Timeout]),
-    ?debug("service_edge_rpc:call(): parameters:      ~p", [Parameters]),
-    ?debug("service_edge_rpc:call(): calling_service: ~p", [CallingService]),
+    ?debug("    service_edge_rpc:local_msg: target:          ~p", [Target]),
+    ?debug("    service_edge_rpc:local_msg: timeout:         ~p", [Timeout]),
+    ?debug("    service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
+    ?debug("    service_edge_rpc:local_msg: calling_service: ~p", [CallingService]),
 
     case 
 	rvi_common:send_component_request(authorize, authorize_local_message,
@@ -71,45 +71,51 @@ handle_local_message(Target, Timeout, Parameters, CallingService) ->
 						  [ {service, Target} ],
 						  [ network_address ]) of
 		{ ok, ok, [ NetworkAddress], _SDJSON } -> 
-		    
-		    %% Remember this transaction ID for the reply
-		    %% so that we know where to send the reply.
+		    %%
+		    %% Check if this is a local service. If so, just forward it to its target.
+		    %% 
+		    case rvi_common:is_local_service(Target) of
+			true ->  %% Target is local. Forward message
+			    ?debug("    service_edge_rpc:local_msg(): Service is local. Forwarding."),
+			    forward_message_to_local_service(NetworkAddress, Target, Parameters);
+			
+			false -> %% Target is remote
+			    %% Ask Schedule the request to resolve the network address
+			    case 
+				rvi_common:send_component_request(schedule, schedule_message,
+								  [
+								   { timeout, Timeout },
+								   { parameters, Parameters }, 
+								   { network_address, NetworkAddress }, 
+								   { certificate, Certificate },
+								   { signature, Signature },
+								   { target, Target }
+								  ]) of
 
-		    %% Ask Schedule the request to resolve the network address
-		    case 
-			rvi_common:send_component_request(schedule, schedule_message,
-							  [
-							   { timeout, Timeout },
-							   { parameters, Parameters }, 
-							   { network_address, NetworkAddress }, 
-							   { certificate, Certificate },
-							   { signature, Signature },
-							   { target, Target }
-							  ]) of
+				{ ok,  ok, _SchJSON } -> 
+				    %% We are happy. Return.
+				    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
-			{ ok,  ok, _SchJSON } -> 
-			    %% We are happy. Return.
-			    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
-
-			Err -> 
-			    ?debug("service_edge_rpc:handle_local_message() Failed at scheduling: ~p", 
-				      [ Err ]),
-			    { ok, [ { status, rvi_common:json_rpc_status(internal)} ] }
+				Err -> 
+				    ?debug("    service_edge_rpc:local_msg() Failed at scheduling: ~p", 
+					   [ Err ]),
+				    { ok, [ { status, rvi_common:json_rpc_status(internal)} ] }
+			    end
 		    end;
-
+			
 		{ok, not_found, _, _} ->
-		    ?debug("service_edge_rpc:handle_local_message() Service ~p not found", 
+		    ?debug("    service_edge_rpc:local_msg() Service ~p not found", 
 			   [ Target ]),
 		    { ok, [ { status, rvi_common:json_rpc_status(not_found)} ] };
 		    
 		Err ->  
-		    ?debug("service_edge_rpc:handle_local_message() Failed at service discovery: ~p", 
+		    ?debug("    service_edge_rpc:local_msg() Failed at service discovery: ~p", 
 			      [ Err ]),
 		    { ok, [ { status, rvi_common:json_rpc_status(internal)} ] }
 	    end;
 
 	Err -> 
-	    ?debug("service_edge_rpc:handle_local_message() Failed at authorize: ~p", 
+	    ?debug("    service_edge_rpc:local_msg() Failed at authorize: ~p", 
 		      [ Err ]),
 	    Err
     end.
@@ -120,11 +126,11 @@ handle_local_message(Target, Timeout, Parameters, CallingService) ->
 %% to be forwarded to a locally connected service.
 %%
 handle_remote_message(Target, Timeout, Parameters, Signature, Certificate) ->
-    ?debug("service_edge:remote_msg(): target:          ~p", [Target]),
-    ?debug("service_edge:remote_msg(): timeout:         ~p", [Timeout]),
-    ?debug("service_edge:remote_msg(): parameters:      ~p", [Parameters]),
-    ?debug("service_edge:remote_msg(): signature:       ~p", [Signature]),
-    ?debug("service_edge:remote_msg(): certificate:     ~p", [Certificate]),
+    ?debug("    service_edge:remote_msg(): target:          ~p", [Target]),
+    ?debug("    service_edge:remote_msg(): timeout:         ~p", [Timeout]),
+    ?debug("    service_edge:remote_msg(): parameters:      ~p", [Parameters]),
+    ?debug("    service_edge:remote_msg(): signature:       ~p", [Signature]),
+    ?debug("    service_edge:remote_msg(): certificate:     ~p", [Certificate]),
 
     case 
 	rvi_common:send_component_request(authorize, authorize_remote_message,
@@ -140,37 +146,7 @@ handle_remote_message(Target, Timeout, Parameters, Signature, Certificate) ->
 						  [ { service, Target } ],
 						  [ network_address ]) of
 		{ ok, ok, [ NetworkAddress], _SDJSON } -> 
-		    SvcName = string:substr(Target, 
-					    length(rvi_common:local_service_prefix())),
-		    case 
-			%% Strip our node prefix from target so that
-			%% the service receiving the JSON rpc call will have
-			%% a target that is identical to the service name
-			%% it registered with.
-
-			%% Deliver the message to the local service
-			rvi_common:get_request_result(
-			  rvi_common:send_http_request(NetworkAddress, 
-						        "message", 
-						       [ { target, SvcName },
-							 { parameters, Parameters }])) of
-
-			%% Request delivered.
-			{ ok, ok, _ } ->
-			    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
-
-			%% Request delivered (with no status reply)
-			{ok,  undefined  } ->
-			    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
-
-			%% status returned was an error code.
-			{ ok, Status, _ } ->
-			    { error, { json_rpc, rvi_common:json_rpc_status(Status)}};
-
-			%% HTTP or similar error.
-			Err ->
-			    Err
-		    end;
+		    forward_message_to_local_service(NetworkAddress, Target, Parameters);
 
 		%% service discovery failed.
 		_ -> { error, { unknown_target, Target}}
@@ -184,6 +160,39 @@ handle_remote_message(Target, Timeout, Parameters, Signature, Certificate) ->
 	Err -> Err
     end.
 
+forward_message_to_local_service(NetworkAddress, Service, Parameters) ->
+    %%
+    %% Strip our node prefix from target so that
+    %% the service receiving the JSON rpc call will have
+    %% a target that is identical to the service name
+    %% it registered with.
+    %%%
+    SvcName = string:substr(Service, 
+			    length(rvi_common:local_service_prefix())),
+
+    %% Deliver the message to the local service
+    case rvi_common:get_request_result(
+	   rvi_common:send_http_request(NetworkAddress, 
+					"message", 
+					[ { target, SvcName },
+					  { parameters, Parameters }])) of
+
+	%% Request delivered.
+	{ ok, ok, _ } ->
+	    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+
+	%% Request delivered (with no status reply)
+	{ok,  undefined  } ->
+	    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+
+	%% status returned was an error code.
+	{ ok, Status, _ } ->
+	    { error, { json_rpc, rvi_common:json_rpc_status(Status)}};
+
+	%% HTTP or similar error.
+	Err ->
+	    Err
+    end.
 
 %% JSON-RPC entry point
 %% Called by local exo http server
@@ -192,6 +201,16 @@ handle_rpc("register_service", Args) ->
     {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
     register_service(Service, Address);
 
+
+handle_rpc("data_link_up", Args) ->
+    {ok, _Services} = rvi_common:get_json_element(["services"], Args),
+    %% FIXME: Report all available services to the connected local services
+    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+
+handle_rpc("data_link_down", Args) ->
+    {ok, _Services} = rvi_common:get_json_element(["services"], Args),
+    %% FIXME: Report all available services to the connected local services
+    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
 handle_rpc("message", Args) ->
     {ok, Target} = rvi_common:get_json_element(["target"], Args),
@@ -211,6 +230,6 @@ handle_rpc("handle_remote_message", Args) ->
 
 
 handle_rpc(Other, _Args) ->
-    ?debug("service_edge_rpc:handle_rpc(~p): unknown command", [ Other ]),
+    ?debug("    service_edge_rpc:handle_rpc(~p): unknown command", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
