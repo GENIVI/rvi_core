@@ -1,6 +1,17 @@
 In doc and code, convert JSON-RPC param "parameters" to "arguments" in order to avoid
    confusion with JSON-RPC "params"
 
-In doc and code, rename "target" "service" or potentially "target service"
+In doc and code, rename "target" "service" or potentially "target
+   service"
 
-   
+In HLD, update data_link_up use case (Step 10) to involve service
+   discovery
+
+In HLD, schedule, data link, and service discovery - Fix code so that
+   service availability is managed by service discovery only. Today
+   the network address of a given service (set by data_link_up calls
+   from data_link_device) are received by schedule, which maintains a
+   redundant copy of all service availability states. This should be
+   moved to Servide Discovery, which should forward the call to
+   schedule. HLD
+

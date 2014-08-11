@@ -1,3 +1,10 @@
+#
+# Copyright (C) 2014, Jaguar Land Rover
+#
+# This program is licensed under the terms and conditions of the
+# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
+#
 from jsonrpclib.SimpleJSONRPCServer import SimpleJSONRPCServer
 import jsonrpclib
 
@@ -5,29 +12,26 @@ class RVIJSONRPCServer(SimpleJSONRPCServer):
     # Check if method is 'message', if so dispatch on
     # name 'target' instead.
     def _dispatch(self, method, params):
-        print "dispatch:", params
+        # print "dispatch:", params
         if method == 'message':
-            print "Will dispatch message to: " + params['target']
+            # print "Will dispatch message to: " + params['target']
             dict_param = {}
             # Extract the 'parameters' element from the top level JSON-RPC
             # 'param'. 
             # Convert 'parameters' from [{'vin': 1234}, {hello: 'world'}] to
             # a regular dictionary: {'vin': 1234, hello: 'world'}
 
-            print params['parameters']
+            # print "Parameters:", params['parameters']
             msg_params = params['parameters'] 
             for i in range(0, len(msg_params)):
-                print "params ", msg_params[i].keys()[0], " = ", msg_params[i].values()[0]
-                dict_param[msg_params[i].keys()[0]] = msg_params[i].values()[0]
+                for j in range(0, len(msg_params[i].keys())):
+                    # print "params", msg_params[i].keys()[j], "=", msg_params[i].values()[j]
+                    dict_param[msg_params[i].keys()[j]] = msg_params[i].values()[j]
 
-            print "DICT: ", dict_param
+            # print "Parameter disctionary: ", dict_param
+            # print 
             # Ship the processed dispatch info upward.
             return SimpleJSONRPCServer._dispatch(self, params['target'], dict_param)           
 
-        print "Method:",  method
-        for x in params:
-            print "params ", x, " = ",params[x]
-            return SimpleJSONRPCServer._dispatch(self,message, params)           
 
-        print "---"
-
+        return SimpleJSONRPCServer._dispatch(self,message, params)           

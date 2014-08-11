@@ -1,6 +1,14 @@
 #!/usr/bin/python
 
 #
+# Copyright (C) 2014, Jaguar Land Rover
+#
+# This program is licensed under the terms and conditions of the
+# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
+#
+
+#
 # Emulate a mobile device or an IVI.
 #
 #  This emulator connects to an RVI Service Edge as a service and
@@ -90,7 +98,6 @@ import threading
 #
 SUBSCRIPTION_SERVICE_BASE='jlr.com/backend/subscription_service'
 SUBSCRIBE_SERVICE=SUBSCRIPTION_SERVICE_BASE+'/subscribe'
-UNSUBSCRIBE_SERVICE=SUBSCRIPTION_SERVICE_BASE+'/unsubscribe'
 PUBLISH_SERVICE=SUBSCRIPTION_SERVICE_BASE+'/publish'
 
 #
@@ -100,7 +107,7 @@ PUBLISH_SERVICE=SUBSCRIPTION_SERVICE_BASE+'/publish'
 #
 def publish(vin, key, value):
     print "Publish invoked!"
-    print "vin:", viny 
+    print "vin:", vin 
     print "key:", key 
     print "value:", value 
     return ['ok']
@@ -115,6 +122,9 @@ def usage():
     print "The RVI Service Edge URL can be found in"
     print "priv/setup_[backend,device].config as"
     print "env -> rvi -> components -> service_edge -> url"
+    print
+    print "The RVI Service Edge URL can can also be specified"
+    print "on the command line of the rvi_node.sh script."
     sys.exit(255)
 
 
@@ -127,7 +137,7 @@ def usage():
 #
 emulator_service_host = 'localhost'
 emulator_service_port = random.randint(20001, 59999)
-
+emulator_service_url = 'http://'+emulator_service_host + ':' + str(emulator_service_port)
 
 
 
@@ -152,10 +162,24 @@ if len(sys.argv) == 5:
     # The complete service name will be: jlr.com/backend/mobile/<phone_nr>/hvac/publish
     emulator_service_name = '/mobile/'+phone_number+'/hvac/publish'
 
+
+    # Setup an outbound JSON-RPC connection to the RVI Service Edeg.
+    rvi_server = jsonrpclib.Server(rvi_url)
+
+    # Register our HVAC mobile emulator service with the RVI Service Edge,
+    # allowing the RVI to forward requests to the service name to the
+    # given network addresss (URL):
+    print "Emulator service URL", emulator_service_url
+    res = rvi_server.register_service(service = emulator_service_name, 
+                                      network_address = emulator_service_url)
+
+    full_emulator_service_name = res['service']
+
     print "Will run in mobile device mode."
     print "Backend server node URL:  ", rvi_url
     print "Phone Number:             ", phone_number
     print "VIN:                      ", vin
+    print "Full Service Name:        ", full_emulator_service_name
 
 elif len(sys.argv) == 3:
     [ progname, rvi_url, mode ] = sys.argv    
@@ -173,21 +197,20 @@ elif len(sys.argv) == 3:
     # Setup an outbound JSON-RPC connection to the RVI Service Edeg.
     rvi_server = jsonrpclib.Server(rvi_url)
 
-    # Register our HVAC IVI/mobile emulator service with the RVI Service Edge,
+    # Register our HVAC IVI emulator service with the RVI Service Edge,
     # allowing the RVI to forward requests to the service name to the
     # given network addresss (URL):
+
     res = rvi_server.register_service(service = emulator_service_name, 
-                                      network_address = 
-                                      'http://'+emulator_service_host + ':' + str(emulator_service_port))
+                                      network_address = emulator_service_url)
 
     # The returned full service name contains the VIN number that we want:
     #  jlr.com/vin/<vin>/hvac/publish
     # We need to dig out the <vin> bit
 
-    print "res = ", res
-    svc_name = res['service']
+    full_emulator_service_name = res['service']
 
-    [ t1, t2, vin, t3, t4] = svc_name.split('/')
+    [ t1, t2, vin, t3, t4] = full_emulator_service_name.split('/')
     print "vin:", vin,
     
     # We are in mobile device mode. Setup the vin numbers for publish
@@ -215,7 +238,7 @@ rvi_server.message(calling_service = emulator_service_name,
                    target = SUBSCRIBE_SERVICE,
                    timeout = 0,
                    parameters = [{ u'vin': sub_vin, 
-                                  u'subscribing_service': emulator_service_name}])
+                                  u'subscribing_service': full_emulator_service_name}])
 
 # Create a thread to handle incoming stuff so that we can do input
 # in order to get new values
@@ -223,15 +246,25 @@ thr = threading.Thread(target=emulator_service.serve_forever)
 thr.start()
 
 while True:
+    line = raw_input('Enter <key> <val> or "q" for quit: ')
+    if line == 'q':
+        emulator_service.shutdown()
+        sys.exit(0)
+
     # Read a line and split it into a key val pair
-    [k, v] = raw_input('Enter <key> <val>: ').split(' ')
+    lst = line.split(' ')
+    if len(lst) != 2:
+        print "Nope", len(lst), lst
+        continue
+    
+    [k, v] = line.split(' ')
     
     # Send out update to the subscriber
-    rvi_server.message(calling_service=emulator_service_name,
+    rvi_server.message(calling_service= emulator_service_name,
                        target = PUBLISH_SERVICE,
                        timeout = 0,
                        parameters = [{ u'vin': pub_vin, 
                                       u'key': k, 
-                                      u'val': v}])
+                                      u'value': v}])
 
     print('Key {} set to {} for vin{}'. format(k, v, vin))
