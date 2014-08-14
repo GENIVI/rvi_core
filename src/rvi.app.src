@@ -21,8 +21,7 @@
 		  service_edge,
 		  service_discovery,
 		  authorize,
-		  data_link_backend,
-		  data_link_device,
+		  data_link_bert_rpc,
 		  protocol
                  ]},
   {mod, { rvi_app, []}}
