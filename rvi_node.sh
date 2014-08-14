@@ -21,19 +21,53 @@
 
 # ./rvi_node.sh 
 
-if [ "$!" -lt "2" ] 
-then
-    echo "Usage: $0 node_name [-port port] [-backend ip:port]"
+usage() {
+    echo "Usage: $0 -n node_name -b|-r [-p port] [-s prefix,ip:port]..."
+    echo "  -n node_name          Specify the name of the rvi node to launch"
+    echo "  -b                    Launch using development build (default)"
+    echo "  -r                    Launch using release"
+    echo 
+    echo "Configuration data is read from the configuration file"
+    echo "provided to the setup_rvi_node.sh script that created the node."
     exit 1
-fi
+}
 
+mode=build
+while getopts ":n:brp:s:" o; do
+    case "${o}" in
+        n)
+            node_name=${OPTARG}
+            ;;
+        b)
+            mode=build
+            ;;
+        r)
+            mode=release
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
 
-if [ ! -f $1/sys.config ]
-then
-    echo "Node $1 not setup. Please run setup_node $1 <configuration_file>"
-    exit 2
+if [ -z "${node_name}" ] ; then
+    echo "Missing -n flag"
+    usage
 fi
 
 # check man erl for extra arguments
 
-erl -boot $1/start -config $1/sys 
+if [ "${mode}" = "build" ]
+then
+    if [ ! -f ${node_name}/sys.config ]
+    then
+	echo "Node ${node_name} not setup. Please run ./setup_rvi_node.sh ${node_name} <configuration_file>"
+	exit 2
+    fi
+    exec erl -boot ${node_name}/start -config ${node_name}/sys 
+
+elif [ "${mode}" = "release" ]
+then
+    echo "Not yet supported."
+    exit 0
+fi
