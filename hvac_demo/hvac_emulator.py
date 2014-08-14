@@ -120,11 +120,11 @@ def usage():
     print "  <rvi_url>                     URL of RVI Service Edge on local host"
     print
     print "The RVI Service Edge URL can be found in"
-    print "priv/setup_[backend,device].config as"
+    print "priv/setup_[backend,ivi].config as"
     print "env -> rvi -> components -> service_edge -> url"
     print
-    print "The RVI Service Edge URL can can also be specified"
-    print "on the command line of the rvi_node.sh script."
+    print "The Service Edge URL is also logged as a notice when the"
+    print "RVI node is started."
     sys.exit(255)
 
 
@@ -138,9 +138,6 @@ def usage():
 emulator_service_host = 'localhost'
 emulator_service_port = random.randint(20001, 59999)
 emulator_service_url = 'http://'+emulator_service_host + ':' + str(emulator_service_port)
-
-
-
 
 # 
 # Check that we have the correct arguments
