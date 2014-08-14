@@ -15,3 +15,16 @@ In HLD, schedule, data link, and service discovery - Fix code so that
    moved to Servide Discovery, which should forward the call to
    schedule. HLD
 
+All repos
+   Update README.md.
+   Remove find_setup.sh
+   Fix config.
+   Prune xxx_lib.erl
+
+Protocol & Data Link components.
+   Check that we use bert as a codec, not any other method
+
+Service Discovery
+   Node service prefix matching should return the one with the longest
+   prefix match. This allows for default static nodes to be setup with
+   only a root prefix that can be used as a fallback.
