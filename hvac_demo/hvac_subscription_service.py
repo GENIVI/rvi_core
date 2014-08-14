@@ -59,7 +59,7 @@
 from jsonrpclib.SimpleJSONRPCServer import SimpleJSONRPCServer
 import jsonrpclib
 from rvi_json_rpc_server import RVIJSONRPCServer
-
+import sys
 RVI_SERVICE_EDGE='http://localhost:8801'
 HVAC_SERVER=('localhost', 8901)
 
@@ -74,10 +74,11 @@ HVAC_SERVER=('localhost', 8901)
 vin_subs = {}        
 
 def subscribe(vin, subscribing_service):
-    print "Subscribe"
+    print
+    print "Got subscription"
     print "vin:", vin 
     print "subscribing_service:", subscribing_service 
-
+    print 
     # Delete any existing service with the same name
     # Add the subscribing service
     if not vin in vin_subs:
@@ -86,15 +87,15 @@ def subscribe(vin, subscribing_service):
         if vin_subs[vin].count(subscribing_service) == 0:
             vin_subs[vin].append(subscribing_service)
 
-    print "Result: ",vin_subs
     return ['ok']
 
 
 def unsubscribe(vin, subscribing_service):
-    print "Unsubscribe"
+    print
+    print "Got unsubscribe"
     print "vin:", vin 
     print "subscribing_service:", subscribing_service 
-
+    print
     # Delete any existing service with the same name
     
     if vin in vin_subs and vin_subs[vin].count(subscribing_service) > 0:
@@ -103,6 +104,8 @@ def unsubscribe(vin, subscribing_service):
     return ['ok']
 
 def publish(vin, key, value):
+    print
+    print "Got publish"
     print "Publish"
     print "vin:", vin 
     print "key:", key 
@@ -115,18 +118,32 @@ def publish(vin, key, value):
         print "No subscribers for vin:", vin
         return ['ok']
             
-    print "subs:", subs
     for sub in subs:
         print "Sending publish to", sub
         rvi_server.message(calling_service = '/hvac/publish', 
                            target = sub,
                            timeout = 0,
                            parameters = [{ u'vin': vin, u'key': key}, {u'value': value }])
+    print
 
+if len(sys.argv) == 2:
+    [ progname, rvi_url ] = sys.argv    
+else:
+    print "Usage:", sys.argv[0], "<rvi_url>"
+    print "  <rvi_url>                     URL of RVI Service Edge on local host"
+    print
+    print "The RVI Service Edge URL can be found in"
+    print "priv/setup_[backend,ivi].config as"
+    print "env -> rvi -> components -> service_edge -> url"
+    print
+    print "The Service Edge URL is also logged as a notice when the"
+    print "RVI node is started."
+    sys.exit(255)
+
+print "Will register with RVI at", rvi_url, "using", HVAC_SERVER, "as my own URL."
 
 # Setup self's server that we will receive incoming calls from service edge on.
-hvac_server = RVIJSONRPCServer(HVAC_SERVER)
-# hvac_server = SimpleJSONRPCServer(HVAC_SERVER)
+hvac_server = RVIJSONRPCServer(HVAC_SERVER, logRequests=False)
 
 hvac_server.register_function(subscribe, '/subscription_service/subscribe')
 hvac_server.register_function(unsubscribe, '/subscription_service/unsubscribe')
@@ -135,7 +152,7 @@ hvac_server.register_function(publish, '/subscription_service/publish')
 
 # Register our services with the service edge and have
 # it associate our service name with the URL that the hvac_server is listening on
-rvi_server = jsonrpclib.Server(RVI_SERVICE_EDGE)
+rvi_server = jsonrpclib.Server(rvi_url)
 
 res = rvi_server.register_service(service = '/subscription_service/subscribe', 
                                   network_address = 'http://localhost:8901')
