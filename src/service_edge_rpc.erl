@@ -18,6 +18,8 @@
 
 %% Called by service_edge_app:start_phase().
 init() ->
+    ?notice("---- Service Edge URL:          ~s", [ rvi_common:find_component_address(service_edge)]),
+    ?notice("---- Node Service Prefix:       ~s", [ rvi_common:local_service_prefix()]),
     case rvi_common:get_component_config(service_edge, exo_http_opts) of
 	{ ok, ExoHttpOpts } ->
 	    exoport_exo_http:instance(service_edge_sup, 
