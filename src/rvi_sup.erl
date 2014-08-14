@@ -34,11 +34,6 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-%%          ?CHILD(rvi_alarms, worker),
-%%	    ?CHILD(rvi_log, worker),
-%%	    ?CHILD(rvi_can, worker),
-%%	    ?CHILD(rvi_waypoints, worker)
-	    %% ?CHILD(rvi_gps, worker),
-	    %% ?CHILD(exodmo_config, worker)
+	    %% ?CHILD(rvi_server, worker)
 	   ]} }.
 
