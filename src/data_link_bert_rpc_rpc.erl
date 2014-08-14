@@ -21,7 +21,7 @@
 init() ->
     ?debug("    data_link_bert_rpc_rpc:init(): Called"),
     %% Setup the bert-rpc server
-    case rvi_common:get_component_config(data_link, bert_rpc_rpc_server) of
+    case rvi_common:get_component_config(data_link, bert_rpc_server) of
 	{ok, TmpBertOpts } ->
 	    %% Prepend access rights and redirects that we will need.
 	    %% to route incoming calls to the correct module.
@@ -39,15 +39,18 @@ init() ->
 		   {accept, data_link_bert_rpc_rpc}
 		  ]} | TmpBertOpts],
 	    ?debug("    data_link_bert_rpc_rpc:init(): Starting BERT-RPC with ~p", [ BertOpts ]),
-	    case supervisor:start_child(data_link_bert_rpc_rpc_sup, 
+	    case supervisor:start_child(data_link_bert_rpc_sup, 
 					{ data_link_bert_rpc_rpc, 
-					  { bert_rpc_rpc_exec, start_link, [ BertOpts ] },
-					  permanent, 5000, worker, [bert_rpc_rpc_exec] }) of
+					  { bert_rpc_exec, start_link, [ BertOpts ] },
+					  permanent, 5000, worker, [bert_rpc_exec] }) of
 
 		{ ok, _ } ->
+		    ?notice("---- RVI Node External Address: ~s", 
+			    [ application:get_env(rvi, node_address, undefined)]),
+
 		    case rvi_common:get_component_config(data_link, exo_http_opts) of
 			{ ok, ExoHttpOpts } ->
-			    exoport_exo_http:instance(data_link_bert_rpc_rpc_sup, 
+			    exoport_exo_http:instance(data_link_bert_rpc_sup, 
 						      data_link_bert_rpc_rpc,
 						      ExoHttpOpts),
 			    ok;
@@ -63,8 +66,8 @@ init() ->
 	    end;
 
 	_ ->
-	    ?error("    data_link_bert_rpc_rpc:init(): No { rvi, { bert_rpc_rpc_server, [...]}} app env found."),
-	    {error, { missing_env, bert_rpc_rpc_server}}
+	    ?error("    data_link_bert_rpc_rpc:init(): No { rvi, { bert_rpc_server, [...]}} app env found."),
+	    {error, { missing_env, bert_rpc_server}}
     end.
 
 
@@ -77,7 +80,7 @@ setup_data_link(RemoteAddress, RemotePort, Service) ->
     ?debug("    data_link_bert_rpc_rpc:setup_data_link(): Local Port:       ~p", [ LocalPort]),
     ?debug("    data_link_bert_rpc_rpc:setup_data_link(): service:          ~p", [ Service]),
 
-    case bert_rpc_rpc_exec:get_session(RemoteAddress, RemotePort, [tcp],
+    case bert_rpc_exec:get_session(RemoteAddress, RemotePort, [tcp],
 				   [{auto_connect, false},
 				    binary,
 				    {packet,4},
@@ -95,7 +98,7 @@ setup_data_link(RemoteAddress, RemotePort, Service) ->
 	    ?debug("    data_link_bert_rpc_rpc:setup_data_link(): ---------------"),
 	    ?debug("    data_link_bert_rpc_rpc:setup_data_link():    Sending ping()"),
 	    ?debug("    data_link_bert_rpc_rpc:setup_data_link(): ---------------"),
-	    nice_bert_rpc_rpc:cast_host(RemoteAddress, RemotePort, 
+	    nice_bert_rpc:cast_host(RemoteAddress, RemotePort, 
 				    [tcp], data_link, ping, 
 				    [{LocalAddress, LocalPort}, 
 				     {RemoteAddress, RemotePort}]),
@@ -104,7 +107,7 @@ setup_data_link(RemoteAddress, RemotePort, Service) ->
 	    ?debug("    data_link_bert_rpc_rpc:setup_data_link(): ---------------"),
 	    ?debug("    data_link_bert_rpc_rpc:setup_data_link(): Sending authorize()"),
 	    ?debug("    data_link_bert_rpc_rpc:setup_data_link(): ---------------"),
-	    nice_bert_rpc_rpc:cast_host(RemoteAddress, RemotePort, 
+	    nice_bert_rpc:cast_host(RemoteAddress, RemotePort, 
 				    [tcp], data_link, authorize, 
 				    [1, LocalAddress, LocalPort, bert_rpc_rpc, 
 				     {certificate, {}}, { signature, {}} ]),
@@ -127,7 +130,7 @@ send_data(RemoteAddress, RemotePort, Data) ->
     ?debug("    data_link_bert_rpc_rpc:send_data(): Remote Address: ~p", [ RemoteAddress]),
     ?debug("    data_link_bert_rpc_rpc:send_data(): Remote Port:    ~p", [ RemotePort]),
     ?debug("    data_link_bert_rpc_rpc:send_data(): Data:           ~p", [ Data]),
-    case  nice_bert_rpc_rpc:cast_host(RemoteAddress, RemotePort, 
+    case  nice_bert_rpc:cast_host(RemoteAddress, RemotePort, 
 				  [tcp], 
 				  data_link, receive_data, [Data]) of
 	Res ->
@@ -181,7 +184,7 @@ ping({RemoteAddress, RemotePort}, {LocalAddress, LocalPort}) ->
     ?debug("    data_link_bert_rpc_rpc:ping(): ----------------"),
     ?debug("    data_link_bert_rpc_rpc:ping(): Sending authorize()"),
     ?debug("    data_link_bert_rpc_rpc:ping(): ----------------"),
-    nice_bert_rpc_rpc:cast_host(RemoteAddress, RemotePort, 
+    nice_bert_rpc:cast_host(RemoteAddress, RemotePort, 
 			    [tcp], data_link, authorize, 
 			    [1, Address, Port, bert_rpc_rpc, 
 			     {certificate, {}}, { signature, {}} ]),
@@ -220,7 +223,7 @@ authorize(TransactionID, RemoteAddress, RemotePort, Protocol, Certificate, Signa
 	    ?debug("    data_link_bert_rpc_rpc:authorize(): -------------------"),
 	    ?debug("    data_link_bert_rpc_rpc:authorize(): Sending announce()"),
 	    ?debug("    data_link_bert_rpc_rpc:authorize(): -------------------"),
-	    nice_bert_rpc_rpc:cast_host(RemoteAddress, RemotePort, 
+	    nice_bert_rpc:cast_host(RemoteAddress, RemotePort, 
 				    [tcp], 
 				    data_link, service_announce, 
 				    [2, LocalAddress, LocalPort, 
