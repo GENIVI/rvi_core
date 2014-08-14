@@ -402,7 +402,7 @@ get_component_config(Component) ->
 	    case proplists:get_value(Component, CompList, undefined) of
 		undefined ->
 		    Err = {missing_env, {rvi, { component, [ { Component, {}} ]}}},
-		    ?warning("service_edge_app(): Missing app environment: ~p",
+		    ?warning("get_component_config(): Missing app environment: ~p",
 			   [Err]),
 		     {error, Err};
 	
@@ -419,7 +419,7 @@ get_component_config(Component, Key) ->
 
 		undefined ->
 		    Err = {missing_env, {rvi, { component, [ { Component, { Key, {}}} ]}}},
-		    ?warning("service_edge_app(): Missing app environment: ~p", [Err]),
+		    ?warning("get_component_config(): Missing app environment: ~p", [Err]),
 		    {error, Err};
 
 		Config-> 
