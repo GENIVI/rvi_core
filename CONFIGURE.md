@@ -1,3 +1,8 @@
+Copyright (C) 2014, Jaguar Land Rover
+
+This document is licensed under Creative Commons
+Attribution-ShareAlike 4.0 International.
+
 # CONFIGURING AN RVI NODE 
 
 This document describes the process of configuring an RVI node so that it
@@ -7,9 +12,10 @@ can serve locally connected services, and also find other RVI nodes in a network
 
 The reader is assumed to be able to:
 
-1. Start and stop programs on the RVI-hosting system
-2. Edit configuration files.
-3. Understand the basic concepts of IP addresses, ports and URLs.
+1. Have a basic understanding of Linux directory structures.
+2. Start and stop programs on the RVI-hosting system
+3. Edit configuration files.
+4. Understand the basic concepts of IP addresses, ports and URLs.
 
 
 ## PREREQUISITES
@@ -30,7 +36,7 @@ steps must be taken.
 This node will handle traffic to all services that start with the
 given prefix.
 
-<b>2. Specify external RVI node address</b><br>
+<b>2. Specify RVI node external address</b><br>
 The external address is announced by the Data Link component to other
 RVI nodes, allowing them to connect to this node and exchange
 services. 
@@ -132,7 +138,7 @@ An example entry is given below:
 </pre>
 
 
-# SPECIFY EXTERNAL RVI NODE ADDRESS #
+# SPECIFY RVI NODE EXTERNAL ADDRESS #
 
 The external rvi node address is the address, as seen from the outside
 world, where this node's data link can be contacted. In IP based
@@ -339,6 +345,7 @@ external node address chapter:
 
 
 # RUNNING MULTIPLE NODES ON A HOST
+
 Multiple RVI nodes can be run simultaneously on a single host as long
 as their configured URLs and ports do not intefere with each other. 
 The data link external
@@ -393,10 +400,14 @@ examples in the previous chapters.
 
 
 # COMPILING THE RVI SOURCE CODE
+
 Before a development release can be built, the source code needs to be compiled.
 Please see BUILDING.md for details on this process.
 
+
 # CREATING THE DEVELOPMENT RELEASE
+*Please note that a new release must be created each time the configuration file has been updated*
+
 Once a configuration file has been completed, a development release is
 created.
 
@@ -412,9 +423,9 @@ newly created subdirectory containing the files necessary to start the
 release.
 
 If a configuration file, ```test.config``` is to be used when building
-release ```test_release```, the following command can be invoked:
+release ```test_release```, the following command can be run from the build root:
 
-    sh setup_rvi_node.sh test_rel test.config
+    ./setup_rvi_node.sh test_rel test.config
 
 Once executed (and no errors were found in test.config), a
 subdirectory called ```test_rel``` has been created. This directory
@@ -422,3 +433,27 @@ contains the erlang configuration and boot files necessary to bring up
 the RVI node.
 
 # STARTING THE DEVELOPMENT RELEASE
+
+The newly built development release is started using the
+```rvi_node.sh``` tool.
+
+In order to start the test release, named ```test_rel```, created in
+the previous chapter, the following command is run from the build
+root:
+
+    ./rvi_node.sh -n tes_rel
+
+When a development release is started the erlang console prompt will
+be displayed at the end of the startup process, allowing for manual
+inspection of the running system.
+
+
+Once the RVI node has been brought up, services can connect to its
+Service Edge and start routing traffic.
+
+# FAULT SEARCHING
+
+## TRAFFIC TARGETED FOR A SERVICE ON ANOHTER NODE IS NEVER FORWARDED
+TBD. Check that static node's service prefix matches that of the destination service.
+
+## MORE
