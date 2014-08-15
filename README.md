@@ -1,6 +1,14 @@
-# TOP LEVEL RVI PROJECT
+Copyright (C) 2014, Jaguar Land Rover
+
+This document is licensed under Creative Commons
+Attribution-ShareAlike 4.0 International.
+
+# REMOTE VEHICLE INTERACTION (RVI)
+
+This document gives a brief introduction to the RVI project and how to 
 
 
+This 
 Better documentation coming soon.
 
 Preqequisites.
