@@ -82,12 +82,10 @@ bounced of the subscription service.
 Two RVI nodes, both hosted by a single machine, will be involved in
 the test:
 
-The backend node will host the subscription service
-(subscription\_service.py), and will also receive requests from
-the mobile device emultor (hvac_emulator.py).
+The backend RVI node will host the subscription service
+(subscription\_service.py) and the mobile emulator (mobile\_emulator.py).
 
-The vehicle node will serve the only the HVAC emulator.
-
+The vehicle RVI node will host the HVAC emulator (hvac\_emulator.py).
 
 ## COMPILE THE RVI SYSTEM
 See ../BUILD.md for details.
