@@ -22,7 +22,7 @@ The reader is assumed to be able to:
 
 1. Erlang runtime R16B01 or later has to be installed on the hosting system.
 2. The ```setup_rvi_node.sh``` tool is available to build a release.
-3. (Recommended) ```priv/ivi.config``` is used as a starting point for a customized setup.
+3. (Recommended) ```priv/vehicle.config``` is used as a starting point for a customized setup.
 Root access is not needed.
 
 
@@ -70,7 +70,7 @@ release.
 There is a single configuration file, with the setup for all
 components and modules in the node, used for each release. All files
 are stored in the ```priv``` directory. A documented example file is
-provided (as a part of the HVAC demo) as ```priv/ivi.config```
+provided as ```rvi_sample.config```
 
 The configuration file consists of an array of erlang tuples (records
 / structs / entries), where the ```env``` tuple contains configuration data for

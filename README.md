@@ -46,3 +46,7 @@ $ sh device_message.sh
 Questions can be posted to the AGL RVI list:
 http://lists.linuxfoundation.org/mailman/listinfo/automotive-eg-rvi
 
+Tizen 3.0 Intel
+
+Build service Tizen + RVI -> release.
+

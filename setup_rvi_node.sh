@@ -33,7 +33,7 @@ then
     echo
     echo "Launch the node with ./rvi_node.sh <release_name>"
     echo
-    echo "See priv/ivi.config for configuration file example."
+    echo "See rvi_sample.config for configuration file example."
     echo 
     exit 1
 fi

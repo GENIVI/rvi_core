@@ -10,8 +10,8 @@
 #
 # This is an extremely simple subscription service that connects to
 # a central backend RVI node. The node is well known by all
-# other RVI nodes in a network, who has the backedn node configured
-# as a "static" node. See priv/setup_device.config for an example.
+# other RVI nodes in a network, who has the backend node configured
+# as a "static" node. See vehicle.config for an example.
 #
 # The subscription service will register the following services
 # with the backend RVI node:
@@ -50,7 +50,7 @@
 #   Distributes the key/value pair to all services that have previosuly
 #   subscribed to updates for the given vin.
 #
-# For RVI Milestone 1, the mobile and Tizen IVI UI remains to be
+# For RVI Milestone 1, the mobile and Tizen IVI HVAC UI remains to be
 # integrated with the RVI system itself. Meanwhile, hvac_emulator.py
 # is provded as a simple tester that can emulate either an IVI or
 # a mobile device.
@@ -133,7 +133,7 @@ else:
     print "  <rvi_url>                     URL of RVI Service Edge on local host"
     print
     print "The RVI Service Edge URL can be found in"
-    print "priv/setup_[backend,ivi].config as"
+    print "[backend,backend].config as"
     print "env -> rvi -> components -> service_edge -> url"
     print
     print "The Service Edge URL is also logged as a notice when the"

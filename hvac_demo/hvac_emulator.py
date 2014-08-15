@@ -9,39 +9,39 @@
 #
 
 #
-# Emulate a mobile device or an IVI.
+# Emulate an HVAC apoplication
 #
 #  This emulator connects to an RVI Service Edge as a service and
-#  simulates an IVI unit installed in a vehicle.
+#  simulates an HVAC application unit installed in a vehicle.
 #
 #  The emulator connects to the Service Edge of locally accessible RVI
 #  node and subscribes to updates from one or more mobile
 #  devices. Local updates, simulating GUI input on the HVAC screen,
 #  can be entered at the command line and will be distributed to the
-#  phone(s) subscribing to updates from the IVI.
+#  phone(s) subscribing to updates from the HVAC.
 #
 #  Any HVAC values updated on the command line are sent to the
 #  service jlr.com/backend/hvac/subscription_service/publish. This
 #  service will look up VIN targeted by the update and send out the
 #  same data to all services that are subscribing to that VIN.
 #  
-#  In mobile device mode, the emulator will subscribe to updated
-#  values published to to the VIN value "ivi_[vin]" where vin is the
-#  VIN number of the IVI.  When a emulator, still in mobile device
+#  I, the emulator will subscribe to updated
+#  values published to to the VIN value "hvac_[vin]" where vin is the
+#  VIN number of the vehicle.  When a emulator, still in mobile device
 #  mode, sends out an updated value (entered in the python console),
 #  it will publish the value using the vin "mobile_[vin]"
 #
-#  Converesely, an emulator in IVI mode will sbuscribe to
-#  "mobile_[vin]", and publish to "ivi_[vin]".
+#  Converesely, an the HVAC emulator will sbuscribe to
+#  "mobile_[vin]", and publish to "hvac_[vin]".
 #
 #  This setup allows the mobile device emulator to receive updates
-#  entered on the IVI HVAC screen (sent out by the IVI to
-#  "ivi_[vin]"), while the IVI emulator receives updates entered on
+#  entered on the IVI HVAC screen (sent out by the HVAC emulator to
+#  "hvac_[vin]"), while the HVAC emulator receives updates entered on
 #  the mobile device screen (sent out by the mobile device to
 #  "mobile_[vin]".
 #
-#  When the emulator connects in IVI mode to an RVI node, the
-#  node's configured service prefix (see priv/ivi.config,
+#  When the HVAC emulatore connects to the vehicle RVI node, the
+#  node's configured service prefix (see hvac_demo/vehicle.config,
 #  node_service_prefix) will have the VIN number as a part of the
 #  prefix. The emulator will thus register its service as /hvac/publish,
 #  which, prefixed with the node service prefix, gives it a complete name
@@ -86,7 +86,7 @@ def usage():
     print "  <rvi_url>                     URL of  Service Edge on a local RVI node"
     print
     print "The RVI Service Edge URL can be found in"
-    print "priv/[backend,ivi].config as"
+    print "[backend,vehicle].config as"
     print "env -> rvi -> components -> service_edge -> url"
     print
     print "The Service Edge URL is also logged as a notice when the"
@@ -122,7 +122,7 @@ emulator_service_name = '/hvac/publish'
 # Setup an outbound JSON-RPC connection to the RVI Service Edeg.
 rvi_server = jsonrpclib.Server(rvi_url)
 
-# Register our HVAC IVI emulator service with the RVI Service Edge,
+# Register our HVAC emulator service with the RVI Service Edge,
 # allowing the RVI to forward requests to the service name to the
 # given network addresss (URL):
 res = rvi_server.register_service(service = emulator_service_name, 
@@ -136,11 +136,11 @@ full_emulator_service_name = res['service']
 [ t1, t2, vin, t3, t4] = full_emulator_service_name.split('/')
 
 # We are in mobile device mode. Setup the vin numbers for publish
-pub_vin = "ivi_"+vin
+pub_vin = "hvac_"+vin
 sub_vin = "mobile_"+vin
 
-print "IVI Emulator."
-print "IVI RVI node URL: ", rvi_url
+print "HVAC Emulator."
+print "Vehicle RVI node URL: ", rvi_url
 print "Emulator URL:     ", emulator_service_url
 print "VIN:              ", vin
 print "Full service name ", full_emulator_service_name
