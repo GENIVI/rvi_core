@@ -28,3 +28,9 @@ Service Discovery
    Node service prefix matching should return the one with the longest
    prefix match. This allows for default static nodes to be setup with
    only a root prefix that can be used as a fallback.
+
+Service Discovery, Service Edge, Data Link
+   If a new local service connects and registers with a Service Edge,
+   the service should be announced to other RVI nodes that are
+   currently connected to the local node. (Real time service
+   announcement)
