@@ -23,19 +23,18 @@ recomp:
 	./rebar  compile skip_deps=true
 
 
-target_backend:
-	ERL_LIBS=$(PWD)/deps:$(ERL_LIBS) \
-	$(SETUP_GEN) $(NAME) priv/backend.config setup -pz $(PWD)/ebin \
-	-target rel_backend -vsn 0.1
+# target_backend:
+# 	ERL_LIBS=$(PWD)/deps:$(ERL_LIBS) \
+# 	$(SETUP_GEN) $(NAME) priv/backend.config setup -pz $(PWD)/ebin \
+# 	-target rel_backend -vsn 0.1
 
-target_device:
-	ERL_LIBS=$(PWD)/deps:$(ERL_LIBS) \
-	$(SETUP_GEN) $(NAME) priv/setup_device.config setup -pz $(PWD)/ebin \
-	-target rel_device -vsn 0.1
+# target_device:
+# 	ERL_LIBS=$(PWD)/deps:$(ERL_LIBS) \
+# 	$(SETUP_GEN) $(NAME) priv/setup_device.config setup -pz $(PWD)/ebin \
+# 	-target rel_device -vsn 0.1
 
-
-doc:
-        ./REBAR_DOC=1 ./rebar skip_deps=true get-deps doc
+# doc:
+#         ./REBAR_DOC=1 ./rebar skip_deps=true get-deps doc
 
 clean:
 	./rebar clean
