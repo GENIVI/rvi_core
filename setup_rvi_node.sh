@@ -42,6 +42,6 @@ export ERL_LIBS=$PWD/deps:$ERL_LIBS:$PWD
 
 $SETUP_GEN $1 $2 $1
 
-echo "RVI Node $1 has been setup. Launch with ./rvi_node -n $1"
+echo "RVI Node $1 has been setup. Launch with ./rvi_node.sh -n $1"
 exit 0
 
