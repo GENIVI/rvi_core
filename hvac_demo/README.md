@@ -36,7 +36,12 @@ The reader is assumed to be able to:
 # DEMO COMPONENTS
 
 The demo is broken into three components that connect to two RVI
-nodes. Please see schematics below:
+nodes. All components can be run on a single system.
+
+Please see schematics below for an overview:
+
+![Demo Schematics](hvac_demo.png "Demo Schematics")
+*Figure 1. Demo schematics*
 
 ## SUBSCRIPTION SERVICE
 This directory contains a simple subscription service
