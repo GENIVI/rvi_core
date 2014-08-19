@@ -25,6 +25,7 @@
 -export([remote_service_to_string/2]).
 -export([local_service_prefix/0]).
 -export([find_static_node/1]).
+-export([static_nodes/0]).
 -export([is_local_service/1]).
 -export([node_address_string/0]).
 -export([node_address_tuple/0]).
@@ -306,8 +307,20 @@ local_service_prefix() ->
 	_ -> Prefix ++ "/"
     end.
 
+static_nodes() ->
+    case application:get_env(rvi, ?STATIC_NODES) of
+
+	{ok, NodeList} -> 
+	    NodeList;
+
+	undefined -> 
+	    not_found
+    end.
+
+
 %% Locate the statically configured node whose service(s) prefix-
 %% matches the provided service.
+%% FIXME: Longest prefix match.
 find_static_node(Service) ->
 	case application:get_env(rvi, ?STATIC_NODES) of
 
