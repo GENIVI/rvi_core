@@ -16,7 +16,7 @@ curl -u $USER_AUTH -k -X POST  $URL -d @- << EOF
 {
     "jsonrpc": "2.0",
 
-    "method": "service_discovery:resolve_service",
+    "method": "service_discovery:resolve_remote_service",
     "id": "1",
     "params":
     {
