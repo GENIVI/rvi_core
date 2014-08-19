@@ -27,32 +27,30 @@ init() ->
     end,
     ok.
 
-schedule_message(Target, Timeout, NetworkAddress, Parameters, Signature, Certificate) ->
+schedule_message(Target, Timeout, Parameters, Signature, Certificate) ->
     ?debug("    schedule_rpc:schedule_request(): target:          ~p", [ Target]),
     ?debug("    schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
-    ?debug("    schedule_rpc:schedule_request(): network_address: ~p", [ NetworkAddress]),
     ?debug("    schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
     ?debug("    schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
     ?debug("    schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
     schedule:schedule_message(Target, 
 			      Timeout, 
-			      NetworkAddress, 
 			      Parameters,
 			      Signature,
 			      Certificate),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
-data_link_up(NetworkAddress, AvailableServices) ->
-    ?debug("    schedule_rpc:data_link_up(): network_address: ~p", [ NetworkAddress]),
-    ?debug("    schedule_rpc:data_link_up(): services:        ~p", [ AvailableServices]),
-    schedule:data_link_up(NetworkAddress, AvailableServices),
+register_remote_services(NetworkAddress, AvailableServices) ->
+    ?debug("    schedule_rpc:register_remote_services(): network_address: ~p", [ NetworkAddress]),
+    ?debug("    schedule_rpc:register_remote_services(): services:        ~p", [ AvailableServices]),
+    schedule:register_remote_services(NetworkAddress, AvailableServices),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
-data_link_down(NetworkAddress, DiscountinuedServices) ->
-    ?debug("    schedule_rpc:data_link_down(): network_address: ~p", [ NetworkAddress]),
-    ?debug("    schedule_rpc:data_link_down(): services         ~p", [ DiscountinuedServices]),
-    schedule:data_link_down(NetworkAddress, DiscountinuedServices),
+unregister_remote_services(NetworkAddress, DiscountinuedServices) ->
+    ?debug("    schedule_rpc:unregister_remote_services(): network_address: ~p", [ NetworkAddress]),
+    ?debug("    schedule_rpc:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
+    schedule:unregister_remote_services(NetworkAddress, DiscountinuedServices),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
@@ -61,26 +59,24 @@ data_link_down(NetworkAddress, DiscountinuedServices) ->
 handle_rpc("schedule_message", Args) ->
     {ok, Target} = rvi_common:get_json_element(["target"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
-    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     {ok,  Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
     schedule_message(Target, 
 		     Timeout, 
-		     NetworkAddress,
 		     Parameters,
 		     Signature,
 		     Certificate);
 
-handle_rpc("data_link_up", Args) ->
+handle_rpc("register_remote_services", Args) ->
     {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     {ok,  AvailableServices} = rvi_common:get_json_element(["services"], Args),
-    data_link_up(NetworkAddress, AvailableServices);
+    register_remote_services(NetworkAddress, AvailableServices);
 
-handle_rpc("data_link_down", Args) ->
+handle_rpc("unregister_remote_services", Args) ->
     {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     {ok,  DiscountinuedServices} = rvi_common:get_json_element(["services"], Args),
-    data_link_down(NetworkAddress, DiscountinuedServices);
+    unregister_remote_services(NetworkAddress, DiscountinuedServices);
 
 handle_rpc(Other, _Args) ->
     ?debug("    schedule_rpc:handle_rpc(~p): unknown", [ Other ]),
