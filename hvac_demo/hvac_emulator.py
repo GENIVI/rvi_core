@@ -57,30 +57,6 @@ import jsonrpclib
 import random
 import threading
 
-# The subscriber service (MQTT server equivalent), that 
-# manages subscriptions and distributes received publish commands to
-# the relevant subscribers.
-#
-SUBSCRIPTION_SERVICE_BASE='jlr.com/backend/subscription_service'
-SUBSCRIBE_SERVICE=SUBSCRIPTION_SERVICE_BASE+'/subscribe'
-PUBLISH_SERVICE=SUBSCRIPTION_SERVICE_BASE+'/publish'
-
-#
-# Publish command is invoked by the 
-# subscriber server above when it receives a publish command
-# from a VIN that this emulator subscribes to.
-#
-def publish(vin, key, value):
-    print
-    print "Publish invoked!"
-    print "vin:", vin 
-    print "key:", key 
-    print "value:", value 
-    print
-    sys.stdout.write("Enter <key> <val> or q to quit: ")
-    sys.stdout.flush()
-    return ['ok']
-
 def usage():
     print "Usage:", sys.argv[0], "<rvi_url>"
     print "  <rvi_url>                     URL of  Service Edge on a local RVI node"
@@ -94,7 +70,61 @@ def usage():
     sys.exit(255)
 
 
-# Setup self's server that we will receive incoming calls from service edge on.
+#
+# Publish command is invoked by the mobile emulator when it sends
+# messages to jlr.com/vin/1234/hvac/publish service.
+#
+def publish(key, value):
+    print
+    print "Publish invoked!"
+    print "key:", key 
+    print "value:", value 
+    print
+    sys.stdout.write("Enter <key> <val> or q to quit: ")
+    sys.stdout.flush()
+    return ['ok']
+
+#
+# Subscribe command is invoked by the mobile emulator when it sends
+# messages to the jlr.com/vin/1234/hvac/subscribe service.
+# The single argument provided is the subscribing service to be invoked when
+# an value is updated on the command line of the HVAC emulator.
+#
+def subscribe(subscribing_service):
+    print
+    print "Got subscription"
+    print "vin:", vin 
+    print "subscribing_service:", subscribing_service 
+    print 
+    # Add the subscribing service to list of subscribers,
+    # given that is is not already there.
+    if not subscribing_service in subscribers:
+        subscribers.append(subscribing_service)
+    else:
+        print subscribing_service," already subscribing"
+
+    sys.stdout.write("Enter <key> <val> or q to quit: ")
+    sys.stdout.flush()
+    return ['ok']
+
+#
+# Publish an updated HVAC value, entered at the command line of the
+# HVAC emulator, to all services who have set themselves up as
+# subscribers through the jlr.com/vin/1234/hvac/subscribe service.
+#
+def publish_to_subscribers(vin, key, val):
+    for subscriber in subscribers:
+        print "Sending:",vin,"   key:", key,"   val:",val,"   to:", subscriber
+        rvi_server.message(calling_service = emulator_publish_service_name,
+                           target = subscriber,
+                           timeout = 0,
+                           parameters = [{u'vin': vin, u'key': key, u'value': val}])
+
+#
+# A list of service names that should be notified when a value is
+# updated on the HVAC emulator's command line.
+#
+subscribers = []
 
 #
 # Setup a localhost URL, using a random port, that we will listen to
@@ -115,51 +145,65 @@ if len(sys.argv) != 2:
 [ progname, rvi_url ] = sys.argv    
 
 
-# setup the service name we will register with
-# The complete service name will be: jlr.com/vin/<vin>/hvac/publish
-emulator_service_name = '/hvac/publish'
+# setup the service names we will register with
+# The complete service name will be: 
+#  jlr.com/vin/1234/hvac/publish
+#       - and -
+#  jlr.com/vin/1234/hvac/subscribe
+#
+# Replace 1234 with the VIN number setup in the
+# node_service_prefix entry in vehicle.config
+emulator_publish_service_name = '/hvac/publish'
+emulator_subscribe_service_name = '/hvac/subscribe'
 
 # Setup an outbound JSON-RPC connection to the RVI Service Edeg.
 rvi_server = jsonrpclib.Server(rvi_url)
 
-# Register our HVAC emulator service with the RVI Service Edge,
-# allowing the RVI to forward requests to the service name to the
-# given network addresss (URL):
-res = rvi_server.register_service(service = emulator_service_name, 
+#
+# Register our HVAC emulator service with the vehicle RVI node's Service Edge.
+# We register both services using our own URL as a callback.
+#
+res = rvi_server.register_service(service = emulator_publish_service_name, 
+
                                   network_address = emulator_service_url)
 
-# The returned full service name contains the VIN number that we want:
-#  jlr.com/vin/<vin>/hvac/publish
-#  We need to dig out the <vin> bit
-full_emulator_service_name = res['service']
+# 
+# Record the returned full service name so that we can print it out
+# below.
+#
+full_emulator_publish_service_name = res['service']
 
-[ t1, t2, vin, t3, t4] = full_emulator_service_name.split('/')
+res = rvi_server.register_service(service = emulator_subscribe_service_name, 
+                                  network_address = emulator_service_url)
+
+# 
+# Record the returned full service name so that we can print it out
+# below.
+#
+full_emulator_subscribe_service_name = res['service']
+
+[ t1, t2, vin, t3, t4] = full_emulator_subscribe_service_name.split('/')
 
 # We are in mobile device mode. Setup the vin numbers for publish
 pub_vin = "hvac_"+vin
 sub_vin = "mobile_"+vin
 
 print "HVAC Emulator."
-print "Vehicle RVI node URL: ", rvi_url
-print "Emulator URL:     ", emulator_service_url
-print "VIN:              ", vin
-print "Full service name ", full_emulator_service_name
+print "Vehicle RVI node URL:       ", rvi_url
+print "Emulator URL:               ", emulator_service_url
+print "VIN:                        ", vin
+print "Full publish service name   ", full_emulator_publish_service_name
+print "Full subscribe service name ", full_emulator_subscribe_service_name
 
-# Regsiter self's service with the backend server RVI node
-# See rvi_json_rpc_server.py._dispatch() for details on how
-# incoming JSON-RPC requests are mapped to local funcitons.
+emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_service_port)), 
+                                    logRequests=False)
+
 #
-emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_service_port)), logRequests=False)
-emulator_service.register_function(publish, emulator_service_name)
-
-# Send of a subscribe to the subscription service running on the
-# backend. See hvac_subscription_service.py.subscribe() for details.
-
-rvi_server.message(calling_service = emulator_service_name,
-                   target = SUBSCRIBE_SERVICE,
-                   timeout = 0,
-                   parameters = [{ u'vin': sub_vin, 
-                                  u'subscribing_service': full_emulator_service_name}])
+# Regsiter callbacks for incoming JSON-RPC calls delivered to
+# the HVAC emulator from the vehicle RVI node's Service Edge.
+#
+emulator_service.register_function(publish, emulator_publish_service_name)
+emulator_service.register_function(subscribe, emulator_subscribe_service_name)
 
 # Create a thread to handle incoming stuff so that we can do input
 # in order to get new values
@@ -181,11 +225,6 @@ while True:
     [k, v] = line.split(' ')
     
     # Send out update to the subscriber
-    rvi_server.message(calling_service= emulator_service_name,
-                       target = PUBLISH_SERVICE,
-                       timeout = 0,
-                       parameters = [{ u'vin': pub_vin, 
-                                      u'key': k, 
-                                      u'value': v}])
+    publish_to_subscribers(vin, k, v)
 
     print('Key {} set to {} for vin{}'. format(k, v, vin))

@@ -69,14 +69,6 @@ import jsonrpclib
 import random
 import threading
 
-# The subscriber service (MQTT server equivalent), that 
-# manages subscriptions and distributes received publish commands to
-# the relevant subscribers.
-#
-SUBSCRIPTION_SERVICE_BASE='jlr.com/backend/subscription_service'
-SUBSCRIBE_SERVICE=SUBSCRIPTION_SERVICE_BASE+'/subscribe'
-PUBLISH_SERVICE=SUBSCRIPTION_SERVICE_BASE+'/publish'
-
 #
 # Publish command is invoked by the 
 # subscriber server above when it receives a publish command
@@ -108,6 +100,14 @@ def usage():
     sys.exit(255)
 
 
+# 
+# Check that we have the correct arguments
+#
+if len(sys.argv) != 4:
+    usage()
+
+[ progname, rvi_url, phone_number, vin ] = sys.argv    
+
 # Setup self's server that we will receive incoming calls from service edge on.
 
 #
@@ -119,35 +119,53 @@ emulator_service_host = 'localhost'
 emulator_service_port = random.randint(20001, 59999)
 emulator_service_url = 'http://'+emulator_service_host + ':' + str(emulator_service_port)
 
-# 
-# Check that we have the correct arguments
 #
-if len(sys.argv) != 4:
-    usage()
+# Setup the target service, the vehicle hvac app emulator,
+# that will receive 'publish' and 'subscribe' commands from us.
+#
+target_hvac_publish_service = 'jlr.com/vin/'+vin+'/hvac/publish'
+target_hvac_subscribe_service = 'jlr.com/vin/'+vin+'/hvac/subscribe'
 
-[ progname, rvi_url, phone_number, vin ] = sys.argv    
-
-# We are in mobile device mode. Setup the vin numbers for publish
-pub_vin = "mobile_"+vin
-sub_vin = "hvac_"+vin
-
+#
 # Setup the service name we will register with.
-# The complete service name will be: jlr.com/backend/mobile/<phone_nr>/hvac/publish
+# The complete service name will be: 
+#    jlr.com/backend/mobile/<phone_nr>/hvac/publish
+#
 emulator_service_name = '/mobile/'+phone_number+'/hvac/publish'
 
-
-# Setup an outbound JSON-RPC connection to the RVI Service Edeg.
+#
+# Setup an outbound JSON-RPC connection to the backend RVI node
+# Service Edge.
+#
 rvi_server = jsonrpclib.Server(rvi_url)
 
-# Register our HVAC mobile emulator service with the RVI Service Edge,
-# allowing the RVI to forward requests to the service name to the
-# given network addresss (URL):
+#
+# Register our HVAC mobile emulator service with backend RVI node
+# Service Edge.
+#
 print "Emulator service URL", emulator_service_url
 
 res = rvi_server.register_service(service = emulator_service_name, 
                                   network_address = emulator_service_url)
 
+# Service Edge will return the full, global service name that the
+# registration was recorded as:
+#
+#  jlr.com/backend/mobile/[phone_number]/hvac/publish
+#
 full_emulator_service_name = res['service']
+
+#
+# Send of a subscribe to the hvac emulator running on the
+# vehicle. 
+#
+# We provide our own full service name to be invoked when
+# a value is updated on the command line of the hvac emulator.
+#
+rvi_server.message(calling_service = emulator_service_name,
+                   target = target_hvac_subscribe_service,
+                   timeout = 0, # Not yet implemented
+                   parameters = [ { u'subscribing_service': full_emulator_service_name}])
 
 print "Mobile Device Emulator."
 print "Backend RVI node URL:     ", rvi_url
@@ -156,22 +174,14 @@ print "Phone Number:             ", phone_number
 print "VIN:                      ", vin
 print "Full Service Name:        ", full_emulator_service_name
 
+emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_service_port)), 
+                                    logRequests=False)
 
-# Regsiter self's service with the backend server RVI node
-# See rvi_json_rpc_server.py._dispatch() for details on how
-# ncoming JSON-RPC requests are mapped to local funcitons.
+# Register the publish function with the publish service
+# so that publish() gets called when we receive a message
+# to /mobile/[phone_nr]/hvac/publish
 #
-emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_service_port)), logRequests = False)
 emulator_service.register_function(publish, emulator_service_name)
-
-# Send of a subscribe to the subscription service running on the
-# backend. See hvac_subscription_service.py.subscribe() for details.
-
-rvi_server.message(calling_service = emulator_service_name,
-                   target = SUBSCRIBE_SERVICE,
-                   timeout = 0,
-                   parameters = [{ u'vin': sub_vin, 
-                                  u'subscribing_service': full_emulator_service_name}])
 
 # Create a thread to handle incoming stuff so that we can do input
 # in order to get new values
@@ -194,10 +204,9 @@ while True:
     
     # Send out update to the subscriber
     rvi_server.message(calling_service= emulator_service_name,
-                       target = PUBLISH_SERVICE,
+                       target = target_hvac_publish_service,
                        timeout = 0,
-                       parameters = [{ u'vin': pub_vin, 
-                                      u'key': k, 
+                       parameters = [{ u'key': k, 
                                       u'value': v}])
 
     print('Key {} set to {} for vin{}'. format(k, v, vin))
