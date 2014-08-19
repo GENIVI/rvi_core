@@ -53,6 +53,7 @@ init() ->
 			    exoport_exo_http:instance(data_link_bert_rpc_sup, 
 						      data_link_bert_rpc_rpc,
 						      ExoHttpOpts),
+			    setup_static_node_data_links(),
 			    ok;
 
 			Err -> 
@@ -70,7 +71,20 @@ init() ->
 	    {error, { missing_env, bert_rpc_server}}
     end.
 
+%%
+%% Since we, in this demo code, haven't done pure P2P service discovery yet,
+%% we will simply connect to all configured static nodes.
+%%
+setup_static_node_data_links() ->
+    setup_static_node_data_links(rvi_common:static_nodes()).
 
+setup_static_node_data_links([ ]) ->
+    ok;
+
+setup_static_node_data_links([ { _Prefix, NetworkAddress} | T]) ->
+    [ Address, Port] =  string:tokens(NetworkAddress, ":"),
+    setup_data_link(Address, list_to_integer(Port), undefined),
+    setup_static_node_data_links(T).
 
 setup_data_link(RemoteAddress, RemotePort, Service) ->
     { LocalAddress, LocalPort} = rvi_common:node_address_tuple(),
@@ -142,6 +156,10 @@ send_data(RemoteAddress, RemotePort, Data) ->
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
+handle_rpc("announce_new_local_service", Args) ->
+    { ok,  Service } = rvi_common:get_json_element(["service"], Args),
+    announce_new_local_service(Service);
+
 handle_rpc("setup_data_link", Args) ->
     { ok, NetworkAddress } = rvi_common:get_json_element(["network_address"], Args),
     [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
@@ -190,6 +208,47 @@ ping({RemoteAddress, RemotePort}, {LocalAddress, LocalPort}) ->
 			     {certificate, {}}, { signature, {}} ]),
     ok.
 
+
+announce_new_local_service(Service) ->
+    %% Grab our local address.
+    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+
+    %% Grab all remote addresses we are currently connected to.
+    %% We will get the data link address of all remote nodes that
+    %% we currently have a conneciton to.
+    case rvi_common:send_component_request(service_discovery, get_remote_network_addresses, [], 
+					   [ addresses ]) of
+	{ ok, _, [ Addresses ], _JSON} -> 
+	    ?debug("    data_link_bert_rpc_rpc:announce_new_local_service(): Addresses      ~p", 
+		   [ Addresses]),
+
+	    %% Grab our local address.
+	    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+
+	    %% Loop over all returned addresses
+	    lists:map(fun(Address) ->
+			      %% Split the address into host and port
+			      [ RemoteAddress, RemotePort] =  string:tokens(Address, ":"),
+
+			      %% Announce the new service to the remote 
+			      %% RVI node
+			      nice_bert_rpc:cast_host(RemoteAddress, list_to_integer(RemotePort), 
+						      [tcp], 
+						      data_link, service_announce, 
+						      [3, LocalAddress, LocalPort, 
+						       [Service], { signature, {}} ])
+		      end,
+		      Addresses),
+	    
+	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
+
+	Err -> 
+	    ?warning("    data_link_bert_rpc_rpc:announce_new_local_service() Failed to grab addresses: ~p", 
+	
+		     [ Err ]),
+	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}
+
+    end.
     
 authorize(TransactionID, RemoteAddress, RemotePort, Protocol, Certificate, Signature) ->
     ?debug("    data_link_bert_rpc_rpc:authorize(): TransactionID:  ~p", [ TransactionID ]),
@@ -203,7 +262,7 @@ authorize(TransactionID, RemoteAddress, RemotePort, Protocol, Certificate, Signa
 
     %% Send our own servide announcement to the backend server
     %% First grab all our services.
-    case rvi_common:send_component_request(service_discovery, get_services, [], 
+    case rvi_common:send_component_request(service_discovery, get_local_services, [], 
 					   [ services ]) of
 	{ ok, _, [ JSONSvc], _JSON} -> 
 	    %% Covnert to JSON structured typles.
@@ -233,7 +292,8 @@ authorize(TransactionID, RemoteAddress, RemotePort, Protocol, Certificate, Signa
 
 	Err -> 
 	    ?warning("    data_link_bert_rpc_rpc:authorize() Failed at authorize: ~p", 
-		   [ Err ]),
+	
+	   [ Err ]),
 	   ok
     end,
     ok.
@@ -246,53 +306,16 @@ service_announce(TransactionID, RemoteAddress, RemotePort, Services, Signature) 
     ?debug("    data_link_bert_rpc_rpc:service_announce(): Signature:      ~p", [ Signature ]),
     ?debug("    data_link_bert_rpc_rpc:service_announce(): Services:       ~p", [ Services ]),
 
-    %% Register the received services.
+    %% Register the received services with all relevant components
     RemoteNetworkAddress = RemoteAddress  ++ ":" ++ integer_to_list(RemotePort),
-    register_announced_services(RemoteNetworkAddress, Services),
+    rvi_common:send_component_request(service_discovery, register_remote_services, 
+				      [
+				       {services, Services}, 
+				       {network_address, RemoteNetworkAddress}
+				      ]),
 
-    %% Report that the data link is up
 
-    rvi_common:send_component_request(service_discovery, data_link_up, 
-					  [
-					   {services, Services}, 
-					   { network_address,	RemoteNetworkAddress }
-					  ]),
-
-    rvi_common:send_component_request(schedule, data_link_up, 
-					  [
-					   {services, Services}, 
-					   { network_address,	RemoteNetworkAddress }
-					  ]),
-
-    rvi_common:send_component_request(service_edge, data_link_up, 
-    					  [
-     					   {services, Services}, 
-     					   { network_address,	RemoteNetworkAddress }
-     					  ]),
     ok.
-
-
-register_announced_services(_NetworkAddress, []) ->
-    ok;
-
-register_announced_services(NetworkAddress, [ Service | T ]) ->
-    ?debug("    data_link_bert_rpc_rpc:register_announced_services():Registering service: ~p | addr: ~p",
-	   [Service, NetworkAddress]),
-    case 
-	rvi_common:send_component_request(service_discovery, register_remote_service, 
-					  [
-					   {service, Service}, 
-					   {network_address, NetworkAddress}
-					  ]) of
-	{ ok, _, _JSON} -> 
-	    register_announced_services(NetworkAddress, T);
-
-	Err -> 
-	    ?debug("    data_link_bert_rpc_rpc:register_announced_services(): Failed at data_link_up: ~p", 
-		      [ Err ]),
-	    Err
-    end.
-
 
 
 receive_data(Data) ->
@@ -309,4 +332,5 @@ receive_data(Data) ->
 		      [ Err ])
     end,
     ok.
+
 
