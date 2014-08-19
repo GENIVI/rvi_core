@@ -34,3 +34,9 @@ Service Discovery, Service Edge, Data Link
    the service should be announced to other RVI nodes that are
    currently connected to the local node. (Real time service
    announcement)
+
+Scheduler
+   If two different services are invoked on a remote node that is
+   currently not available, the services may be invoked out of order
+   when the node does become connected. Scheduluer should queue
+   messages on a per-node basis, not per-service. 
