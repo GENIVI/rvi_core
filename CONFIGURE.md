@@ -143,7 +143,7 @@ An example entry is given below:
 The external rvi node address is the address, as seen from the outside
 world, where this node's data link can be contacted. In IP based
 networks, this is usually a ```hostname:port``` value. In SMS-only
-networks, this would be the MSISDN of the node's mobile subscription.
+networks, this will be the MSISDN of the node's mobile subscription.
 Any traffic directed to the given address should be forwarded to the 
 Data Link component.
 
@@ -251,6 +251,13 @@ An example entry is gven below:
 
 *Please note that IP addresses, not DNS names, should be used in all
  network addresses.*
+
+**Please note that all nodes configured in ```static_nodes``` must be
+up and running, listening on their specified addresses, before the
+node with the ```static_nodes``` configuration entry comes up.  All
+static nodes are connected to during the startup sequence, and if one
+or more are not available, the startup sequence will fail. This will
+be fixed in future versions.**
 
 
 # SPECIFY SERVICE EDGE URL #

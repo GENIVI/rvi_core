@@ -18,7 +18,6 @@ protocol (See http://mqtt.org). The first milestone of the RVI project
 will migrate the HVAC demo to the RVI technology.
 
 ## READER ASSUMPTIONS
-
 The reader is assumed to be able to:
 
 1. Have a basic understanding of Linux directory structures.
@@ -26,71 +25,120 @@ The reader is assumed to be able to:
 
 
 # PREREQUISITES
+1. Erlang runtime R16B01 or later has to be installed on the hosting
+system.
 
-1. Erlang runtime R16B01 or later has to be installed on the hosting system.
-2. The ```setup_rvi_node.sh``` tool is available to build a release.
-3. The ```rvi_node.sh``` tool is available to execute a release.
-4. ```hvac_demo/``` is available with its demo code and configuration files.
+2. The RVI system has been checked out from
+[gerrit](https://gerrit.automotivelinux.org/gerrit/#/admin/projects/RVI/rvi).
 
+3. The RVI system has been built. See
+[build instructions](../BUILD.md) for details.
+
+*Please do not execute the configuration instructions in [CONFIGURE.md](../CONFIGURE.md)*
 
 # DEMO COMPONENTS
 
-The demo is broken into three components that connect to two RVI
-nodes. All components can be run on a single system.
+In order to test the RVI milestone 1 without having to bring up a
+complete Tizen IVI and mobile device environment, a simple emulator
+for these two components have been provided in hvac\_emulator.py and
+mobile\_emulator.py
+
+All components can be run on a single system.
 
 Please see schematics below for an overview:
 
-![Demo Schematics](hvac_demo.png "Demo Schematics")
-*Figure 1. Demo schematics*
+![Demo Schematics](hvac_demo.png "Demo Schematics")<br>
+*Figure 1. Demo schematics. See HVAC and mobile device emulator chapters for details*
 
-## SUBSCRIPTION SERVICE
-This directory contains a simple subscription service
-(subscription\_service.py) replacing the MQTT broker. The
-subscription service lets the vehicle and mobile devices setup
-subscriptions so that they receive notifications when the HVAC values
-for a specific VIN (Vehicle Identification Number) have been
-updated. The service is, in effect, a standard publish/subscribe
-setup. 
 
-## HVAC EMULATOR
-In order to test the RVI milestone 1 and the subscription service
-without having to bring up a complete Tizen IVI and mobile device
-environment, a simple emulator for these two components have been
-provided in hvac\_emulator.py and mobile\_emulator.py
+## HVAC EMULATOR TECHNICAL DETAILS
+The HVAC emulator simulates an HVAC application unit installed in a
+vehicle.
 
-The HVAC emulator simulates the HVAC application running on a head unit
-in a vehicle. It uses a VIN number, a part of the service prefix
-of the vehicle RVI node, as a unique identifier and subscribes to HVAC
-updates, such as fan speed, originating from the mobile device
-emulator. 
+The emulator connects to the Service Edge of the vehicle RVI node,
+started with "rvi_node -n vehicle" and registers two services with it:
 
-The HVAC emulator can also have new HVAC values entered on
-the command line and send them to any connected mobile device
-emulators.
+* ```jlr.com/vin/[vin]/hvac/subscribe```<br>
+  Used by the mobile emulator to subscribe to updates entered on the
+  HVAC emulator's command line.
 
-All subscriptions and updates are bounced off the subscription service
-connected to the backend RVI node.
+* ```jlr.com/vin/[vin]/hvac/publish```<br>
+   Used by the mobile emulator to report updated values entered on 
+   its command line
 
-## MOBILE DEVICE EMULATOR
+In both cases, ```jlr.com/vin/[vin]``` is the vehicle RVI node's service
+prefix specified in
+```vehicle.configure```->```env```->```rvi```->```node_service_prefix```.
 
-The mobile device emulator connects to the backend server and
-registers itself as a service where a phone number, provided as a
-command line argument, is a part of the service name. The mobile
-controls a specific VIN, also provided as a command line argument. 
 
-Just like the HVAC emulator, the all subscriptions and updates are
-bounced of the subscription service.
+The mobile emulator invokes the subscribe service above in order
+to receive new HVAC values published by the HVAC emulator.
+  
+When a new key/value pair is entered on the HVAC emulator's command line,
+The mobile emulator services registered through an /hvac/subscribe
+message will be invoked with the key, value, and VIN number
+of the HVAC's RVI node. The receiving mobile emulators will
+print out the information.
+
+If a new key/value pair is entered on a mobile emulator's command
+line, they will be sent to the HVAC emulator's /hvac/publish service, 
+which will print them on screen.
+
+
+## MOBILE DEVICE EMULATOR TECHNICAL DETAILS
+
+The mobile device emulator connects to Service Edge of the backend
+  server, started with "./rvi_node -n backend", and subscribes to
+  HVAC updates (temp, fan speed, etc) updates from the vehicle with a
+  given VIN. 
+
+At startup, the mobile emulator will do two things:
+ 
+1. Register a service with the backend RVI node<br>
+   This service is invoked by the HVAC emulator to transmit 
+   key/value pairs entered on its commandd line.
+
+   The service name has the following layout:
+
+       ```jlr.com/backend/mobile/[phone_nr]/hvac/publish```
+ 
+   The ```jlr.com/backend``` prefix is the backend RVI node's service prefix specified in
+   ```backend.configure```->```env```->```rvi```->```node_service_prefix```.
+
+   The ```[phone_nr]``` is the phone number specified on the command
+   line when the mobile emulator is started.
+
+2. Send a suscription request to the HVAC emulator<br>
+   The HVAC emulator's subscription service is invoked as
+ 
+      ```jlr.com/vin/[vin]/hvac/subscribe```
+
+   where ```[vin]``` is the command-line specified VIN of the 
+   vehicle RVI node to connect to.
+   The subscription request's single parameter is the full name of
+   the publish service registered in step 1.  When the HVAC
+   emulator has a key/value pair entered at its command line, the
+   key/value/vin will be sent to the publish service on the mobile
+   emulator.
+    
+
+   When a new key/value pair is entered on the mobile emulator's
+   command line, simulating screen input on the HVAC app, the
+   key/value pair will be sent to:
+
+      ```jlr.com/vin/[vin]/hvac/publish```
+
+   The HVAC emulator will receive the published key/value pair and
+   print it on screen.
 
 
 # DEMO SETUP
-
 Two RVI nodes, both hosted by a single machine, will be involved in
 the test:
 
-The backend RVI node will host the subscription service
-(subscription\_service.py) and the mobile emulator (mobile\_emulator.py).
-
-The vehicle RVI node will host the HVAC emulator (hvac\_emulator.py).
+The backend RVI node will the mobile emulator
+(mobile\_emulator.py). The vehicle RVI node will host the HVAC
+emulator (hvac\_emulator.py).
 
 ## COMPILE THE RVI SYSTEM
 See ../BUILD.md for details.
@@ -108,7 +156,6 @@ The new developer release will be created in a subdiretory named
 
 
 ## CREATE THE BACKEND DEVELOPMENT RELEASE
-
 In a similar manner, setup the backend node:
 
     ./setup_rvi_node.sh backend hvac_demo/backend.config
@@ -116,8 +163,21 @@ In a similar manner, setup the backend node:
 
 The release will be created in a subdiretory named ```backend```
 
+# DEMO LAUNCH
+
+## LAUNCH THE BACKEND RVI NODE
+
+In its own window, launch the backend rvi node that the subscription
+service and mobile device emulator will connect to.
+
+	./rvi_node.sh -n backend
+	
+Make a note of the Service Edge URL address printed out by the logging service.
+
 
 ## LAUNCH THE VEHICLE RVI NODE
+
+* Please note that the backend node must be started before the vehicle node. *
 
 In its own window, launch the vehicle RVI node that will serve the HVAC emulator.
 
@@ -130,30 +190,6 @@ launch process.
 By default, the ```hvac_demo/vehicle.config``` file has its
 ```node_service_prefix``` entry set to ```jlr.com/vin/1234/```,
 yielding a VIN of "1234". 
-
-# DEMO LAUNCH
-
-
-## LAUNCH THE BACKEND RVI NODE
-
-In its own window, launch the backend rvi node that the subscription
-service and mobile device emulator will connect to.
-
-	./rvi_node.sh -n backend
-	
-Make a note of the Service Edge URL address printed out by the logging service.
-
-
-## LAUNCH THE SUBSCRIPTION SERVICE
-
-In its own window, launch the subscription service and specify the URL
-of the backend RVI node's Service Edge:
-
-    cd hvac_demo
-    ./subscription_service.py http://127.0.0.1:8801 
-	
-Modify the ```http://127.0.0.1:8801``` to match the URL reported by
-the backend RVI node.
 
 
 ## LAUNCH THE HVAC EMULATOR
@@ -177,8 +213,8 @@ node.
 
 ## LAUNCH THE MOBILE DEVICE EMULATOR
 
-In its own window, launch the mobile device emulator and have it connect to
-the backend RVI node.
+In its own window, launch the mobile device emulator and have it
+connect to the backend RVI node.
 
     cd hvac_demo
     ./mobile_emulator.py  http://127.0.0.1:8801 +1941231234 1234
@@ -189,7 +225,8 @@ reported by the backend RVI node.
 The phone number (+19491231234) is arbitrary, but has to be unique
 across all running mobile device emulators.
 
-The VIN number (1234) is the VIN number reported by the HVAC emulator at startup.
+The VIN number (1234) is the VIN number reported by the HVAC emulator
+at startup.
 
 The mobile device emulator accepts \[key\] \[value\] input lines that
 are distributed to the vehicle with the matching VIN.
@@ -222,5 +259,3 @@ Terminate the subscription service by pressing Ctrl-c.
 Terminate the vehicle RVI node by pressing Ctrl-c Ctrl-c.
 
 Terminate the backend RVI node by pressing Ctrl-c Ctrl-c.
-
-
