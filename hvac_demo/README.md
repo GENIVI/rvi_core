@@ -140,6 +140,14 @@ The backend RVI node will the mobile emulator
 (mobile\_emulator.py). The vehicle RVI node will host the HVAC
 emulator (hvac\_emulator.py).
 
+## SWITCH TO V0.1 OF THE RVI SYSTEM ##
+The cloned gerrit repo contains all tags and branches.
+Switch to tag v0.1 to get a release that does not contain
+daily snapshots.
+
+    git checkout v0.1
+
+
 ## COMPILE THE RVI SYSTEM
 See ../BUILD.md for details.
 
