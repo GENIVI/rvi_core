@@ -11,6 +11,8 @@
 
 
 -export([handle_rpc/2]).
+-export([wse_register_service/2]).
+-export([wse_message/5]).
 -export([init/0]).
 
 %%-include_lib("lhttpc/include/lhttpc.hrl").
@@ -26,7 +28,26 @@ init() ->
 				      service_edge_rpc,
 				      ExoHttpOpts);
 	Err -> Err
+    end,
+
+    %%
+    %% Fire up the websocket subsystem, if configured
+    %%
+    case rvi_common:get_component_config(service_edge, websocket) of
+	{ ok, WSOpts } ->
+	    case proplists:get_value(port, WSOpts, undefined ) of
+		undefined -> 
+		    {error, { missing_config, service_edge, port}};
+
+		Port ->
+		    %% FIXME: MONITOR AND RESTART
+		    wse_server:start(Port, proplists:delete(port, WSOpts)),
+		    ok
+	    end;
+
+	WSErr -> WSErr
     end.
+       
 
 
 register_service(Service, Address) ->
@@ -133,6 +154,39 @@ handle_remote_message(Target, Timeout, Parameters, Signature, Certificate) ->
 	Err -> Err
     end.
 
+%%
+%% Depending on the format of NetworkAddress
+%% Dispatch to websocket or JSON-RPC server
+%% FIXME: Should be a pluggable setup where 
+%%        different dispatchers are triggered depending
+%%        on prefix in NetworkAddress
+%%
+
+flatten_ws_args([ { _, [{ struct, List}] } | T], Acc )  when is_list(List) ->
+    flatten_ws_args(List ++ T, Acc);
+
+flatten_ws_args([{ _, Val}| T], Acc ) ->
+    flatten_ws_args(T, [ Val | Acc]);
+
+
+flatten_ws_args([], Acc) -> 
+    lists:reverse(Acc).
+
+
+flatten_ws_args(Args) ->    
+    flatten_ws_args(Args, []).
+    
+dispatch_to_local_service([ $w, $s, $: | WSPidStr], Command, Args) ->
+    ?debug("    service_edge:dispatch_to_local_service(): Websocket!: ~p, ~p", [ Command, Args]),
+    wse:call(list_to_pid(WSPidStr), wse:window(),
+	     Command, flatten_ws_args(Args)),
+    ok;
+
+%% Dispatch to regular JSON-RPC over HTTP.
+dispatch_to_local_service(NetworkAddress, Command, Args) ->
+    rvi_common:send_http_request(NetworkAddress, Command, Args).
+    
+
 forward_message_to_local_service(Target, Parameters) ->
     %%
     %% Resolve the local service name to an URL that we can send the
@@ -156,12 +210,13 @@ forward_message_to_local_service(Target, Parameters) ->
 	    SvcName = string:substr(Target, 
 				    length(rvi_common:local_service_prefix())),
 
-	    %% Deliver the message to the local service
+	    %% Deliver the message to the local service, which can
+	    %% be either a wse websocket, or a regular HTTP JSON-RPC call
 	    case rvi_common:get_request_result(
-		   rvi_common:send_http_request(NetworkAddress, 
-						"message", 
-						[ { target, SvcName },
-						  { parameters, Parameters }])) of
+		   dispatch_to_local_service(NetworkAddress, 
+					     "message", 
+					     [ { target, SvcName },
+					       { parameters, Parameters }])) of
 
 		%% Request delivered.
 		{ ok, ok, _ } ->
@@ -250,8 +305,22 @@ handle_rpc("handle_remote_message", Args) ->
     handle_remote_message( Target, Timeout, Parameters, Certificate, Signature);
 
 
-
 handle_rpc(Other, _Args) ->
     ?debug("    service_edge_rpc:handle_rpc(~p): unknown command", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
+
+
+%% Websocket iface 
+wse_register_service(Ws, Service ) ->
+    ?debug("    service_edge_rpc:wse_register_service(~p) service:     ~p", [ Ws, Service ]),
+    register_service(Service, "ws:" ++ pid_to_list(Ws)).
+
+
+wse_message(Ws, Target, Timeout, Parameters, CallingService) ->
+    ?debug("    service_edge_rpc:wse_message(~p) Target:          ~p", [ Ws, Target ]),
+    ?debug("    service_edge_rpc:wse_message(~p) Timeout:         ~p", [ Ws, Timeout]),
+    ?debug("    service_edge_rpc:wse_message(~p) Parameters:      ~p", [ Ws, Parameters ]),
+    ?debug("    service_edge_rpc:wse_message(~p) CallingService:  ~p", [ Ws, CallingService ]),
+    handle_local_message( Target, Timeout, Parameters, CallingService).
+
 
