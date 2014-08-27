@@ -109,10 +109,12 @@ get_request_result({ok, {http_response, {_V1, _V2}, Status, Reason, _Hdr}, _JSON
 get_request_result({error, Reason})->
     { error, Reason};
 
+get_request_result(ok)->
+    { ok, ok, "{}"};
+
 get_request_result(Other)->
     ?error("get_request_result(): Unhandled result: ~p", [Other]),    
     { error, format}.
-  
 
 			
 %% Send a request to another component (service_edge, authorize, etc).
