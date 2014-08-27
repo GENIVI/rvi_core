@@ -16,7 +16,8 @@
   {applications, [
                   kernel,
                   stdlib,
-		  rvi_common
+		  rvi_common,
+		  wse
                  ]},
   {mod, { service_edge_app, []}},
   {start_phases, [{init, []}]}
