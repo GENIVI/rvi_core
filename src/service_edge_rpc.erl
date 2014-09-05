@@ -47,7 +47,6 @@ init() ->
 
 	WSErr -> WSErr
     end.
-       
 
 
 register_service(Service, Address) ->
@@ -316,11 +315,11 @@ wse_register_service(Ws, Service ) ->
     register_service(Service, "ws:" ++ pid_to_list(Ws)).
 
 
-wse_message(Ws, Target, Timeout, Parameters, CallingService) ->
+wse_message(Ws, Target, Timeout, JSONParameters, CallingService) ->
+    %% Parameters are delivered as JSON. Decode into tuple
+    { ok, Parameters } = exo_json:decode_string(JSONParameters),
     ?debug("    service_edge_rpc:wse_message(~p) Target:          ~p", [ Ws, Target ]),
     ?debug("    service_edge_rpc:wse_message(~p) Timeout:         ~p", [ Ws, Timeout]),
-    ?debug("    service_edge_rpc:wse_message(~p) Parameters:      ~p", [ Ws, Parameters ]),
     ?debug("    service_edge_rpc:wse_message(~p) CallingService:  ~p", [ Ws, CallingService ]),
-    handle_local_message( Target, Timeout, Parameters, CallingService).
-
-
+    ?debug("    service_edge_rpc:wse_message(~p) Parameters:      ~p", [ Ws, Parameters ]),
+    handle_local_message( Target, Timeout,  [Parameters] , CallingService).
