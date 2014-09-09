@@ -94,13 +94,14 @@ $SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME
 
 if [ "${build_type}" = "dev" ]
 then
-    echo "RVI Node $NODE_NAME has been setup. Launch with ./rvi_node.sh -n $NODE_NAME"
+    echo "RVI Node $NODE_NAME has been setup."
+    echo "Launch with ./rvi_node.sh -n $NODE_NAME"
     exit
 else
     echo "Building stand-alone release for $NODE_NAME"
     # Copy the newly created config file.
     cp $NODE_NAME/sys.config rel/files/sys.config
-    rebar generate 
+    ./rebar generate 
     # Rename the release after the node name
     mv rel/rvi rel/$NODE_NAME
     echo "Stand alone release for $NODE_NAME created under ./rel/$NODE_NAME."

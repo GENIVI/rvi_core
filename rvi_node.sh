@@ -8,25 +8,21 @@
 #
 
 #
-# Launch an RVI node
+# Launch an RVI node using the build direcotriuies.
 #
 # This script launches the erlang runtime system and executes the RVI
-# code directly from its build directory. It does not (yet) launch a
-# separate release, but is instead intended for testing and evaluation.
-#
+# code directly from its build directory. Use ./setup_rvi_node without
+# the -d flag to create an installable release that can execute
+# without the use of this script.
 #
 # This script can be executed after a setup_node.sh has been executed to 
 # create the necessary config files and erlang boot scripts.
 #
 
-# ./rvi_node.sh 
-
 usage() {
     echo "Usage: $0 -n node_name -b|-r [-p port] [-s prefix,ip:port]..."
     echo "  -n node_name          Specify the name of the rvi node to launch"
-    echo "  -b                    Launch using development build (default)"
-    echo "  -r                    Launch using release"
-    echo 
+
     echo "Configuration data is read from the configuration file"
     echo "provided to the setup_rvi_node.sh script that created the node."
     exit 1
@@ -37,12 +33,6 @@ while getopts ":n:brp:s:" o; do
     case "${o}" in
         n)
             node_name=${OPTARG}
-            ;;
-        b)
-            mode=build
-            ;;
-        r)
-            mode=release
             ;;
         *)
             usage
