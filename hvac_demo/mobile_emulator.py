@@ -67,7 +67,7 @@
 #
 #  1234 is the VIN number of the vehicle RVI node.
 #  Please see the last field in the vehicle.config's 
-#  env -> rvi -> node_prefix configuration entry for
+#  env -> rvi -> node_service_prefix configuration entry for
 #  the correct value.
 #  
 
