@@ -32,6 +32,7 @@
 -export([get_request_result/1]).
 -export([get_component_config/1]).
 -export([get_component_config/2]).
+-export([get_component_config/3]).
 
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
@@ -69,6 +70,12 @@ json_rpc_status(4) ->
 json_rpc_status("4") ->
     internal;
 
+json_rpc_status(5) ->
+    already_connected;
+
+json_rpc_status("5") ->
+    already_connected;
+
 
 json_rpc_status(Unknown) when is_integer(Unknown)->
     undefined;
@@ -90,6 +97,9 @@ json_rpc_status(not_online) ->
 
 json_rpc_status(internal) ->
     4;
+
+json_rpc_status(already_connected) ->
+    5;
 
 json_rpc_status(_) ->
     999.
@@ -417,7 +427,7 @@ get_component_config(Component) ->
 	    case proplists:get_value(Component, CompList, undefined) of
 		undefined ->
 		    Err = {missing_env, {rvi, { component, [ { Component, {}} ]}}},
-		    ?warning("get_component_config(): Missing app environment: ~p",
+		    ?debug("get_component_config(): Missing app environment: ~p",
 			   [Err]),
 		     {error, Err};
 	
@@ -440,5 +450,13 @@ get_component_config(Component, Key) ->
 		Config-> 
 		     {ok, Config }
 	    end;
+	Err -> Err
+    end.
+
+get_component_config(Component, Key, Default) ->
+    case get_component_config(Component) of
+	{ok, PropList } ->
+	    {ok, proplists:get_value(Key, PropList, Default)};
+
 	Err -> Err
     end.
