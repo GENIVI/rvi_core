@@ -20,9 +20,8 @@
 #
 
 usage() {
-    echo "Usage: $0 -n node_name -b|-r [-p port] [-s prefix,ip:port]..."
+    echo "Usage: $0 -n node_name"
     echo "  -n node_name          Specify the name of the rvi node to launch"
-
     echo "Configuration data is read from the configuration file"
     echo "provided to the setup_rvi_node.sh script that created the node."
     exit 1

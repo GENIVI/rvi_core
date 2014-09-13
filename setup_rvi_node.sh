@@ -34,6 +34,9 @@ usage() {
     echo 
     echo "  -d               Create a development release. See below."
     echo 
+    echo "  -r [rpm-file]    Pack up the release in an RPM file with the"
+    echo "                   given name."  
+    echo 
     echo "The generated node will be created in a subdirectory with the same"
     echo "name as the node name."
     echo 
@@ -52,7 +55,7 @@ usage() {
     echo "If the -d flag is omitted, the release will be self-contained in the "
     echo "newly created subdirectory rel/[node_name]."
     echo "This directory, containing a standard erlang reltool release, "
-    echo "including the erlang runtime system, can be copied as a stand-alone"
+    echo "including the erlang runtime system, can be copied as a stand alone"
     echo "system to a destination node."
     echo 
     echo "Configuration file examples can be found in hvac_demo/vehicle.config"
@@ -71,6 +74,10 @@ while getopts "dn:c:" o; do
             ;;
         d)
             build_type=dev
+            ;;
+
+        r)
+            build_type=rpm
             ;;
         *)
             usage
@@ -92,13 +99,13 @@ export ERL_LIBS=$PWD/deps:$ERL_LIBS:$PWD
 echo  "Setting up node $NODE_NAME."
 $SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME
 
-if [ "${build_type}" = "dev" ]
+if [ "${build_type}" = "dev" -o  "${build_type}" = "rpm" ]
 then
     echo "RVI Node $NODE_NAME has been setup."
     echo "Launch with ./rvi_node.sh -n $NODE_NAME"
     exit
 else
-    echo "Building stand-alone release for $NODE_NAME"
+    echo "Building stand alone release for $NODE_NAME"
     # Copy the newly created config file.
     cp $NODE_NAME/sys.config rel/files/sys.config
     ./rebar generate 
