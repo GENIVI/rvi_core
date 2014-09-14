@@ -1,0 +1,45 @@
+#! /bin/sh
+#
+# Copyright (C) 2014, Jaguar Land Rover
+#
+# This program is licensed under the terms and conditions of the
+# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
+#
+
+export PATH="/bin/:/usr/bin:/sbin:/usr/sbin"
+. /lib/lsb/init-functions
+
+set -e 
+
+case "$1" in
+  start)
+        log_daemon_msg "Starting Remote Vehicle Interaction Node..." "rvi"
+        if /opt/rvi-0.2/rvi/bin/rvi start; then
+            log_end_msg 0
+        else
+            log_end_msg 1
+        fi
+        ;;
+  stop)
+        log_daemon_msg "Stopping Remote Vehicle Interaction Node..." "rvi"
+        if /opt/rvi-0.2/rvi/bin/rvi stop; then
+            log_end_msg 0
+        else
+            log_end_msg 1
+        fi
+        ;;
+  restart)
+        log_daemon_msg "Restarting Remote Vehicle Interaction Node..." "rvi"
+        if /opt/rvi-0.2/rvi/bin/rvi restart; then
+            log_end_msg 0
+        else
+            log_end_msg 1
+        fi
+        ;;
+  *)
+	log_action_msg "Usage: /etc/init.d/sdbd {start|stop|restart}"
+	exit 1
+esac
+
+exit 0

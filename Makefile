@@ -1,7 +1,14 @@
 #
+# Copyright (C) 2014, Jaguar Land Rover
+#
+# This program is licensed under the terms and conditions of the
+# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
+#
+
+#
 # Makefile for the RVI node.
 # 
-#
 
 .PHONY:	all deps compile clean rpm rpmclean
 
@@ -26,12 +33,21 @@ clean:   rpmclean
 	./rebar clean
 
 rpmclean:
-	rm -rf ./rpm/BUILD ./rpm/BUILDROOT ./rpm/RPM ./rpm/RPMS
-	rm -rf ./rpm/SOURCES ./rpm/SPECS ./rpm/SRPM ./rpm/SRPMS
+	rm -rf ./rpm/BUILD/* \
+		./rpm/BUILDROOT/* \
+		./rpm/RPMS/* \
+		./rpm/SOURCES/* \
+		./rpm/SRPMS/*
 
-rpm:	deps compile
-	./setup_rvi_node.sh -n rvi-$(VERSION) -c rvi_sample.config
-	mkdir -p ./rpm/BUILD ./rpm/BUILDROOT ./rpm/RPM ./rpm/RPMS
-	mkdir -p ./rpm/SOURCES ./rpm/SPECS ./rpm/SRPM ./rpm/SRPMS
-	(cd rel; tar czf ../rpm/SOURCES/rvi-$(VERSION).tgz rvi-$(VERSION))
-	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/rvi-0.2.spec
+
+# Create a SOURCES tarball for RPM
+rpm_tarball: rpmclean clean
+	tar czf /tmp/rvi-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
+		hvac_demo LICENSE Makefile README.md rebar rebar.config rel \
+		RELEASE.md rpm rvi_node.sh rvi_sample.config setup_rvi_node.sh \
+		src tizen_vehicle.config TODO 
+	mv /tmp/rvi-$(VERSION).tgz ./rpm/SOURCES/
+
+
+rpm:	rpm_tarball
+	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec

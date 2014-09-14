@@ -20,9 +20,12 @@ environment.
 
 # 
 %prep
-%setup 
+%setup -c rvi-$RPM_PACKAGE_VERSION
 
 %build
+make deps
+make compile
+./setup_rvi_node.sh -n rvi-$RPM_PACKAGE_VERSION -c rvi_sample.config
 
 %install
 rm -rf $RPM_BUILD_ROOT
