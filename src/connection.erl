@@ -268,7 +268,7 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    ?debug("~p:_terminate(): Reason: ~p ", [ ?MODULE, _Reason]),
+    ?debug("~p:terminate(): Reason: ~p ", [ ?MODULE, _Reason]),
     ok.
 
 %%--------------------------------------------------------------------

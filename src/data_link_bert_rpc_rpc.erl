@@ -12,6 +12,7 @@
 -export([handle_rpc/2]).
 -export([handle_socket/6]).
 -export([handle_socket/5]).
+-export([setup_static_node_data_link/2]).
 -export([init/0]).
 
 -include_lib("lager/include/log.hrl").
@@ -68,10 +69,27 @@ setup_static_node_data_links() ->
 setup_static_node_data_links([ ]) ->
     ok;
 
-setup_static_node_data_links([ { _Prefix, NetworkAddress} | T]) ->
-    [ Address, Port] =  string:tokens(NetworkAddress, ":"),
-    setup_data_link(Address, list_to_integer(Port), undefined),
+setup_static_node_data_links([ { Prefix, NetworkAddress} | T]) ->
+    setup_static_node_data_link(Prefix, NetworkAddress),
     setup_static_node_data_links(T).
+
+setup_static_node_data_link(Prefix, NetworkAddress) ->
+    [ Address, Port] =  string:tokens(NetworkAddress, ":"),
+    case setup_data_link(Address, list_to_integer(Port), undefined) of
+	{ok, _} -> ok;
+
+	{error, _ } = Err -> %% Failed to connect. Sleep and try again
+	    ?notice("    data_link_bert:setup_static_node_data_link(~p): Failed: ~p", 
+			   [NetworkAddress, Err]),
+
+	    ?notice("    data_link_bert:setup_static_node_data_link(~p): Will try again in 5 sec", 
+			   [NetworkAddress]),
+	    timer:apply_after(5000, 
+			      ?MODULE, setup_static_node_data_link, 
+			      [Prefix, NetworkAddress ]),
+	    not_available
+    end.
+    
 
 connect_remote(IP, Port) ->
     case connection_manager:find_connection_by_address(IP, Port) of
@@ -121,7 +139,9 @@ setup_data_link(RemoteAddress, RemotePort, Service) ->
 				   1, LocalAddress, LocalPort, rvi_binary, 
 				   {certificate, {}}, { signature, {}} }),
 
-	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}
+	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
+	{ error, _ } ->
+	    {error, [ { status, rvi_common:json_rpc_status(not_available)}]}
     end.
 
 
@@ -354,7 +374,8 @@ handle_socket(_FromPid, SetupIP, SetupPort, data, Data, _ExtraArgs) ->
 
 handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
     ?info("    data_link_bert:socket_closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    %% Report all associated services as being not available
+    %% FIXME: Report all associated services as being not available
+    %% FIXME: Reconnect if static node
     ok;
 
 handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
