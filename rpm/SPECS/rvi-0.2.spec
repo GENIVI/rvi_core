@@ -81,7 +81,7 @@ ln -fsr $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/releases/1/sys.config \
        $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/sys.config 
 %post
 if dmesg | grep -q Tizen; then
-    /usrbin/systemctl daemon-reload
+    /usr/bin/systemctl daemon-reload
 fi
 
 %clean
