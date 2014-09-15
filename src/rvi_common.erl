@@ -59,10 +59,10 @@ json_rpc_status("2") ->
     not_found;
 
 json_rpc_status(3) ->
-    not_online;
+    not_available;
 
 json_rpc_status("3") ->
-    not_online;
+    not_available;
 
 json_rpc_status(4) ->
     internal;
@@ -92,7 +92,7 @@ json_rpc_status(invalid_command) ->
 json_rpc_status(not_found) ->
     2;
 
-json_rpc_status(not_online) ->
+json_rpc_status(not_available) ->
     3;
 
 json_rpc_status(internal) ->
