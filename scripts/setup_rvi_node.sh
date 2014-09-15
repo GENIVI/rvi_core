@@ -23,7 +23,9 @@
 #
 #  In order to create a standalone release, use create_rvi_release.sh
 #
-SETUP_GEN=./deps/setup/setup_gen  # Ulf's kitchen sink setup utility
+
+SELF_DIR=$(dirname $(readlink -f "$0"))
+SETUP_GEN=$SELF_DIR/setup_gen  # Ulf's kitchen sink setup utility
 
 usage() {
     echo "Usage: $0 [-d] -n node_name -c config_file"
@@ -40,17 +42,17 @@ usage() {
     echo "The generated node will be created in a subdirectory with the same"
     echo "name as the node name."
     echo 
-    echo "The created node can be started with: ./rvi_node -n node_name"
+    echo "The created node can be started with: $SELF_DIR/rvi_node -n node_name"
     echo 
     echo "If the node was created with the -d flag, you need to start"
-    echo "the node with ./rvi_node -d -n node_name"
+    echo "the node with $SELF_DIR/rvi_node -d -n node_name"
     echo
     echo "Configuration file examples can be found in hvac_demo/vehicle.config"
     echo 
     echo "The -d flag creates a development release that uses the erlang "
     echo "binaries found in ebin/ and deps/*/ebin. This means that new builds,"
     echo "created by make, can be run directly through "
-    echo "./rvi_node -n node_name without having to run ./setup_rvi_node.sh ."
+    echo "$SELF_DIR/rvi_node -n node_name without having to run ./setup_rvi_node.sh ."
     echo
     echo "If the -d flag is omitted, the release will be self-contained in the "
     echo "newly created subdirectory rel/[node_name]."
@@ -102,7 +104,7 @@ $SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME
 if [ "${build_type}" = "dev" -o  "${build_type}" = "rpm" ]
 then
     echo "RVI Node $NODE_NAME has been setup."
-    echo "Launch with ./rvi_node.sh -n $NODE_NAME"
+    echo "Launch with $SELF_DIR/rvi_node.sh -n $NODE_NAME"
     exit
 else
     echo "Building stand alone release for $NODE_NAME"
@@ -111,7 +113,8 @@ else
     ./rebar generate 
     # Rename the release after the node name
     mv rel/rvi rel/$NODE_NAME
-    echo "Stand alone release for $NODE_NAME created under ./rel/$NODE_NAME."
+    echo "Stand alone release for $NODE_NAME created under project "
+    echo "root directory's ./rel/$NODE_NAME."
     echo
     echo "Start:              ./rel/$NODE_NAME/bin/rvi start"
     echo "Attach console:     ./rel/$NODE_NAME/bin/rvi attach"

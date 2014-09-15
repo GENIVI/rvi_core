@@ -14,9 +14,6 @@
 
 
 VERSION=0.2
-SETUP_GEN=./deps/setup/setup_gen
-
-
 
 all: deps compile
 
@@ -44,8 +41,9 @@ rpmclean:
 rpm_tarball: rpmclean clean
 	tar czf /tmp/rvi-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
 		hvac_demo LICENSE Makefile README.md rebar rebar.config rel \
-		RELEASE.md rpm rvi_node.sh rvi_sample.config setup_rvi_node.sh \
-		src tizen_vehicle.config TODO 
+		RELEASE.md rpm scripts/rvi scripts/rvi.service scripts/rvi_node.sh \
+		rvi_sample.config scripts/setup_rvi_node.sh src \
+		tizen.config TODO 
 	mv /tmp/rvi-$(VERSION).tgz ./rpm/SOURCES/
 
 

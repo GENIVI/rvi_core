@@ -19,6 +19,8 @@
 # create the necessary config files and erlang boot scripts.
 #
 
+SELF_DIR=$(dirname $(readlink -f "$0"))
+
 usage() {
     echo "Usage: $0 -n node_name"
     echo "  -n node_name          Specify the name of the rvi node to launch"
@@ -50,7 +52,8 @@ if [ "${mode}" = "build" ]
 then
     if [ ! -f ${node_name}/sys.config ]
     then
-	echo "Node ${node_name} not setup. Please run ./setup_rvi_node.sh ${node_name} <configuration_file>"
+	echo "Node ${node_name} not setup. Please run: "
+	echo "$SELF_DIR/setup_rvi_node.sh -n ${node_name} -c <configuration_file>"
 	exit 2
     fi
     exec erl -boot ${node_name}/start -config ${node_name}/sys 

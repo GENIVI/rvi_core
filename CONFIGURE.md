@@ -432,7 +432,7 @@ release.
 If a configuration file, ```test.config``` is to be used when building
 release ```test_release```, the following command can be run from the build root:
 
-    ./setup_rvi_node.sh test_rel test.config
+    ./script/setup_rvi_node.sh test_rel test.config
 
 Once executed (and no errors were found in test.config), a
 subdirectory called ```test_rel``` has been created. This directory
@@ -448,7 +448,7 @@ In order to start the test release, named ```test_rel```, created in
 the previous chapter, the following command is run from the build
 root:
 
-    ./rvi_node.sh -n tes_rel
+    ./scripts/rvi_node.sh -n tes_rel
 
 When a development release is started the erlang console prompt will
 be displayed at the end of the startup process, allowing for manual
