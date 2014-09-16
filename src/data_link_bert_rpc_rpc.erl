@@ -193,8 +193,7 @@ announce_new_local_service(Service) ->
 		      %% Announce the new service to the remote 
 		      %% RVI node
 		      Res = connection:send(RemoteAddress, list_to_integer(RemotePort), 
-				      {service_announce, 
-				       3, LocalAddress, LocalPort, 
+				      {service_announce, 3,  
 				       [Service], { signature, {}}}),
 		      ?info("    data_link_bert:announce_new_local_service(): Res      ~p", 
 			    [ Res]),
@@ -248,7 +247,7 @@ handle_rpc(Other, _Args) ->
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
-handle_socket(FromPid, SetupIP, SetupPort, data, 
+handle_socket(FromPid, PeerIP, PeerPort, data, 
 	      { authorize, 
 		TransactionID, 
 		RemoteAddress, 
@@ -258,7 +257,7 @@ handle_socket(FromPid, SetupIP, SetupPort, data,
 		Signature}, _ExtraArgs) ->
 
     ?info("    data_link_bert:authorize(): TransactionID:  ~p", [ TransactionID ]),
-    ?info("    data_link_bert:authorize(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?info("    data_link_bert:authorize(): Peer Address:   {~p, ~p}", [PeerIP, PeerPort ]),
     ?info("    data_link_bert:authorize(): Remote Address: ~p", [ RemoteAddress ]),
     ?info("    data_link_bert:authorize(): Remote Port:    ~p", [ RemotePort ]),
     ?info("    data_link_bert:authorize(): Protocol:       ~p", [ Protocol ]),
@@ -266,6 +265,22 @@ handle_socket(FromPid, SetupIP, SetupPort, data,
     ?info("    data_link_bert:authorize(): Signature:      ~p", [ Signature ]),
 
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+
+    %% If the remote address and port are both reported as "0.0.0.0" and 0,
+    %% then the client connects from behind a firewall and cannot
+    %% accept return connections. In these cases, we will tie the
+    %% gonnection to the peer address provided in PeerIP and PeerPort
+    { NRemoteAddress, NRemotePort} =
+	case { RemoteAddress, RemotePort } of
+	    { "0.0.0.0", 0 } ->
+		
+		?info("    data_link_bert:authorize(): Remote Address is nil."),
+		?info("    data_link_bert:authorize(): Will use ~p:~p",  
+		      [PeerIP, PeerPort]),
+		{ PeerIP, PeerPort };
+
+	    _ -> { RemoteAddress, RemotePort}
+	end,
 
     %% If FromPid (the genserver managing the socket) is not yet registered
     %% with the conneciton manager, this is an incoming connection
@@ -276,7 +291,7 @@ handle_socket(FromPid, SetupIP, SetupPort, data,
     case connection_manager:find_connection_by_pid(FromPid) of
 	not_found ->
 	    ?info("    data_link_bert:authorize(): New connection!"),
-	    connection_manager:add_connection(RemoteAddress, RemotePort, FromPid),
+	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
 	    ?info("    data_link_bert:authorize(): Sending authorize."),
 	    Res = connection:send(FromPid, 
 			    { authorize, 
@@ -312,8 +327,7 @@ handle_socket(FromPid, SetupIP, SetupPort, data,
 	    ?info("    data_link_bert:authorize(): Sending announce()"),
 	    ?info("    data_link_bert:authorize(): -------------------"),
 	    connection:send(FromPid, 
-			    { service_announce, 
-			      2, LocalAddress, LocalPort, 
+			    { service_announce, 2,
 			      LocalServices, { signature, {}}});
 
 	Err -> 
@@ -324,23 +338,20 @@ handle_socket(FromPid, SetupIP, SetupPort, data,
     end,
     ok;
 
-handle_socket(_FromPid, SetupIP, SetupPort, data, 
+handle_socket(_FromPid, RemoteIP, RemotePort, data, 
 	      { service_announce, 
 		TransactionID, 
-		RemoteAddress, 
-		RemotePort, 
 		Services, 
 		Signature}, _ExtraArgs) ->
-    ?info("    data_link_bert:service_announce(): TransactionID:  ~p", [ TransactionID ]),
-    ?info("    data_link_bert:service_announce(): SetupAddress:   {~p, ~p}", [ SetupIP, SetupPort ]),
-    ?info("    data_link_bert:service_announce(): Remote Address: ~p", [ RemoteAddress ]),
-    ?info("    data_link_bert:service_announce(): Remote Port:    ~p", [ RemotePort ]),
-    ?info("    data_link_bert:service_announce(): Signature:      ~p", [ Signature ]),
-    ?info("    data_link_bert:service_announce(): Services:       ~p", [ Services ]),
+    ?info("    data_link_bert:service_announce(): TransactionID: ~p", [ TransactionID ]),
+    ?info("    data_link_bert:service_announce(): Remote IP:     ~p", [ RemoteIP ]),
+    ?info("    data_link_bert:service_announce(): Remote Port:   ~p", [ RemotePort ]),
+    ?info("    data_link_bert:service_announce(): Signature:     ~p", [ Signature ]),
+    ?info("    data_link_bert:service_announce(): Services:      ~p", [ Services ]),
 
     %% Register the received services with all relevant components
     
-    RemoteNetworkAddress = RemoteAddress  ++ ":" ++ integer_to_list(RemotePort),
+    RemoteNetworkAddress = RemoteIP  ++ ":" ++ integer_to_list(RemotePort),
     rvi_common:send_component_request(service_discovery, register_remote_services, 
 				      [
 				       {services, Services}, 

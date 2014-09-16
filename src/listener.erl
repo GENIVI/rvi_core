@@ -63,10 +63,13 @@ sock_opts() ->
     [binary, {active, once}, {packet, 0}].
 
 new_connection(IP, Port, Sock, State) ->
-    ?debug("listener:new_connection(): IP:      ~p (ignored)", [IP]),
-    ?debug("listener:new_connection(): Port:    ~p (ignored)", [Port]),
-    ?debug("listener:new_connection(): Sock:    ~p", [Sock]),
-    {ok, _P} = connection:setup(Sock, 
+    ?debug("listener:new_connection(): Peer IP:    ~p (ignored)", [IP]),
+    ?debug("listener:new_connection(): Peer Port:  ~p (ignored)", [Port]),
+    ?debug("listener:new_connection(): Sock:       ~p", [Sock]),
+
+    %% IP and Port are garbage. We'll grab peername when we get our
+    %% first data.
+    {ok, _P} = connection:setup(undefined, 0, Sock, 
 				data_link_bert_rpc_rpc, 
 				handle_socket, []),
     {ok, State}.

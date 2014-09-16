@@ -25,7 +25,6 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--export([setup/4]).
 -export([setup/6]).
 -export([send/2]).
 -export([send/3]).
@@ -48,22 +47,13 @@
 %%% API
 %%%===================================================================
 %% MFA is to deliver data received on the socket.
+
 setup(IP, Port, Sock, Mod, Fun, Arg) ->
     case gen_server:start_link(connection, {IP, Port, Sock, Mod, Fun, Arg},[]) of
 	{ ok, GenSrvPid } = Res ->
 	    gen_tcp:controlling_process(Sock, GenSrvPid),
 	    Res;
 
-	Err ->
-	    Err
-    end.
-
-%% IP and Port added manually at a later stage.
-setup(Sock, Mod, Fun, Arg) ->
-    case gen_server:start_link(connection, { Sock, Mod, Fun, Arg},[]) of
-	{ ok, GenSrvPid } = Res ->
-	    gen_tcp:controlling_process(Sock, GenSrvPid),
-	    Res;
 	Err ->
 	    Err
     end.
@@ -109,7 +99,10 @@ terminate_connection(IP, Port) ->
 %% When data is received, a separate process is spawned to handle
 %% the MFA invocation.
 init({IP, Port, Sock, Mod, Fun, Arg}) ->
-    connection_manager:add_connection(IP, Port, self()),
+    case IP of 
+	undefined -> ok;
+	_ -> connection_manager:add_connection(IP, Port, self())
+    end,
     ?debug("connection:init(): self():   ~p", [self()]),
     ?debug("connection:init(): IP:       ~p", [IP]),
     ?debug("connection:init(): Port:     ~p", [Port]),
@@ -117,6 +110,7 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
     ?debug("connection:init(): Module:   ~p", [Mod]),
     ?debug("connection:init(): Function: ~p", [Fun]),
     ?debug("connection:init(): Arg:      ~p", [Arg]),
+    inet:setopts(Sock, [{active, once}]),
     %% Grab socket control
     {ok, #st{
 	    ip = IP,
@@ -125,25 +119,8 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
 	    mod = Mod,
 	    func = Fun,
 	    args = Arg
-	   }};
-
-%% IP and Port added manually at a later stage.
-init({Sock, Mod, Fun, Arg}) ->
-    inet:setopts(Sock, [{active, once}]),
-    ?debug("connection:init(): self():   ~p", [self()]),
-    ?debug("connection:init(): Sock:     ~p", [Sock]),
-    ?debug("connection:init(): Module:   ~p", [Mod]),
-    ?debug("connection:init(): Function: ~p", [Fun]),
-    ?debug("connection:init(): Arg:      ~p", [Arg]),
-    %% Grab socket control
-    {ok, #st{
-	    ip = undefined,
-	    port = undefined,
-	    sock = Sock,
-	    mod = Mod,
-	    func = Fun,
-	    args = Arg
 	   }}.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -202,6 +179,14 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+
+%% Fill in peername if empty.
+handle_info({tcp, Sock, Data}, 
+	    #st { ip = undefined } = St) ->
+    {ok, {IP, Port}} = inet:peername(Sock),
+    NSt = St#st { ip = inet_parse:ntoa(IP), port = Port },
+    handle_info({tcp, Sock, Data}, NSt);
+ 
 handle_info({tcp, Sock, Data}, 
 	    #st { ip = IP,
 		  port = Port,
