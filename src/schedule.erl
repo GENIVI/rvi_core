@@ -173,7 +173,7 @@ handle_cast( { schedule_message,
 	    
 	    { send_now, TmpSt } ->
 		?info("    schedule:sched_msg(): Servivce is already available. Send now."),
-		ok = send_message(Target, Timeout, Parameters, Signature, Certificate),
+		send_message(Target, Timeout, Parameters, Signature, Certificate), %% FIXME: Handle failure
 		TmpSt;
 
 	    { ok, TmpSt } ->
@@ -401,7 +401,7 @@ send_message(Target, Timeout,
 	    ?info("    schedule:send_message() Failed to resolve remote Service: ~p: ~p", 
 			      [ Target, Err ]),
 
-	    err
+	    Err
     end.
 
 
@@ -447,7 +447,7 @@ send_messages(#service { target = Target,
 			     Msg#message.parameters,
 			     Msg#message.signature, 
 			     Msg#message.certificate) of
-		 ok -> 
+		ok -> 
 		    send_messages(Svc#service { queue = NQ}, NetworkAddress);
 
 		Err -> 
