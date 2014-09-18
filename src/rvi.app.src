@@ -17,6 +17,7 @@
                   kernel,
                   stdlib,
 		  schedule,
+		  lager,
 		  rvi_common,
 		  service_edge,
 		  service_discovery,
