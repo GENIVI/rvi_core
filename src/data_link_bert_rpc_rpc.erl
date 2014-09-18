@@ -156,8 +156,8 @@ send_data(RemoteAddress, RemotePort, Data) ->
     ?info("    data_link_bert:send_data(): Remote Address: ~p", [ RemoteAddress]),
     ?info("    data_link_bert:send_data(): Remote Port:    ~p", [ RemotePort]),
     ?info("    data_link_bert:send_data(): Data:           ~p", [ Data]),
-    Res = connection:send(RemoteAddress, RemotePort, 
-			  {receive_data, Data}),
+
+    Res = connection:send(RemoteAddress, RemotePort, {receive_data, Data}),
 
     ?info ("    data_link_bert:send_data(): bert-rpc result: ~p", [ Res ]),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.

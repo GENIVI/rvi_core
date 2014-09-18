@@ -66,7 +66,11 @@ send(IP, Port, Data) ->
 	{ok, Pid} ->
 	    gen_server:call(Pid, {send, Data});
 
-	_Err -> {error, connection_not_found}
+	_Err -> 
+	    ?info("connection:send(): Connection ~p:~p not found for data: ~p", 
+		  [ IP, Port, Data]),
+	    {error, connection_not_found}
+
     end.
 
 terminate_connection(Pid) when is_pid(Pid) ->
