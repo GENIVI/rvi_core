@@ -36,9 +36,6 @@ usage() {
     echo 
     echo "  -d               Create a development release. See below."
     echo 
-    echo "  -r [rpm-file]    Pack up the release in an RPM file with the"
-    echo "                   given name."  
-    echo 
     echo "The generated node will be created in a subdirectory with the same"
     echo "name as the node name."
     echo 
@@ -78,9 +75,6 @@ while getopts "dn:c:" o; do
             build_type=dev
             ;;
 
-        r)
-            build_type=rpm
-            ;;
         *)
             usage
             ;;
@@ -101,7 +95,7 @@ export ERL_LIBS=$PWD/deps:$ERL_LIBS:$PWD
 echo  "Setting up node $NODE_NAME."
 $SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME
 
-if [ "${build_type}" = "dev" -o  "${build_type}" = "rpm" ]
+if [ "${build_type}" = "dev" ]
 then
     echo "RVI Node $NODE_NAME has been setup."
     echo "Launch with $SELF_DIR/rvi_node.sh -n $NODE_NAME"

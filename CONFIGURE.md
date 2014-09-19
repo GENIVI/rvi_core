@@ -3,6 +3,8 @@ Copyright (C) 2014, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
+**Version 0.2**
+
 # CONFIGURING AN RVI NODE 
 
 This document describes the process of configuring an RVI node so that it
@@ -22,7 +24,7 @@ The reader is assumed to be able to:
 
 1. Erlang runtime R16B01 or later has to be installed on the hosting system.
 2. The ```setup_rvi_node.sh``` tool is available to build a release.
-3. (Recommended) ```priv/vehicle.config``` is used as a starting point for a customized setup.
+3. ```rvi_sample.config``` is used as a starting point for a customized setup.
 Root access is not needed.
 
 
@@ -62,15 +64,15 @@ and generate a development or production release.
 
 <b>6. Start the release</b><br>
 The ```rvi_node.sh``` is executed to launch the built development
-release.
+release. ```$REL_HOME/rvi/bin/rvi start``` is used to launch the
+production release.
 
 
 ## CONFIGURATION FILE LOCATION AND FORMATS
 
 There is a single configuration file, with the setup for all
-components and modules in the node, used for each release. All files
-are stored in the ```priv``` directory. A documented example file is
-provided as ```rvi_sample.config```
+components and modules in the node, used for each release. 
+A documented example file is provided as ```rvi_sample.config```
 
 The configuration file consists of an array of erlang tuples (records
 / structs / entries), where the ```env``` tuple contains configuration data for
@@ -82,18 +84,17 @@ The term tuple and entry will be intermixed throughout this document.
 
 
 # SPECIFY NODE SERVICE PREFIX #
-
-All RVI nodes with locally connected services will announce these
-toward other, external RCI as a part of the service discovery
-mechanism. When announcing its local services to external RVI nodes, a
-node will prefix each service with a static string that is system-wide
-unique.
+All RVI nodes hosting locally connected services will announce these
+services toward other, external RVI nodes as a part of the service
+discovery mechanism. When announcing its local services to external
+RVI nodes, a node will prefix each service with a static string that
+is system-wide unique.
 
 When a service sends traffic to another service, the local RVI node
 will prefix match the name of the destination service against the
 service prefix of all known nodes in the system. The node with the
 longest matching prefix will receive the traffic in order to have it
-forwarded to the targeted service that is connected to it.
+forwarded to the targeted service that is connected to it. 
 
 The prefix always starts with an organisational ID that identifies the
 entity that manages the service. Best practises is to use the domain
@@ -147,6 +148,10 @@ networks, this will be the MSISDN of the node's mobile subscription.
 Any traffic directed to the given address should be forwarded to the 
 Data Link component.
 
+If the node lives behind a firewall, or should for some reason not
+accept incoming connections from other nodes, the node external address
+should be set to ```"0.0.0.0:0"```. 
+
 The configuration element to set under the ```rvi``` tuple is 
 ```node_address```. 
 
@@ -159,7 +164,7 @@ An example tuple is given below:
     ...
     { rvi, [
       ...
-      <b>{ node_address, "92.52.72.132:9850" }</b>
+      <b>{ node_address, "92.52.72.132:8817 }</b>
     ]}
   ]}
 ] 
@@ -169,7 +174,7 @@ An example tuple is given below:
  network addresses.*
 
 In the default Data Link component, ```data_link_bert_rpc```, you also
-need to specify the port it should listen to, and possibly also the
+need to specify the port it should listen to, and optionally also the
 interface to use.
 
 This is done by editing the tuple ```rvi -> data_link ->
@@ -191,7 +196,7 @@ An example tuple is given below:
         { data_link, [ 
          ...
          { bert_rpc_server, [ 
-            <b>{ port, 9850 },
+            <b>{ port, 8817 },
             { ip, "192.168.11.234"}</b>
           ]}
         ]}
@@ -241,8 +246,8 @@ An example entry is gven below:
     { rvi, [
       ...
       <b>{ static_nodes, [
-        { "jaguarlandrover.com/sota/", "92.52.72.132:9850" },
-        { "jaguarlandrover.com/remote_diagnostic/", "92.52.72.132:9851" }
+        { "jaguarlandrover.com/sota/", "92.52.72.132:8817" },
+        { "jaguarlandrover.com/remote_diagnostic/", "92.52.72.132:8818" }
       ]}</b>
     ]}
   ]}
@@ -251,14 +256,6 @@ An example entry is gven below:
 
 *Please note that IP addresses, not DNS names, should be used in all
  network addresses.*
-
-**Please note that all nodes configured in ```static_nodes``` must be
-up and running, listening on their specified addresses, before the
-node with the ```static_nodes``` configuration entry comes up.  All
-static nodes are connected to during the startup sequence, and if one
-or more are not available, the startup sequence will fail. This will
-be fixed in future versions.**
-
 
 # SPECIFY SERVICE EDGE URL #
 
@@ -350,17 +347,12 @@ external node address chapter:
 *Please note that IP addresses, not DNS names, should be used in all
  network addresses.*
 
-
-# RUNNING MULTIPLE NODES ON A HOST
-
-Multiple RVI nodes can be run simultaneously on a single host as long
-as their configured URLs and ports do not intefere with each other. 
-The data link external
-
-In the example below a second URL/port setup is shown, using port
-range 9011-9017, that can co-exist with the setup listed in the
-examples in the previous chapters.
-
+# SETTING UP WEBSOCKET SUPPORT ON A NODE
+The service edge can, optionally, turn on its websocket support in order to
+support locally connected services written in javascript. This allows an RVI node
+to host services running in a browser, on node.js or similar web environments.
+Websocket support is enabled by adding a ```websocket``` entry to the configuration data
+of ```servide_edge```. Below is the previous configuration example with such a setup.
 
 <pre>
 [
@@ -372,38 +364,17 @@ examples in the previous chapters.
       { components, [
         ...
         <b>{ service_edge, [ 
-          { url, "http://127.0.0.1:9011" },
-          { exo_http_opts, [ { port, 9011 } ]}
+          { websocket, [ { port, 8818}]},
+          { url, "http://127.0.0.1:8811" },
+          { exo_http_opts, [ { port, 8811 } ]}
         ]},
-        { service_discovery, [ 
-          { url, "http://127.0.0.1:9012" },
-          { exo_http_opts, [ { port, 9012 } ] }
-        ]},
-        { schedule, [
-          { url, "http://127.0.0.1:9013" },
-          { exo_http_opts, [ { port, 9013 } ] }
-        ]},
-        { authorize, [
-          { url, "http://127.0.0.1:9014" },
-          { exo_http_opts, [ { port, 9014 } ] }
-        ]},
-        { protocol, [ 
-          { url, "http://127.0.0.1:9015" },
-          { exo_http_opts, [ { port, 9015 } ] }
-        ]},
-        { data_link, [ 
-          { url, "http://127.0.0.1:9016" },
-          { exo_http_opts, [ { port, 9016 } ] },
-          { bert_rpc_server, [ {port, 9017 } ] } 
-        ]}</b>
-      ]}
-    ]}
-  ]}
-]
+...
 </pre>
 
-*Please note that IP addresses, not DNS names, should be used in all
- network addresses.*
+Websocket clients can now connect to:
+```ws://1.2.3.4:8818/websession``` and issue JSON-RPC commands to
+Service Edge. (Replace ```1.2.3.4``` with the IP address of the
+host).
 
 
 # COMPILING THE RVI SOURCE CODE
@@ -412,8 +383,9 @@ Before a development release can be built, the source code needs to be compiled.
 Please see BUILDING.md for details on this process.
 
 
-# CREATING THE DEVELOPMENT RELEASE
-*Please note that a new release must be created each time the configuration file has been updated*
+# CREATING A DEVELOPMENT RELEASE
+*Please note that a new release must be created each time the
+ configuration file has been updated*
 
 Once a configuration file has been completed, a development release is
 created.
@@ -424,22 +396,22 @@ tree to operate, while a production release is completely self
 contained (including the erlang runtime system) in its own
 subdirectory.
 
-
 Each release will have a name, which will also be the name of the
 newly created subdirectory containing the files necessary to start the
 release.
 
 If a configuration file, ```test.config``` is to be used when building
-release ```test_release```, the following command can be run from the build root:
+release ```test_rel```, the following command can be run from the
+build root:
 
-    ./script/setup_rvi_node.sh test_rel test.config
+    ./script/setup_rvi_node.sh -d -n test_rel -c test.config
 
 Once executed (and no errors were found in test.config), a
 subdirectory called ```test_rel``` has been created. This directory
 contains the erlang configuration and boot files necessary to bring up
 the RVI node.
 
-# STARTING THE DEVELOPMENT RELEASE
+# STARTING A DEVELOPMENT RELEASE
 
 The newly built development release is started using the
 ```rvi_node.sh``` tool.
@@ -458,9 +430,84 @@ inspection of the running system.
 Once the RVI node has been brought up, services can connect to its
 Service Edge and start routing traffic.
 
-# FAULT SEARCHING
 
-## TRAFFIC TARGETED FOR A SERVICE ON ANOHTER NODE IS NEVER FORWARDED
-TBD. Check that static node's service prefix matches that of the destination service.
+
+# CREATING A PRODUCTION RELEASE
+*Please note that a new release must be created each time the
+ configuration file has been updated*
+
+To create a self contained production release using ```prod.config```
+as the configuration file, and name the release ```prod_rel```, the
+following command can be run from the build root:
+
+    ./script/setup_rvi_node.sh -n prod_rel -c prod.config
+
+Once executed (and no errors were found in test.config), a
+subdirectory called ```rel/prod_rel``` has been created. 
+
+The ```prod_rel``` directory contains a complete erlang runtime
+system, the RVI application, and the configuration data generated from
+```prod.config``` the RVI node.
+
+The ```prod_rel``` directory can be moved to anywhere in the file
+system, or to another host with the same architecture and OS setup.
+
+
+# STARTING A PRODUCTION RELEASE
+
+The newly built product release is started using the
+```rel/prod_rel/rvi``` tool:
+
+    ./rel/prod_rel/rvi start
+	
+Stopping is done in a similar manner:
+
+    ./rel/prod_rel/rvi stop
+	
+
+To check if a node is up, retrieve its process ID with:
+
+    ./rel/prod_rel/rvi getpid
+	
+
+To attach to the console of a started node in order to inspect it run:
+
+    ./rel/prod_rel/rvi attach
+
+
+*Note that you need to exit from the console with Ctrl-d. Pressing
+Ctrl-c will bring down the node itself.* 
+
+# Loggings
+
+
+To get debug output on a console, start a development release, or attach to a
+production release, and set the log level manually:
+
+    1> lager:set_loglevel(lager_console_backend, debug)
+	
+Replace debug with info, notice, warning, or error for different log
+levels. A production release will also produce logs to
+```rel/[release]/log/erlang.log.?```.
+
+Check the file modification date to find which of the log files are currently written to.
+
+You can configure the log level through the lager configuration entry:
+
+<pre>
+ {env,
+  [
+   {lager, 
+   [ { handlers, 
+      [ {lager_console_backend, debug} ]
+      }
+   ]}
+   ...
+</pre>
+
+Additional handlers can also be added for different log destinations. 
+
+See Basho's lager documentation at [github](https://github.com/basho/lager) for details
+on logging.
 
 ## MORE

@@ -3,6 +3,8 @@ Copyright (C) 2014, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
+**Version 0.2**
+
 # BUILD INSTRUCTIONS FOR RVI #
 
 This document describes the build process for the RVI project on an
@@ -102,3 +104,4 @@ The compiled code is available under ```ebin/``` and ```deps/*/ebin```.
 
 See ```CONFIGURE.md``` for details on configuring and creating a
 developer and production release that can be launched.
+

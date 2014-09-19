@@ -3,7 +3,8 @@ Copyright (C) 2014, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-# HVAC DEMO
+
+# HVAC DEMO - VERSION 0.2
 This document describes the purpose, setup, and launch of the HVAC
 demo that is the first milestone of the RVI project.
 
@@ -25,16 +26,10 @@ The reader is assumed to be able to:
 
 
 # PREREQUISITES
-1. Erlang runtime R16B01 or later has to be installed on the hosting
-system.
+1. Erlang runtime R16B01 or later has to be installed on the hosting system.
 
-2. The RVI system has been checked out from
-[gerrit](https://gerrit.automotivelinux.org/gerrit/#/admin/projects/RVI/rvi).
+2. Git is installe don the hosting system.
 
-3. The RVI system has been built. See
-[build instructions](../BUILD.md) for details.
-
-*Please do not execute the configuration instructions in [CONFIGURE.md](../CONFIGURE.md)*
 
 # DEMO COMPONENTS
 
@@ -49,6 +44,157 @@ Please see schematics below for an overview:
 
 ![Demo Schematics](hvac_demo.png "Demo Schematics")<br>
 *Figure 1. Demo schematics. See HVAC and mobile device emulator chapters for details*
+
+
+
+# DEMO SETUP
+Two RVI nodes, both hosted by a single machine, will be involved in
+the test:
+
+The backend RVI node will the mobile emulator
+(mobile\_emulator.py). The vehicle RVI node will host the HVAC
+emulator (hvac\_emulator.py).
+
+See [build instructions](../BUILD.md) for details on the prerequisites
+for building and running the demo.
+
+
+## CHECK OUT THE RVI SYSTEM ##
+
+    git clone https://gerrit.automotivelinux.org/gerrit/RVI/rvi
+
+
+## SWITCH TO V0.2 OF THE RVI SYSTEM ##
+The cloned gerrit repo contains all tags and branches.
+Switch to tag v0.2 to get a release that does not contain
+daily snapshots.
+
+    cd rvi
+    git checkout v0.2
+
+
+## COMPILE THE RVI SYSTEM
+
+    make
+
+
+## CREATE THE VEHICLE DEVELOPMENT RELEASE
+
+*See ../CONFIGURE.md for details on the configuration process.*
+
+From the rvi root directory, setup the vehicle node:
+
+    ./scripts/setup_rvi_node.sh -d -n vehicle -c hvac_demo/vehicle.config
+
+The new developer release will be created in a subdiretory named
+```vehicle```
+
+
+## CREATE THE BACKEND DEVELOPMENT RELEASE
+In a similar manner, setup the backend node:
+
+    ./scripts/setup_rvi_node.sh -d -n backend -c hvac_demo/backend.config
+
+
+The release will be created in a subdiretory named ```backend```
+
+# DEMO LAUNCH
+
+## LAUNCH THE BACKEND RVI NODE
+
+In its own window, launch the backend rvi node that the subscription
+service and mobile device emulator will connect to.
+
+	./scripts/rvi_node.sh -n backend
+	
+Make a note of the Service Edge URL address printed out by the logging service.
+
+
+## LAUNCH THE VEHICLE RVI NODE
+
+* Please note that the backend node must be started before the vehicle node. *
+
+In its own window, launch the vehicle RVI node that will serve the HVAC emulator.
+
+	./scripts/rvi_node.sh -n vehicle
+
+The VIN number that will be used by the mobile device are the digits
+at the end of the "Node Service Prefix" printed out at the end of the
+launch process. 
+
+By default, the ```hvac_demo/vehicle.config``` file has its
+```node_service_prefix``` entry set to ```jlr.com/vin/1234/```,
+yielding a VIN of "1234". 
+
+
+## LAUNCH THE HVAC EMULATOR
+
+In its own window, launch the HVAC emulator and have it connect to
+the vehicle RVI node.
+
+    cd hvac_demo
+    ./hvac_emulator.py http://127.0.0.1:8811
+	
+Modify the ```http://127.0.0.1:8811``` to match the Service Edge URL
+reported by the vehicle RVI node.
+
+At startup the HVAC emulator will report the VIN number that it is
+associacted with. (Default 1234)
+
+The HVAC emulator accepts \[key\] \[value\] input lines that are
+distributed to all mobile devices controlling the VIN of the vehicle RVI
+node.
+
+
+## LAUNCH THE MOBILE DEVICE EMULATOR
+
+In its own window, launch the mobile device emulator and have it
+connect to the backend RVI node.
+
+    cd hvac_demo
+    ./mobile_emulator.py  http://127.0.0.1:8801 +1941231234 1234
+	
+Modify the ```http://127.0.0.1:8801``` to match the Service Edge URL
+reported by the backend RVI node.
+
+The phone number (+19491231234) is arbitrary, but has to be unique
+across all running mobile device emulators.
+
+The VIN number (1234) is the VIN number reported by the HVAC emulator
+at startup.
+
+The mobile device emulator accepts \[key\] \[value\] input lines that
+are distributed to the vehicle with the matching VIN.
+
+
+# DEMO EXECUTION
+
+## SEND VALUES FROM MOBILE TO HVAC EMULATOR
+
+Any \[key\] \[value\] entered in the mobile device emulator
+will be sent up to the subscription service and forwarded to 
+the HVAC emulator.
+
+
+## SEND VALUES FROM HVAC TO MOBILE EMULATOR
+
+Any \[key\] \[value\] entered in the HVAC emulator
+will be sent up to the subscription service and forwarded to 
+the mobile emulator.
+
+
+## EXIT PROGRAMS
+
+Terminate the mobile device emulator by entering "q" followed by enter.
+
+Terminate the HVAC emulator by entering "q" followed by enter.
+
+Terminate the subscription service by pressing Ctrl-c.
+
+Terminate the vehicle RVI node by pressing Ctrl-c Ctrl-c.
+
+Terminate the backend RVI node by pressing Ctrl-c Ctrl-c.
+
 
 
 ## HVAC EMULATOR TECHNICAL DETAILS
@@ -131,139 +277,3 @@ At startup, the mobile emulator will do two things:
    The HVAC emulator will receive the published key/value pair and
    print it on screen.
 
-
-# DEMO SETUP
-Two RVI nodes, both hosted by a single machine, will be involved in
-the test:
-
-The backend RVI node will the mobile emulator
-(mobile\_emulator.py). The vehicle RVI node will host the HVAC
-emulator (hvac\_emulator.py).
-
-## SWITCH TO V0.1 OF THE RVI SYSTEM ##
-The cloned gerrit repo contains all tags and branches.
-Switch to tag v0.1 to get a release that does not contain
-daily snapshots.
-
-    git checkout v0.1
-
-
-## COMPILE THE RVI SYSTEM
-See ../BUILD.md for details.
-
-## CREATE THE VEHICLE DEVELOPMENT RELEASE
-
-*See ../CONFIGURE.md for details on the configuration process.*
-
-From the rvi root directory, setup the vehicle node:
-
-    ./setup_rvi_node.sh vehicle hvac_demo/vehicle.config
-
-The new developer release will be created in a subdiretory named
-```vehicle```
-
-
-## CREATE THE BACKEND DEVELOPMENT RELEASE
-In a similar manner, setup the backend node:
-
-    ./setup_rvi_node.sh backend hvac_demo/backend.config
-
-
-The release will be created in a subdiretory named ```backend```
-
-# DEMO LAUNCH
-
-## LAUNCH THE BACKEND RVI NODE
-
-In its own window, launch the backend rvi node that the subscription
-service and mobile device emulator will connect to.
-
-	./rvi_node.sh -n backend
-	
-Make a note of the Service Edge URL address printed out by the logging service.
-
-
-## LAUNCH THE VEHICLE RVI NODE
-
-* Please note that the backend node must be started before the vehicle node. *
-
-In its own window, launch the vehicle RVI node that will serve the HVAC emulator.
-
-	./rvi_node.sh -n vehicle
-
-The VIN number that will be used by the mobile device are the digits
-at the end of the "Node Service Prefix" printed out at the end of the
-launch process. 
-
-By default, the ```hvac_demo/vehicle.config``` file has its
-```node_service_prefix``` entry set to ```jlr.com/vin/1234/```,
-yielding a VIN of "1234". 
-
-
-## LAUNCH THE HVAC EMULATOR
-
-In its own window, launch the HVAC emulator and have it connect to
-the vehicle RVI node.
-
-    cd hvac_demo
-    ./hvac_emulator.py http://127.0.0.1:8811
-	
-Modify the ```http://127.0.0.1:8811``` to match the Service Edge URL
-reported by the vehicle RVI node.
-
-At startup the HVAC emulator will report the VIN number that it is
-associacted with. (Default 1234)
-
-The HVAC emulator accepts \[key\] \[value\] input lines that are
-distributed to all mobile devices controlling the VIN of the vehicle RVI
-node.
-
-
-## LAUNCH THE MOBILE DEVICE EMULATOR
-
-In its own window, launch the mobile device emulator and have it
-connect to the backend RVI node.
-
-    cd hvac_demo
-    ./mobile_emulator.py  http://127.0.0.1:8801 +1941231234 1234
-	
-Modify the ```http://127.0.0.1:8801``` to match the Service Edge URL
-reported by the backend RVI node.
-
-The phone number (+19491231234) is arbitrary, but has to be unique
-across all running mobile device emulators.
-
-The VIN number (1234) is the VIN number reported by the HVAC emulator
-at startup.
-
-The mobile device emulator accepts \[key\] \[value\] input lines that
-are distributed to the vehicle with the matching VIN.
-
-
-# DEMO EXECUTION
-
-## SEND VALUES FROM MOBILE TO HVAC EMULATOR
-
-Any \[key\] \[value\] entered in the mobile device emulator
-will be sent up to the subscription service and forwarded to 
-the HVAC emulator.
-
-
-## SEND VALUES FROM HVAC TO MOBILE EMULATOR
-
-Any \[key\] \[value\] entered in the HVAC emulator
-will be sent up to the subscription service and forwarded to 
-the mobile emulator.
-
-
-## EXIT PROGRAMS
-
-Terminate the mobile device emulator by entering "q" followed by enter.
-
-Terminate the HVAC emulator by entering "q" followed by enter.
-
-Terminate the subscription service by pressing Ctrl-c.
-
-Terminate the vehicle RVI node by pressing Ctrl-c Ctrl-c.
-
-Terminate the backend RVI node by pressing Ctrl-c Ctrl-c.

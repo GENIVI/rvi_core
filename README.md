@@ -3,7 +3,7 @@ Copyright (C) 2014, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-# REMOTE VEHICLE INTERACTION (RVI) #
+# REMOTE VEHICLE INTERACTION (RVI) 0.2 #
 
 This document gives a brief introduction to the codebase of the RVI
 project and explains the reasoning behind some of the technical
@@ -201,9 +201,10 @@ Only three external modules (lager, bert and exo) are used by the
 code, with two more (setup and edown) used for release and
 documentation management.
 
-The purpose is to make the code comprehensible and minimize the time a
-developer has to travesrse through obscure libraries trying to understand
-what a specific call flow actually does.
+The reason for minimizing external module usage is to make the code
+comprehensible and minimize the time a developer has to travesrse
+through obscure libraries trying to understand what a specific call
+flow actually does.
 
 The entire reference implementation (as of the first alpa release) is
 2800 lines of code, broken down into six standalone modules and one
