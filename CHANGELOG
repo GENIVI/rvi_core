@@ -1,0 +1,58 @@
+--- V 0.2 ---
+
+RVI TOP LEVEL:
+    Updated documentation to reflect changes. Pegged build deps on
+    v0.2 of dependant repos in rebar.config. Removed unsupported
+    option from setup_rvi_node.sh screen
+    
+    Added lager start at system startup.
+    
+    Added RPM that builds and installs on Tizen and Debian.
+
+    Updated and documented configuration files in hvac_demo and root
+    dir to reflect new funcationality.
+
+    Added web socket support (in service_edge).
+    
+    Now builds against v0.2 of all dependencies.
+
+
+SERVICE EDGE:
+    Fixed correct json decoding of parameters
+    Added websocket support
+
+
+SERVICE DISCOVERY:
+    Changed debug to info to get a cleaner log. 
+
+    Scrubbed duplicates from get_network_addresses()
+
+
+SCHEDULE:
+    Now survives a failure to send to a remote node.
+
+    Changed debug to info. 
+
+    Added direct message send if setup_data_link returns that the data link is already up.
+
+RVI COMMON:
+    Renamed error code to not_available
+
+    Added new status code (already_conencted). 
+
+    Added get_component_config with default value as extra arg
+
+    Added result handler for web socket dispatcher in service_edge_rpc.erl
+
+
+DATA LINK
+    Now handles node_address set to 0.0.0.0 to indicate that node is
+    behind firewall and can only do outbound connections
+
+    Now does auto reconnect to static nodes that are not available at boot time
+
+    Ripped out bert_rpc usage. Replaced with homebrewed protocol manager. 
+
+
+
+    
