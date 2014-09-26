@@ -13,7 +13,7 @@
 .PHONY:	all deps compile clean rpm rpmclean
 
 
-VERSION=0.2
+VERSION=0.2.0
 
 all: deps compile
 
@@ -35,7 +35,6 @@ rpmclean:
 		./rpm/RPMS/* \
 		./rpm/SOURCES/* \
 		./rpm/SRPMS/*
-
 
 # Create a SOURCES tarball for RPM
 rpm_tarball: rpmclean clean
