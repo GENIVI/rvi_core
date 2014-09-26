@@ -8,10 +8,10 @@ Environment="HOME=/opt/rvi-2.0"
 Type=forking
 StandardOutput=journal
 StandardError=journal
-ExecStartPre=/opt/rvi-0.2/erts-5.10.3/bin/epmd -daemon
-ExecStart=/bin/sh /opt/rvi-0.2/bin/rvi start
-ExecStop=/bin/sh /opt/rvi-0.2/bin/rvi stop
-ExecStopPost=/opt/rvi-0.2/erts-5.10.3/bin/epmd -kill
+ExecStartPre=/opt/rvi-0.2.0/erts-5.10.4/bin/epmd -daemon
+ExecStart=/bin/sh /opt/rvi-0.2.0/bin/rvi start
+ExecStop=/bin/sh /opt/rvi-0.2.0/bin/rvi stop
+ExecStopPost=/opt/rvi-0.2.0/erts-5.10.4/bin/epmd -kill
 GuessMainPID=yes
 
 [Install]
