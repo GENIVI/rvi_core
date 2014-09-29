@@ -126,7 +126,7 @@ management and data encoding / decoding over any media (IP or non-IP).
 ## ERLANG ##
 [Erlang](www.erlang.org) was chosen to implementation the core
 components of the RVI system. Each component (see the
-[HLD](https://wiki2.automotivelinux.org/_media/15-456-poc-rvi-hld_draft5_clean.pdf)
+[HLD](https://wiki2.automotivelinux.org/_media/15-456-poc-rvi-hld_reva.pdf)
 for details) run as an erlang application inside a single erlang node.
 
 Several reasons exist for this somewhat unorthodox choice of
