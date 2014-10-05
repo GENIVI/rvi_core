@@ -1,0 +1,24 @@
+%%
+%% Copyright (C) 2014, Jaguar Land Rover
+%%
+%% This program is licensed under the terms and conditions of the
+%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
+%%
+
+
+%% -*- erlang -*-
+{application, rvi_common,
+ [
+  {description, ""},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { rvi_common_app, []}},
+  {env, [
+	 {yang_spec_modules, [{"$PRIV_DIR/yang", "yang_spec_*.beam"}]}
+	]}
+ ]}.
