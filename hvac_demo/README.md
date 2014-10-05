@@ -27,8 +27,7 @@ The reader is assumed to be able to:
 
 # PREREQUISITES
 1. Erlang runtime R16B01 or later has to be installed on the hosting system.
-
-2. Git is installe don the hosting system.
+2. Git is installed on the hosting system.
 
 
 # DEMO COMPONENTS
@@ -57,6 +56,15 @@ emulator (hvac\_emulator.py).
 
 See [build instructions](../BUILD.md) for details on the prerequisites
 for building and running the demo.
+
+
+## INSTALL JSONRPCLIB FOR PYTHON
+
+The python emulator code relies on [JSONRPClib](https://github.com/joshmarshall/jsonrpclib).
+This python package can be installed using either one of the two commands listed below.
+
+    sudo easy_install jsonrpclib
+    sudo pip install jsonrpclib
 
 
 ## CHECK OUT THE RVI SYSTEM ##
