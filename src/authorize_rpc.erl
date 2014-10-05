@@ -15,7 +15,7 @@
 -include_lib("lager/include/log.hrl").
 
 init() ->
-    ?debug("    authorize_rpc:init(): called"),
+    ?debug("authorize_rpc:init(): called"),
     case rvi_common:get_component_config(authorize, exo_http_opts) of
 	{ ok, ExoHttpOpts } ->
 	    exoport_exo_http:instance(authorize_sup, 
@@ -28,7 +28,7 @@ init() ->
 %% Retrieve certificate. 
 %% Certificate will be passed to exo_json:encode() in order
 %% to be translated to JSON.
-get_certificate_body(_CallingService, _TargetService) ->
+get_certificate_body(_CallingService, _ServiceName) ->
     {struct, 
      [
       %% Topic tree patterns that this node is authorized to
@@ -83,21 +83,21 @@ get_certificate_body(_CallingService, _TargetService) ->
      ]
     }.
 
-authorize_local_message(Target, CallingService) ->
-    ?debug("    authorize_rpc:authorize_local_msg(): target: ~p ~n", [Target]),
-    ?debug("    authorize_rpc:authorize_local_msg(): calling_service: ~p ~n", [CallingService]),
+authorize_local_message(ServiceName, CallingService) ->
+    ?debug("authorize_rpc:authorize_local_msg(): service_name:    ~p ~n", [ServiceName]),
+    ?debug("authorize_rpc:authorize_local_msg(): calling_service: ~p ~n", [CallingService]),
     {ok, 
      [ 
        { status, rvi_common:json_rpc_status(ok)},
        { signature, "fixme_add_signature" },
-%%       { certificate, get_certificate_body(CallingService, Target) }
+%%       { certificate, get_certificate_body(CallingService, ServiceName) }
        { certificate, "certificate"  }
      ]}.
 
-authorize_remote_message(Target, Signature, Certificate) ->
-    ?debug("    authorize_rpc:authorize_remote_msg(): target: ~p ~n", [Target]),
-    ?debug("    authorize_rpc:authorize_remote_msg(): signature: ~p ~n", [Signature]),
-    ?debug("    authorize_rpc:authorize_remote_msg(): certificate: ~p ~n", [Certificate]),
+authorize_remote_message(ServiceName, Signature, Certificate) ->
+    ?debug("authorize_rpc:authorize_remote_msg(): service_name: ~p ~n", [ServiceName]),
+    ?debug("authorize_rpc:authorize_remote_msg(): signature:    ~p ~n", [Signature]),
+    ?debug("authorize_rpc:authorize_remote_msg(): certificate:  ~p ~n", [Certificate]),
     {ok, 
      [ 
        { status, rvi_common:json_rpc_status(ok) },
@@ -108,16 +108,16 @@ authorize_remote_message(Target, Signature, Certificate) ->
 %% JSON-RPC entry point
 %% CAlled by local exo http server
 handle_rpc("authorize_local_message", Args) ->
-    {ok, Target} = rvi_common:get_json_element(["target"], Args),
+    {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, CallingService} = rvi_common:get_json_element(["calling_service"], Args),
-    authorize_local_message(Target, CallingService);
+    authorize_local_message(ServiceName, CallingService);
 
 handle_rpc("authorize_remote_message", Args) ->
-    {ok, Target} = rvi_common:get_json_element(["target"], Args),
+    {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
-    authorize_remote_message(Target, Signature, Certificate);
+    authorize_remote_message(ServiceName , Signature, Certificate);
 
 handle_rpc(Other, _Args) ->
-    ?debug("    authorize_rpc:handle_rpc(~p): unknown~n", [ Other ]),
+    ?debug("authorize_rpc:handle_rpc(~p): unknown", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
