@@ -6,15 +6,6 @@
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
-
-%%%-------------------------------------------------------------------
-%%% @author magnus <magnus@t520.home>
-%%% @copyright (C) 2014, magnus
-%%% @doc
-%%%
-%%% @end
-%%% Created : 12 Jul 2014 by magnus <magnus@t520.home>
-%%%-------------------------------------------------------------------
 -module(schedule).
 
 -behaviour(gen_server).
@@ -22,7 +13,7 @@
 
 %% API
 -export([start_link/0]).
--export([schedule_message/5,
+-export([schedule_message/6,
 	 register_remote_services/2, 
 	 unregister_remote_services/2]).
 
@@ -32,23 +23,39 @@
 
 -define(SERVER, ?MODULE). 
 
-%% One message, living in #service.queue, awaiting transmission
-%% to the target specified by #service.target
+%% Message structure and storage
+%%  A message is a piece of 
+%%
+%%  Service -> ETS -> Messages
+-record(service, {
+	  name = "", %% Fully qualified service name.
+	  %% Set to { IP, Port} when service is available, else unknown_network_address.
+	  network_address = unknown_network_address, 
 
--record(message, { 
-	  timeout,
-	  parameters,
-	  signature,
-	  certificate
+	  %% Table containing #message records, 
+	  %% indexed by their transaction ID (and sequence of delivery)
+	  messages_tid =  undefined
 	 }).
 
--record(service, {
-	  target = "", %% Target service, as reported by register_remote_services
-	  queue = undefined %% Queue of #messages awaiting target.
-	  }).
+
+% A single message to be delivered to a service.
+% Messages are stored in ets tables hosted by a service 
+
+-record(message, { 
+	  transaction_id, %% Transaction ID that message is tagged with.
+	  timeout,        %% Timeout, UTC
+	  timeout_tref,  %% Reference to erlang timer associated with this message.
+	  timeout_cb,    %% Callback to invoke when timeout occurs. 
+	  parameters,
+	  signature,
+	  certificate,
+	  timeout_counter  %% Avoids race conditions between timeout and processing.
+	 }).
+
 
 -record(st, { 
-	  services = []
+	  next_transaction_id = 1, %% Sequentially incremented transaction id.
+	  services_tid = undefined %% Known services.
 	 }).
 
 %%%===================================================================
@@ -81,17 +88,22 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #st{ services = []}}.
+    %% Setup the relevant ets tables.
+    {ok, #st{ services_tid = ets:new(rvi_schedule_services, 
+				     [  set, private, 
+					{ keypos, #service.name } ])}}.
 
-schedule_message(Target, 
+schedule_message(SvcName, 
 		 Timeout, 
+		 Callback,
 		 Parameters,
 		 Signature,
 		 Certificate) ->
-    gen_server:cast(?SERVER, { 
+    gen_server:call(?SERVER, { 
 		       schedule_message,
-		       Target, 
+		       SvcName, 
 		       Timeout, 
+		       Callback,
 		       Parameters,
 		       Signature,
 		       Certificate
@@ -102,7 +114,7 @@ register_remote_services(NetworkAddress, AvailableServices) ->
 
 unregister_remote_services(NetworkAddress, DiscontinuedServices) ->
     gen_server:cast(?SERVER, { unregister_remote_services, NetworkAddress, DiscontinuedServices }).
-    
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -117,9 +129,38 @@ unregister_remote_services(NetworkAddress, DiscontinuedServices) ->
 %%                                   {stop, Reason, St}
 %% @end
 %%--------------------------------------------------------------------
+handle_call( { schedule_message,
+	       SvcName, 
+	       Timeout, 
+	       Callback,
+	       Parameters,
+	       Signature,
+	       Certificate
+	     }, _From, St) ->
+
+    ?info("    schedule:sched_msg(): service_name:     ~p", [SvcName]),
+    ?info("    schedule:sched_msg(): timeout:          ~p", [Timeout]),
+    ?info("    schedule:sched_msg(): callback:         ~p", [Callback]),
+    ?info("    schedule:sched_msg(): parameters:       ~p", [Parameters]),
+    ?info("    schedule:sched_msg(): signature:        ~p", [Signature]),
+    ?info("    schedule:sched_msg(): certificate:      ~p", [Certificate]),
+    ?info("    schedule:sched_msg(): St:               ~p", [St]),
+
+
+    { ok, TransID, NSt } = queue_message(SvcName, 
+					 Timeout, 
+					 Callback, 
+					 Parameters, 
+					 Signature,
+					 Certificate,
+					 St),
+
+    { reply, {ok, TransID}, NSt };
+
 handle_call(_Request, _From, St) ->
     Reply = ok,
     {reply, Reply, St}.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -131,64 +172,11 @@ handle_call(_Request, _From, St) ->
 %%                                  {stop, Reason, St}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast( { schedule_message,
-	       Target, 
-	       Timeout, 
-	       Parameters,
-	       Signature,
-	       Certificate
-	     }, St) ->
-    ?info("    schedule:sched_msg(): target:            ~p", [Target]),
-    ?info("    schedule:sched_msg(): timeout:           ~p", [Timeout]),
-    ?info("    schedule:sched_msg(): parameters:        ~p", [Parameters]),
-    ?info("    schedule:sched_msg(): signature:         ~p", [Signature]),
-    ?info("    schedule:sched_msg(): certificate:       ~p", [Certificate]),
-    ?info("    schedule:sched_msg(): St:                ~p", [St]),
-
-    %% Queue the message. The result will tell us if the target service
-    %% is available.
-    Msg = #message {
-	     timeout = Timeout,
-	     parameters = Parameters,
-	     signature = Signature,
-	     certificate = Certificate
-	    },
-    
-    NSt = %% Get the new state from queue_message
-	case queue_message(Target, Msg, St) of
-	    { first_message, TmpSt } ->
-		?info("    schedule:sched_msg(): Queued message is the first one. "
-		       "Bring up data link"),
-		case bring_up_data_link(Target) of
-		    already_connected ->
-			?info("    schedule:sched_msg(): Link already up. Send. "),
-			ok = send_message(Target, Timeout, Parameters, Signature, Certificate);
-
-		    Other  ->
- 			?info("    schedule:sched_msg(): Got. ~p", [Other]),
-			ok
-		end,
-
-		TmpSt;
-	    
-	    { send_now, TmpSt } ->
-		?info("    schedule:sched_msg(): Servivce is already available. Send now."),
-		send_message(Target, Timeout, Parameters, Signature, Certificate), %% FIXME: Handle failure
-		TmpSt;
-
-	    { ok, TmpSt } ->
-		?info("    schedule:sched_msg(): Message queued."),
-		TmpSt
-	end,
-    
-    {noreply, NSt };
-
 
 handle_cast( {register_remote_services, NetworkAddress, AvailableServices}, St) ->
 
     ?info("    schedule:register_remote_services(): NetworkAddress:    ~p", [NetworkAddress]),
     ?info("    schedule:register_remote_services(): AvailableService:  ~p", [AvailableServices]),
-	   
     {ok, NSt} =  multiple_services_available(AvailableServices, NetworkAddress, St),
     {noreply, NSt};
 
@@ -196,7 +184,7 @@ handle_cast( {register_remote_services, NetworkAddress, AvailableServices}, St) 
 handle_cast( {unregister_remote_services, NetworkAddress, DiscontinuedServices}, St) ->
     ?info("    schedule:register_remote_services(): NetworkAddress:        ~p", [NetworkAddress]),
     ?info("    schedule:register_remote_services(): DiscontinuedServices:  ~p", 
-	   [DiscontinuedServices]),
+	  [DiscontinuedServices]),
 
     {ok, NSt } = multiple_services_unavailable(DiscontinuedServices, St),
     {noreply, NSt };
@@ -214,6 +202,34 @@ handle_cast(_Msg, St) ->
 %%                                   {stop, Reason, St}
 %% @end
 %%--------------------------------------------------------------------
+
+%% Handle timeouts
+handle_info({ rvi_message_timeout, SvcName, TransID}, #st { services_tid = SvcTid } = St) ->
+    ?info("    schedule:timeout(): service:          ~p", [ SvcName]),
+    ?info("    schedule:timeout(): trans_id:         ~p", [ TransID]),
+
+    %% Atomically increment our counter to ensure that we are the
+    %% first and only processing accessing the entry.
+    [ Svc] = ets:lookup(SvcTid, SvcName),
+    case ets:update_counter(Svc#service.messages_tid, 
+			    TransID, 
+			    { #message.timeout_counter, 1 }) of 
+	%% If it is one, we were the first one who got an update through.
+	1 ->
+	    %% Delete from ets.
+	    [ Msg ] = ets:lookup(Svc#service.messages_tid, TransID),
+	    do_timeout_callback(Svc, Msg),
+	    ets:delete(Svc#service.messages_tid, TransID);
+
+	%% send_messages() processed the message before we had a
+	%% chance to get it.
+	_ ->
+	    ?info("    schedule:timeout(~p/~p): Already processed. Ignored", 
+		  [ SvcName, TransID])
+    end,
+    {noreply, St};
+
+
 handle_info(_Info, St) ->
     {noreply, St}.
 
@@ -248,121 +264,201 @@ code_change(_OldVsn, St, _Extra) ->
 
 
 %% Queue a message for transmission once a service become available.
-%% Can return:
+%% If the service does not exist, it will be created.
+%% Once the message is queued, an attempt will be made to send all
+%% messages queued in the given service. This attempt will fail
+%% pretty quickly if the service's network address is set to
+%% 'unavailable'
+queue_message(SvcName, 
+	      Timeout, 
+	      Callback, 
+	      Parameters, 
+	      Signature,
+	      Certificate, St) ->
+    ?info("    schedule:sched_msg(): service:      ~p", [SvcName]),
+    ?info("    schedule:sched_msg(): timeout:      ~p", [Timeout]),
+    ?info("    schedule:sched_msg(): callback:     ~p", [Callback]),
+    ?info("    schedule:sched_msg(): parameters:   ~p", [Parameters]),
+    ?info("    schedule:sched_msg(): signature:    ~p", [Signature]),
+    ?info("    schedule:sched_msg(): certificate:  ~p", [Certificate]),
 
-%% { send_now, St}
-%%   The target service is already available and Msg should be sent. Msg not queued.
-%%
-%% { first_message, St}
-%%   The target is not available, and Msg was the first message queued to the service.
-%%   Ask data_link to bring up a link to the target.
-%%  
-%% {ok, St}
-%%   Target is not available, and Msg was added to one or more existing messages in the 
-%%   queue, awaiting a data_link_up command from data_link so that they can be sent.
-%%
-queue_message(Target, Msg, St) ->
-    ?info("    schedule:sched_msg(): target:              ~p", [Target]),
-    ?info("    schedule:sched_msg(): msg.timeout:         ~p", [Msg#message.timeout]),
-    ?info("    schedule:sched_msg(): msg.parameters:      ~p", [Msg#message.parameters]),
-    ?info("    schedule:sched_msg(): msg.signature:       ~p", [Msg#message.signature]),
-    ?info("    schedule:sched_msg(): msg.certificate:     ~p", [Msg#message.certificate]),
+    %% Create a new transaction ID.
+    {NewTransID, NSt1} = create_transaction_id(St),
+
+    %% Create a timer to handle message timeout
+    TRef = erlang:send_after(calculate_timeout_period(Timeout), self(), 
+			     { rvi_message_timeout, SvcName, NewTransID }),
+
+    %% Build the message record.
+    Msg = #message { 
+	     transaction_id = NewTransID,
+	     timeout = Timeout,
+	     timeout_tref = TRef,
+	     timeout_cb = Callback,
+	     parameters = Parameters, 
+	     signature = Signature,
+	     certificate = Certificate,
+	     timeout_counter = 0
+	    },
+
+    %% Find or create the service
+
+    %% If this is a message to a (yet) unknown service, we will create
+    %% it to act as a placeholder for its messages until they time out
+    %% or the service becomes available.
+    %% 
+    %% If the service does exist, we queue it and try to send it.
+    %% 
+    {ok, Service, IsNewService, NSt2 } = find_or_create_service(SvcName, NSt1),
+
+    %% If the service was created by the call above,
+    %% We will try to bring up a data link to it.
+    case IsNewService of 
+	true ->
+	    bring_up_data_link(SvcName);
+
+	false ->
+	    ok
+    end,
+
+    %% Add to ets table
+    ets:insert(Service#service.messages_tid, Msg),
+
+    %% Attempt to send the message
+    {_, NSt3 } = try_sending_messages(Service, NSt2),
+
+    %% Return
+    { ok, NewTransID, NSt3}.
+
+
+%% Check if we can send messages queued up under the given service.
+try_sending_messages(#service { 
+			name = SvcName,
+			network_address = unknown_network_address,
+			messages_tid = _Tid } = _Service, St) ->
+    ?info("    schedule:try_send(): SvcName:   ~p: Not available", [SvcName]),
+    {not_available, St};
+
+
+try_sending_messages(#service { 
+			name = SvcName,
+			network_address = NetworkAddress,
+			messages_tid = Tid } = Service, St) ->
+
+    ?debug("schedule:try_send(): SvcName:         ~p", [SvcName]),
+    ?debug("schedule:try_send(): Network Address: ~p", [NetworkAddress]),
     
-    %% Does the service even exist?
-    case find_service(Target, St) of
-	
-	%% The given service does not exist,  
-	%% Create it with a single message in a freshly created queue.
-	%%
-	not_found -> 
-	    ?info("    schedule:sched_msg(): New service"),
+    %% Extract the first message of the queue.
+    case ets:first(Tid) of
+	%% No more messages to send.
+	'$end_of_table' ->
+	    ?debug("schedule:try_send(): Nothing to send"),
+	    { ok, St};
 
-	    %% Create a queue with one element in it.
-	    Q = queue:in(Msg, queue:new()),
-	    
-	    %% Create a new service with unavailable network address and
-	    %% a single element queue with the new message.
-	    { first_message, modify_service(Target, Q, St) };
+	Key ->
+	    %% Atomically increment counter to catch the (unlikely) race condition where
+	    %% the transaction times out at the same time we are processing it.
+	    %% Will probably not happen since we all run within the same gen_server proc.
+	    %% Better safe than sorry, I guess
+	    case ets:update_counter(Tid, Key, { #message.timeout_counter, 1 }) of 
+		%% If it is one, we were the first one who got an update through.
+		1 ->
+		    ?debug("schedule:try_send(): Sending: ~p", [Key]),
+		    %% Extract first message and try to send it
+		    [ Msg ] = ets:lookup(Tid, Key),
+		    case send_message(NetworkAddress, 
+				      SvcName, 
+				      Msg#message.timeout,
+				      Msg#message.parameters,
+				      Msg#message.signature,
+				      Msg#message.certificate) of
+			ok -> 
+			    %% Send successful - delete entry.
+			    ets:delete(Tid, Key),
 
-	%% Service exists, and has a network address. Do not queue. Send now.
-	{ok, Svc }->  
-	    ?info("    schedule:sched_msg(): SEND NOW: ~p", [Svc]),
-	    { send_now, St }
+			    %% Delete timeout ref
+			    erlang:cancel_timer(Msg#message.timeout_tref),
+
+			    %% Send the rest.
+			    try_sending_messages(Service, St);
+
+			Err ->
+			    %% Failed to send message, leave in queue and err out.
+			    { {send_failed, Err}, St}
+		    end;
+
+		%% Other value means that the timeout handler incremented the counter
+		%% before us. Do nothing since the timeout handler will clean everything
+		%% up
+		_ ->
+		    ?debug("schedule:try_send(~p/~p): Timeout triggered. No ip", 
+			  [SvcName, Key]),
+
+		    %% Timeout manager will have removed the message by now,
+		    %% but just to be sure, let's wipe it from the ets table
+		    %% so that we don't loop into the same message again and again.
+		    ets:delete(Tid, Key),
+
+		    %% Send remaining messages.
+		    try_sending_messages(Service, St)
+	    end
+
+
     end.
+
 
 
 %% Mark a service as available, as reported by data_link_up
-%% The service either exists in St#st.services, in which case it is modified,
-%% or it will be added.
+%%  If the service does not exist, it will be created as a host
+%%  for future messages destined to that service.
 %%
-%%  Return value if {ok, St}, or {send_messages, St}, depending on
-%%  if messages for the given service are now ready to be sent.
+%%  If the service does exist, its network address will be upadted
+%%  with whatever address was reported to this function.
 %%
-service_available(Target, NetworkAddress, St) ->
-    ?info("    schedule:service_available(): target:            ~p", [ Target ]),
-    ?info("    schedule:service_available(): network_address:   ~p", [ NetworkAddress ]),
-								    
-    case find_service(Target, St) of 
-	not_found -> 	%% The given service does not exist, create it.
-	    {ok, St};
-	
-	{ ok, Svc }  ->
-	    %% Check if we have elements ready to transmit
-	    case queue:is_empty(Svc#service.queue) of
-		true -> %% Nothing to send.
-		    { ok, St };
+%%  Once the service has been created or updated, we will attempt
+%%  to send any messages queued inside it.
+%%
+service_available(SvcName, NetworkAddress, St) ->
+    ?info("    schedule:service_available(): service:         ~p", [ SvcName ]),
+    ?info("    schedule:service_available(): network_address: ~p", [ NetworkAddress ]),
 
-		false -> %% We have elements to send. Send them
-		    ?info("    schedule:service_available(): Existing service. Pending messages."),
-		    NewSvc = send_messages(Svc, NetworkAddress),
-		    %% Update service in state.
-		    {ok, modify_service_rec(NewSvc, St) }
-	    end
-    end.
+    %% Find or create the service.
+    {ok, Svc, _, NSt1} = find_or_create_service(SvcName, NetworkAddress, St),
+
+    try_sending_messages(Svc, NSt1).
+
+service_unavailable(SvcName,  #st { services_tid = SvcTid } = St) ->
+    ?info("    schedule:service_unavailable(): service:         ~p", [ SvcName ]),
+
+    NSt1 = 
+	case ets:lookup(SvcTid, SvcName) of
+	    [] ->  %% The given service does not exist.
+		 St ;
+
+	    [ Svc ] ->
+		%% Update the network address, if applicable.
+		{ok, _, TmpSt, _} = update_service_network_address(Svc, unavailable, St),
+		TmpSt
+	end,
+
+    { ok, NSt1 }.
 
 
-
-%% Add or modify a service with a carried over queue.
-%% Any existing services with the same target name is replaced.
-modify_service(Target, Queue, St) ->
-    ?info("    schedule:modify_service(): Target:           ~p", [ Target]),
-    ?info("    schedule:modify_service(): Queue:            ~p", [ Queue]),
-    ?info("    schedule:modify_service(): St:               ~p", [ St]),
-
-    %% Delete old service
-    NewSvcs = lists:keydelete(Target, #service.target, St#st.services),
-
-    %% Modify state with the new service setup.
-    St#st { services = [ #service { 
-			    target = Target,
-			    queue = Queue } | NewSvcs ] }.
-    
-modify_service_rec(SvcRec, St) ->
-    ?info("    schedule:modify_service(rec): Target:           ~p", [ SvcRec#service.target]),
-    ?info("    schedule:modify_service(rec): Queue:            ~p", [ SvcRec#service.queue]),
-    ?info("    schedule:modify_service(rec): St:               ~p", [ St]),
-
-    %% Delete old service
-    NewSvcs = lists:keydelete(SvcRec#service.target, #service.target, St#st.services),
-
-    %% Modify state with the new service setup.
-    St#st { services = [ SvcRec | NewSvcs ] }.
-    
-bring_up_data_link(Target) ->
-    %% Resolve the target to a network address that we can 
+bring_up_data_link(SvcName) ->
+    %% Resolve the service to a network address that we can 
     %% use to bring up the data link
     case rvi_common:send_component_request(service_discovery, 
 					   resolve_remote_service,
-					   [ {service, Target} ],
+					   [ {service, SvcName} ],
 					   [ network_address ]) of
 
 	{ ok, ok, [ NetworkAddress], _SDJSON } -> 
 	    %% Tell data link to bring up a communicationc hannel.
 	    case rvi_common:send_component_request(data_link, setup_data_link, 
-					      [
-					       {service, Target}, 
-					       {network_address, NetworkAddress}
-					      ]) of
+						   [
+						    {service, SvcName}, 
+						    {network_address, NetworkAddress}
+						   ]) of
 		{ok, already_connected, _} ->
 		    already_connected;
 		Que -> 
@@ -371,45 +467,22 @@ bring_up_data_link(Target) ->
 	    end;
 
 	{ok, not_found, _, _} ->
-	    ?info("    schedule:bring_up_data_link() Failed to resolve remote Service: ~p. Service not found.", 
-			      [ Target ]),
+	    ?info("    schedule:bring_up_data_link() Failed to resolve remote Service: ~p."
+		  "Service not found.", 
+		  [ SvcName ]),
 	    not_found;
-		    
+
 	Err ->  
 	    ?info("    schedule:bring_up_data_link() Failed to resolve remote Service: ~p: ~p", 
-			      [ Target, Err ]),
+		  [ SvcName, Err ]),
 	    err
     end.
 
-send_message(Target, Timeout, 
-	     Parameters, Signature, Certificate) ->
-    %% Resolve the target to a network address
-    case rvi_common:send_component_request(service_discovery, 
-					   resolve_remote_service,
-					   [ {service, Target} ],
-					   [ network_address ]) of
-	{ ok, ok, [ NetworkAddress], _SDJSON } -> 
-	    send_message(NetworkAddress, Target, Timeout,
-			 Parameters, Signature, Certificate);
-
-	{ok, not_found, _, _} ->
-	    ?info("    schedule:send_message() Failed to resolve remote Service: ~p. Service not found.", 
-			      [ Target ]),
-	    not_found;
-		    
-	Err ->  
-	    ?info("    schedule:send_message() Failed to resolve remote Service: ~p: ~p", 
-			      [ Target, Err ]),
-
-	    Err
-    end.
-
-
-send_message(NetworkAddress, Target, Timeout, 
+send_message(NetworkAddress, SvcName, Timeout, 
 	     Parameters, Signature, Certificate) ->
 
     ?info("    schedule:send_message(): network_address: ~p", [NetworkAddress]),
-    ?info("    schedule:send_message(): target:          ~p", [Target]),
+    ?info("    schedule:send_message(): service:         ~p", [SvcName]),
     ?info("    schedule:send_message(): timeout:         ~p", [Timeout]),
     ?info("    schedule:send_message(): parameters:      ~p", [Parameters]),
     ?info("    schedule:send_message(): signature:       ~p", [Signature]),
@@ -418,7 +491,7 @@ send_message(NetworkAddress, Target, Timeout,
     case rvi_common:send_component_request(
 	   protocol, send_message, 
 	   [
-	    { target, Target },
+	    { service_name, SvcName },
 	    { timeout, Timeout},
 	    { network_address, NetworkAddress},
 	    { parameters, Parameters},
@@ -429,42 +502,9 @@ send_message(NetworkAddress, Target, Timeout,
 	Err -> Err
     end.
 
-    
-send_messages(#service { target = Target,
-			 queue = Queue } = Svc, 
-	      NetworkAddress) ->
-
-    ?info("    schedule:send_messages(): target:            ~p", [Target]),
-    ?info("    schedule:send_messages(): network_address:   ~p", [NetworkAddress]),
-    ?info("    schedule:send_messages(): queue_size:        ~p", [queue:len(Queue)]),
-
-    case queue:out(Queue) of
-	{{ value, Msg }, NQ } ->
-	    case 
-		send_message(NetworkAddress, 
-			     Target, 
-			     Msg#message.timeout,
-			     Msg#message.parameters,
-			     Msg#message.signature, 
-			     Msg#message.certificate) of
-		ok -> 
-		    send_messages(Svc#service { queue = NQ}, NetworkAddress);
-
-		Err -> 
-		    ?warning("schedule:send_messages(): Failed: ~p", 
-			      [ Err ]),
-
-		    send_messages(Svc#service { queue = NQ}, NetworkAddress) 
-
-	    end;
-
-	%% No more elements in the queue
-	{ empty, _ } ->
-	    ?info("    schedule:send_messages(). All forwarded: ~p", [Svc]),
-	    Svc
-end.
 
 
+%%
 %% data_link_up has reported that multiple services are now
 %% available at NetworkAddress. 
 %% Iterate through all services and mark them as available,
@@ -479,16 +519,124 @@ multiple_services_available([ Svc | T], NetworkAddress, St) ->
     {ok, NSt}  = service_available(Svc, NetworkAddress, St),
     multiple_services_available(T, NetworkAddress, NSt).
 
-multiple_services_unavailable(_, St) ->
-    {ok, St}.
+multiple_services_unavailable([], St) ->
+    ?info("    schedule:multiple_services_unavailable():  St: ~p", [ St]),
+    {ok, St};
 
-find_service(Target, #st { services = Svcs } = _St) ->
-    ?info("    schedule:find_service(): St: ~p", [ _St]),
-    case lists:keyfind(Target, #service.target, Svcs) of
-	false ->  %% The given service does not exist, create it.
-	    not_found;
-	
-	Svc ->
-	    { ok, Svc }
+multiple_services_unavailable([ Svc | T], St) ->
+    {ok, NSt}  = service_unavailable(Svc, St),
+    multiple_services_unavailable(T, NSt).
+
+
+find_or_create_service(ServiceName, St) ->
+    %% Invoke with retain to keep any exising network addresses already
+    %% in place in an existing service.
+    find_or_create_service(ServiceName, retain_existing_address, St).
+
+find_or_create_service(ServiceName, NetworkAddress, #st { services_tid = SvcTid } = St) ->
+    ?debug("schedule:find_or_create_service(): SvcName: ~p", [ ServiceName]),
+
+    case ets:lookup(SvcTid, ServiceName) of
+	[] ->  %% The given service does not exist, create it.
+	    ?debug("schedule:find_or_create_service(): Creating new ~p", [ ServiceName]),
+	    create_service(ServiceName, NetworkAddress, St);
+
+	[ Svc1 ] when NetworkAddress =:= retain_existing_address -> 
+	    %% We found a service, and are instructed not to touch
+	    %% its network address. Return it.
+	    { ok, Svc1, false, St};
+
+	[ Svc2 ] -> 
+	    %% Update the network address, if it differs, and return
+	    %% the new service / State as {ok, NSvc, false, NSt}
+	    ?debug("schedule:find_or_create_service(): Updating existing ~p", [ ServiceName]),
+	    update_service_network_address(Svc2, NetworkAddress, St)
     end.
+
+
+%%
+%% Catch where no network address update is necessary.
+%%
+update_service_network_address(#service { network_address = NetworkAddress } = Service,
+			       NetworkAddress, St) ->
+    { ok, Service, false, St}; %% False indicates that the service exists.
+
+
+%% 
+%% Update the service in the ets table with a new network address.
+%% 
+update_service_network_address(#service {} = Service, NetworkAddress, St) ->
+    %% Create a new service.
+    NewService = Service#service { network_address = NetworkAddress},
+
+    %% Replace existing serviceo in the ets table of services.
+    ets:insert(St#st.services_tid, [ NewService ]),
+
+    { ok, NewService, false, St}. %% False indicates that the service exists.
+
+
+
+
+%% If we are creating a new service, we need to remap the
+%% retain_existing_address to unknown_network_address in order to get the correct
+%% initial state, which is a created service with an unknown network address.
+create_service(ServiceName, retain_existing_address,  St) ->
+    create_service(ServiceName, unknown_network_address, St);
+
+%% Create a new service and return the new state (not currently modified)
+%% and the newly initialized service revord.
+%%
+create_service(ServiceName, NetworkAddress, #st { services_tid = SvcsTid } = St) ->
+    Svc = #service { 
+	     name = ServiceName,
+	     network_address = NetworkAddress,
+	     messages_tid = ets:new(rvi_messages, 
+				    [ ordered_set, private, 
+				      { keypos, #message.transaction_id } ])
+	    },
+
+    %% Insert new service to ets table.
+    ets:insert(SvcsTid, Svc),
     
+    %% Return new service and existing state.
+    ?info("    schedule:create_service():  SvcName:    ~p", [ ServiceName]),
+    ?info("    schedule:create_service():  MessageTID: ~p", [ Svc#service.messages_tid]),
+    Svcs = ets:foldr(fun(SvcElem, Acc) -> [ SvcElem | Acc ] end, [], SvcsTid),
+    ?debug("schedule:create_service(): Services: ~p", [ Svcs]),
+    { ok, Svc, true, St}.  %% True indicates that the service is newly created.
+
+
+%% Create a new and unique transaction id
+create_transaction_id(St) ->
+    ?info("schedule:create_transaction_id(): St:     ~p", [  St ]),
+    ID = St#st.next_transaction_id,
+
+    %% FIXME: Maybe interate pid into transaction to handle multiple
+    %% schedulers?
+    { ID, St#st { next_transaction_id = ID + 1 }}.
+
+%% Calculate a relative timeout based on the UTC TS we are provided with.
+calculate_timeout_period(UTC) ->
+    { Mega, Sec, _Micro } = now(),
+    Now = Mega * 1000000 + Sec,
+    ?debug("schedule:calculate_timeout_period(): Now:     ~p", [ Now ]),
+    ?debug("schedule:calculate_timeout_period(): Timeout: ~p", [ UTC ]),
+    ?debug("schedule:calculate_timeout_period(): Period:  ~p", [ UTC - Now]),
+
+    case UTC - Now =< 0 of
+	true ->
+	    1; %% One millisec is the smallest value we will time out on
+
+	false ->
+	    (UTC - Now) * 1000 
+    end.
+
+%% Handle a callback for a timed out message.
+
+do_timeout_callback(Service, #message { timeout_cb = { M, F, A}, 
+					transaction_id = TransID}) ->
+    M:F(Service, TransID, A);
+
+%% callback element of #message is not an {M,F,A} format, ignore.
+do_timeout_callback(_,_) ->
+    ok.

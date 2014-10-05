@@ -34,11 +34,6 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-%%          ?CHILD(schedule_alarms, worker),
 	    ?CHILD(schedule, worker)
-%%	    ?CHILD(schedule_can, worker),
-%%	    ?CHILD(schedule_waypoints, worker)
-	    %% ?CHILD(schedule_gps, worker),
-	    %% ?CHILD(exodmo_config, worker)
 	   ]} }.
 

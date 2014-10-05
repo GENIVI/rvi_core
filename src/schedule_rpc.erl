@@ -27,18 +27,20 @@ init() ->
     end,
     ok.
 
-schedule_message(Target, Timeout, Parameters, Signature, Certificate) ->
-    ?debug("    schedule_rpc:schedule_request(): target:          ~p", [ Target]),
+schedule_message(SvcName, Timeout, Parameters, Signature, Certificate) ->
+    ?debug("    schedule_rpc:schedule_request(): service_name:    ~p", [ SvcName]),
     ?debug("    schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
     ?debug("    schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
     ?debug("    schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
     ?debug("    schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
-    schedule:schedule_message(Target, 
-			      Timeout, 
-			      Parameters,
-			      Signature,
-			      Certificate),
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
+    {ok, TransID } = schedule:schedule_message(SvcName, 
+					       Timeout, 
+					       no_callback,
+					       Parameters,
+					       Signature,
+					       Certificate),
+    {ok, [ { status, rvi_common:json_rpc_status(ok)},
+	   {transaction_id, TransID } ] }.
 
 register_remote_services(NetworkAddress, AvailableServices) ->
     ?debug("    schedule_rpc:register_remote_services(): network_address: ~p", [ NetworkAddress]),
@@ -57,12 +59,12 @@ unregister_remote_services(NetworkAddress, DiscountinuedServices) ->
 %% JSON-RPC entry point
 %% CAlled by local exo http server
 handle_rpc("schedule_message", Args) ->
-    {ok, Target} = rvi_common:get_json_element(["target"], Args),
+    {ok, SvcName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
-    {ok,  Parameters} = rvi_common:get_json_element(["parameters"], Args),
+    {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
-    schedule_message(Target, 
+    schedule_message(SvcName, 
 		     Timeout, 
 		     Parameters,
 		     Signature,
