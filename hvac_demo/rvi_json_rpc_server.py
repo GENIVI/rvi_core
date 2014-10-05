@@ -10,11 +10,11 @@ import jsonrpclib
 
 class RVIJSONRPCServer(SimpleJSONRPCServer):
     # Check if method is 'message', if so dispatch on
-    # name 'target' instead.
+    # name 'service_name' instead.
     def _dispatch(self, method, params):
         # print "dispatch:", params
         if method == 'message':
-            # print "Will dispatch message to: " + params['target']
+            # print "Will dispatch message to: " + params['service_name']
             dict_param = {}
             # Extract the 'parameters' element from the top level JSON-RPC
             # 'param'. 
@@ -31,7 +31,7 @@ class RVIJSONRPCServer(SimpleJSONRPCServer):
             # print "Parameter disctionary: ", dict_param
             # print 
             # Ship the processed dispatch info upward.
-            return SimpleJSONRPCServer._dispatch(self, params['target'], dict_param)           
+            return SimpleJSONRPCServer._dispatch(self, params['service_name'], dict_param)           
 
 
         return SimpleJSONRPCServer._dispatch(self,message, params)           
