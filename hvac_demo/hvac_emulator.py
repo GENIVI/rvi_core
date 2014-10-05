@@ -49,6 +49,7 @@ import sys
 from rvi_json_rpc_server import RVIJSONRPCServer
 import jsonrpclib
 import random
+import time
 import threading
 
 def usage():
@@ -110,8 +111,8 @@ def publish_to_subscribers(vin, key, val):
     for subscriber in subscribers:
         print "Sending:",vin,"   key:", key,"   val:",val,"   to:", subscriber
         rvi_server.message(calling_service = emulator_publish_service_name,
-                           target = subscriber,
-                           timeout = 0,
+                           service_name = subscriber,
+                           timeout = int(time.time())+60,
                            parameters = [{u'vin': vin, u'key': key, u'value': val}])
 
 #
@@ -153,6 +154,29 @@ emulator_subscribe_service_name = '/hvac/subscribe'
 # Setup an outbound JSON-RPC connection to the RVI Service Edeg.
 rvi_server = jsonrpclib.Server(rvi_url)
 
+emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_service_port)), 
+                                    logRequests=False)
+
+
+#
+# Regsiter callbacks for incoming JSON-RPC calls delivered to
+# the HVAC emulator from the vehicle RVI node's Service Edge.
+#
+emulator_service.register_function(publish, emulator_publish_service_name)
+emulator_service.register_function(subscribe, emulator_subscribe_service_name)
+
+
+# Create a thread to handle incoming stuff so that we can do input
+# in order to get new values
+thr = threading.Thread(target=emulator_service.serve_forever)
+thr.start()
+
+# We may see traffic immediately from the RVI node when
+# we register. Let's sleep for a bit to allow the emulator service
+# thread to get up to speed.
+time.sleep(0.5)
+
+
 #
 # Register our HVAC emulator service with the vehicle RVI node's Service Edge.
 # We register both services using our own URL as a callback.
@@ -188,21 +212,6 @@ print "Emulator URL:               ", emulator_service_url
 print "VIN:                        ", vin
 print "Full publish service name   ", full_emulator_publish_service_name
 print "Full subscribe service name ", full_emulator_subscribe_service_name
-
-emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_service_port)), 
-                                    logRequests=False)
-
-#
-# Regsiter callbacks for incoming JSON-RPC calls delivered to
-# the HVAC emulator from the vehicle RVI node's Service Edge.
-#
-emulator_service.register_function(publish, emulator_publish_service_name)
-emulator_service.register_function(subscribe, emulator_subscribe_service_name)
-
-# Create a thread to handle incoming stuff so that we can do input
-# in order to get new values
-thr = threading.Thread(target=emulator_service.serve_forever)
-thr.start()
 
 while True:
     line = raw_input('Enter <key> <val> or "q" for quit: ')

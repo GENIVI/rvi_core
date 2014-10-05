@@ -76,6 +76,7 @@ from rvi_json_rpc_server import RVIJSONRPCServer
 import jsonrpclib
 import random
 import threading
+import time
 
 def usage():
     print "Usage:", sys.argv[0], " <rvi_url> <phone_number> <vin>"
@@ -148,6 +149,27 @@ emulator_service_name = '/mobile/'+phone_number+'/hvac/publish'
 #
 rvi_server = jsonrpclib.Server(rvi_url)
 
+emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_service_port)), 
+                                    logRequests=False)
+
+# Register the publish function with the publish service
+# so that publish() gets called when we receive a message
+# to /mobile/[phone_nr]/hvac/publish
+#
+emulator_service.register_function(publish, emulator_service_name)
+
+# Create a thread to handle incoming stuff so that we can do input
+# in order to get new values
+thr = threading.Thread(target=emulator_service.serve_forever)
+thr.start()
+
+
+# We may see traffic immediately from the RVI node when
+# we register. Let's sleep for a bit to allow the emulator service
+# thread to get up to speed.
+time.sleep(0.5)
+
+
 #
 # Register our HVAC mobile emulator service with backend RVI node
 # Service Edge.
@@ -172,8 +194,8 @@ full_emulator_service_name = res['service']
 # a value is updated on the command line of the hvac emulator.
 #
 rvi_server.message(calling_service = emulator_service_name,
-                   target = target_hvac_subscribe_service,
-                   timeout = 0, # Not yet implemented
+                   service_name = target_hvac_subscribe_service,
+                   timeout = int(time.time()) + 60, # Not yet implemented
                    parameters = [ { u'subscribing_service': full_emulator_service_name}])
 
 print "Mobile Device Emulator."
@@ -182,20 +204,6 @@ print "Emulator URL:             ", emulator_service_url
 print "Phone Number:             ", phone_number
 print "VIN:                      ", vin
 print "Full Service Name:        ", full_emulator_service_name
-
-emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_service_port)), 
-                                    logRequests=False)
-
-# Register the publish function with the publish service
-# so that publish() gets called when we receive a message
-# to /mobile/[phone_nr]/hvac/publish
-#
-emulator_service.register_function(publish, emulator_service_name)
-
-# Create a thread to handle incoming stuff so that we can do input
-# in order to get new values
-thr = threading.Thread(target=emulator_service.serve_forever)
-thr.start()
 
 while True:
     line = raw_input('Enter <key> <val> or "q" to quit: ')
@@ -213,8 +221,8 @@ while True:
     
     # Send out update to the subscriber
     rvi_server.message(calling_service= emulator_service_name,
-                       target = target_hvac_publish_service,
-                       timeout = 0,
+                       service_name = target_hvac_publish_service,
+                       timeout = int(time.time()) + 60,
                        parameters = [{ u'key': k, 
                                       u'value': v}])
 
