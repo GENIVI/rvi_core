@@ -1,2 +1,12 @@
+<<<<<<< HEAD
 ebin
 deps
+.eunit
+*.o
+*.beam
+*.plt
+erl_crash.dump
+rel/example_project
+.concrete/DEV_MODE
+.rebar
+
