@@ -12,13 +12,13 @@ choices.
 # ADDITIONAL DOCUMENTATION AND RESOURCES#
 For a high level description, with an exhaustive master usecase
 walkthrough, please see the High Level Design document 
-[here](https://wiki2.automotivelinux.org/_media/15-456-poc-rvi-hld_draft5_clean.pdf),
+[here](https://wiki2.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf)
 
-For build instructions, please check the build instructions:   
+For build instructions, please check the build instructions:
 [Markdown](BUILD.md) | 
 [PDF](https://wiki2.automotivelinux.org/_media/wiki/wiki/rvi-eg/build.pdf)
 
-For configuration and launch instructions, please check the configuration documentation:  
+For configuration and launch instructions, please check the configuration documentation:
 [Markdown](CONFIGURE.md) | 
 [PDF](https://wiki2.automotivelinux.org/_media/wiki/wiki/rvi-eg/configure.pdf)
 
