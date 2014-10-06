@@ -91,7 +91,7 @@ if [ -z "${CONFIG_NAME}" ] ; then
 fi
 
 
-export ERL_LIBS=$PWD/deps:$ERL_LIBS:$PWD 
+export ERL_LIBS=$PWD/components:$PWD/deps:$ERL_LIBS:$PWD 
 echo  "Setting up node $NODE_NAME."
 $SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME
 
