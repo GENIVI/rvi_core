@@ -100,7 +100,7 @@ connect_remote(IP, Port) ->
 	    %% Setup a new outbound connection
 	    ?info("    data_link_bert:connect_remote(): Connecting ~p:~p", 
 		   [IP, Port]),
-	    case gen_tcp:connect(IP, Port, [binary, {packet, 0}]) of
+	    case gen_tcp:connect(IP, Port, [binary, {packet, 4}]) of
 		{ ok, Sock } -> 
 		    ?info("    data_link_bert:connect_remote(): Connected ~p:~p", 
 			   [IP, Port]),
