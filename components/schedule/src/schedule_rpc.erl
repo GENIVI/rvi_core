@@ -30,7 +30,7 @@ init() ->
 schedule_message(SvcName, Timeout, Parameters, Signature, Certificate) ->
     ?debug("    schedule_rpc:schedule_request(): service_name:    ~p", [ SvcName]),
     ?debug("    schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
-    ?debug("    schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
+%%    ?debug("    schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
     ?debug("    schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
     ?debug("    schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
     {ok, TransID } = schedule:schedule_message(SvcName, 
