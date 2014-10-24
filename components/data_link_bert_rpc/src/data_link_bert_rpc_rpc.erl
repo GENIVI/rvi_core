@@ -155,7 +155,7 @@ disconnect_data_link(RemoteAddress, RemotePort) ->
 send_data(RemoteAddress, RemotePort, Data) ->
     ?info("    data_link_bert:send_data(): Remote Address: ~p", [ RemoteAddress]),
     ?info("    data_link_bert:send_data(): Remote Port:    ~p", [ RemotePort]),
-    ?info("    data_link_bert:send_data(): Data:           ~p", [ Data]),
+    %% ?info("    data_link_bert:send_data(): Data:           ~p", [ Data]),
 
     Res = connection:send(RemoteAddress, RemotePort, {receive_data, Data}),
 
@@ -363,7 +363,7 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
 	      { receive_data, Data}, _ExtraArgs) ->
-    ?info("    data_link_bert:receive_data(): ~p", [ Data ]),
+%%    ?info("    data_link_bert:receive_data(): ~p", [ Data ]),
     ?info("    data_link_bert:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     case 
 	rvi_common:send_component_request(protocol, receive_message, 
