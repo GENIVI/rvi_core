@@ -31,7 +31,7 @@ send_message(ServiceName, Timeout, NetworkAddress, Parameters, Signature, Certif
     ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
     ?debug("    protocol:send(): network_address: ~p~n", [NetworkAddress]),
-    ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
+%%    ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
     ?debug("    protocol:send(): certificate:     ~p~n", [Certificate]),
     Data = term_to_binary({ ServiceName, Timeout, NetworkAddress, 
@@ -57,7 +57,7 @@ receive_message(Data) ->
     ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
     ?debug("    protocol:rcv(): network_address: ~p~n", [NetworkAddress]),
-    ?debug("    protocol:rcv(): parameters:      ~p~n", [Parameters]),
+%%    ?debug("    protocol:rcv(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
     ?debug("    protocol:rcv(): certificate:     ~p~n", [Certificate]),
     case 
