@@ -41,7 +41,7 @@ install ./scripts/rvi.service $RPM_BUILD_ROOT/usr/lib/systemd/system/rvi.service
 ln -fsr $RPM_BUILD_ROOT/usr/lib/systemd/system/rvi.service \
     $RPM_BUILD_ROOT/etc/systemd/system/multi-user.target.wants/rvi.service
 
-ln -fsr $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/releases/1/sys.config \
+ln -fsr $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/releases/$RPM_PACKAGE_VERSION/sys.config \
        $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/sys.config 
 
 
