@@ -207,12 +207,17 @@ handle_info({ rvi_message_timeout, SvcName, TransID}, #st { services_tid = SvcTi
     ?info("    schedule:timeout(): service:          ~p", [ SvcName]),
     ?info("    schedule:timeout(): trans_id:         ~p", [ TransID]),
 
-    case ets:lookup(SvcTid, SvcName) of
+    case  ets:lookup(SvcTid, SvcName) of
 	[ Svc ] ->
 	    %% Delete from ets.
-	    [ Msg ] = ets:lookup(Svc#service.messages_tid, TransID),
-	    do_timeout_callback(Svc, Msg),
-	    ets:delete(Svc#service.messages_tid, TransID);
+	    case ets:lookup(Svc#service.messages_tid, TransID) of
+		[ Msg ] ->
+		    do_timeout_callback(Svc, Msg),
+		    ets:delete(Svc#service.messages_tid, TransID);
+		_ -> 
+		    ?info("schedule:timeout(): Message yanked while processing timeout: ~p", [ TransID]),
+		    ok
+	    end;
 	_-> ok
     end,
     {noreply, St};
@@ -345,26 +350,31 @@ try_sending_messages(#service {
 	Key ->
 	    ?debug("schedule:try_send(): Sending: ~p", [Key]),
 	    %% Extract first message and try to send it
-	    [ Msg ] = ets:lookup(Tid, Key),
-	    case send_message(NetworkAddress, 
-			      SvcName, 
-			      Msg#message.timeout,
-			      Msg#message.parameters,
-			      Msg#message.signature,
-			      Msg#message.certificate) of
-		ok -> 
-		    %% Send successful - delete entry.
-		    ets:delete(Tid, Key),
+	    case ets:lookup(Tid, Key) of
+		[ Msg ] ->
+		    case send_message(NetworkAddress, 
+				      SvcName, 
+				      Msg#message.timeout,
+				      Msg#message.parameters,
+				      Msg#message.signature,
+				      Msg#message.certificate) of
+			ok -> 
+			    %% Send successful - delete entry.
+			    ets:delete(Tid, Key),
 
-		    %% Delete timeout ref
-		    erlang:cancel_timer(Msg#message.timeout_tref),
+			    %% Delete timeout ref
+			    erlang:cancel_timer(Msg#message.timeout_tref),
 
-		    %% Send the rest.
-		    try_sending_messages(Service, St);
+			    %% Send the rest.
+			    try_sending_messages(Service, St);
 
-		Err ->
-		    %% Failed to send message, leave in queue and err out.
-		    { {send_failed, Err}, St}
+			Err ->
+			    %% Failed to send message, leave in queue and err out.
+			    { {send_failed, Err}, St}
+		    end;
+		_ -> 
+		    ?info("schedule:try_send(): Message was yanked while trying to send: ~p", [Key]),
+		    ok
 	    end
     end.
 
