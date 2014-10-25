@@ -14,7 +14,7 @@ class RVIJSONRPCServer(SimpleJSONRPCServer):
     def _dispatch(self, method, params):
         # print "dispatch:", params
         if method == 'message':
-            print "Will dispatch message to: " + params['service_name']
+            # print "Will dispatch message to: " + params['service_name']
             dict_param = {}
             # Extract the 'parameters' element from the top level JSON-RPC
             # 'param'. 
@@ -25,7 +25,7 @@ class RVIJSONRPCServer(SimpleJSONRPCServer):
             msg_params = params['parameters'] 
             for i in range(0, len(msg_params)):
                 for j in range(0, len(msg_params[i].keys())):
-                    print "params", msg_params[i].keys()[j], "=", msg_params[i].values()[j]
+                    # print "params", msg_params[i].keys()[j], "=", msg_params[i].values()[j]
                     dict_param[msg_params[i].keys()[j]] = msg_params[i].values()[j]
 
             # print "Parameter disctionary: ", dict_param

@@ -47,6 +47,7 @@ def package_pusher():
         
 
         chunk_size = 128*1024
+
         f_stat = os.stat(package)
     
         transaction_id += 1
@@ -62,11 +63,12 @@ def package_pusher():
         index = 0
 
         while True:
+            offset = f.tell()
             msg =  f.read(chunk_size) 
             if msg == "":
                 break
 
-            print "Sending package:", package, " chunk:", index, " message size: ", len(msg)
+            print "Sending package:", package, " chunk:", index, " offset:", offset, " message size: ", len(msg)
 
             transaction_id+=1
             rvi_server.message(calling_service = "/sota",
@@ -80,7 +82,8 @@ def package_pusher():
             index += 1
 
         f.close()
-        print "Finishing package:",package
+        print "Finishing package:", package
+        time.sleep(1.0)
 
         transaction_id+=1
         rvi_server.message(calling_service = "/sota",
@@ -181,7 +184,6 @@ while True:
     line = raw_input('Enter <vin> <file_name> or "q" for quit: ')
     if line == 'q':
         emulator_service.shutdown()
-        package_pusher_thr.shutdown()
         sys.exit(0)
 
     

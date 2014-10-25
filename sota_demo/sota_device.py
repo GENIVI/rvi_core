@@ -26,6 +26,7 @@ from hashlib import sha1
 from mimetools import Message
 from StringIO import StringIO
 import json
+from subprocess import call
 
 g_fd = 0
 g_package = ''
@@ -136,14 +137,9 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
                                                           'state': 'Update'} }))
                 return
 
-            print "Got message", message
-            print "g_chunk_size", g_chunk_size
-            print "g_total_size", g_total_size
             chunk_frac = float(g_chunk_size) / float(g_total_size )
-            print "frac", chunk_frac
-            print "g_chunk_index", g_chunk_index
             perc = float(g_chunk_index + 1) * chunk_frac * 100.0
-            print "perc", perc
+
 
             self.send_message(json.dumps({'jsonrpc': '2.0',
                                           'id': tid,
@@ -243,22 +239,24 @@ def chunk(index, msg):
     
     g_chunk_index = index
     decoded_msg  = base64.b64decode(msg)
-    print "Got part of package:", g_package, " chunk:", index, " chunk_size:", g_chunk_size, " message size:", len(decoded_msg)
+
+    print "Chunk:", index, " ck_sz:", g_chunk_size, " msg_sz:", len(decoded_msg), " offset:", g_chunk_index * g_chunk_size
+
     g_fd.seek(g_chunk_index * g_chunk_size)
     g_fd.write(decoded_msg)
-    g_fd.flush()
     return {u'status': 0}
 
 def finish(dummy):
     global g_fd
     global g_package
+    global g_chunk_index
 
     print "Package:", g_package, " is complete in /tmp"
-    print "finish fd = ", g_fd
     g_fd.close()
     g_fd = -1
-
-    print "Uninstalling old package"
+    g_chunk_index = 0
+    call(["wrt-installer", "-up", "/tmp/" + g_package])
+    call(["wrt-installer", "-i", "/tmp/" + g_package])
     
     return {u'status': 0}
 
