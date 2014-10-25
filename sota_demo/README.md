@@ -20,15 +20,21 @@ Make sure that jsonrpclib is installed on the Tizen box: https://github.com/josh
 
 Reboot the Tizen box to bring up the RVI node
 
-Stop the home screen app.
+Stop the home screen app:
+    wrt-launcher -k intelPoc10.HomeScreen
 
-wrt-launcher -k intelPoc10.HomeScreen
+Start the sota device code on the Tizen box
+    python sota_device.py http://localhost:8811
 
-Start the sota device code
+On the rvi1 node start the sota server
+    python sota_server.py http://rvi1.nginfotpdx.net:8801
 
-python sota_device.py http://localhost:8811
+Queue a file on the sota server
+    4711 SOTA_poster_v2.pdf
+	
+On the tizen box, start the homescreen:
+	wrt-launcher -s intelPoc10.HomeScreen
 
-In another window, start the homescreen
+Click OK for the package.
 
-wrt-launcher -s intelPoc10.HomeScreen
 
