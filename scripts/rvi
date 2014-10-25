@@ -18,7 +18,7 @@ set -e
 case "$1" in
   start)
         log_daemon_msg "Starting Remote Vehicle Interaction Node..." "rvi"
-        if /opt/rvi-0.2.1/bin/rvi start; then
+        if /opt/rvi-0.2.2/bin/rvi start; then
             log_end_msg 0
         else
             log_end_msg 1
@@ -26,7 +26,7 @@ case "$1" in
         ;;
   stop)
         log_daemon_msg "Stopping Remote Vehicle Interaction Node..." "rvi"
-        if /opt/rvi-0.2.1/bin/rvi stop; then
+        if /opt/rvi-0.2.2/bin/rvi stop; then
             log_end_msg 0
         else
             log_end_msg 1
@@ -34,7 +34,7 @@ case "$1" in
         ;;
   restart)
         log_daemon_msg "Restarting Remote Vehicle Interaction Node..." "rvi"
-        if /opt/rvi-0.2.1/bin/rvi restart; then
+        if /opt/rvi-0.2.2/bin/rvi restart; then
             log_end_msg 0
         else
             log_end_msg 1

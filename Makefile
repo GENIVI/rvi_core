@@ -13,7 +13,7 @@
 .PHONY:	all deps compile clean rpm rpmclean
 
 
-VERSION=0.2.1
+VERSION=0.2.2
 
 all: deps compile
 

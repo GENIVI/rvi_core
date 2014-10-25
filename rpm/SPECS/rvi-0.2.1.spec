@@ -1,12 +1,12 @@
 Summary: Remote Vehicle Interaction Node
 Name: rvi
-Version: 0.2.1
+Version: 0.2.2
 Release: 1
 # Copyright: Jaguar Land Rover -
 License: Mozilla Public License v2
 Vendor: Jaguar Land Rover
 Group: Applications/System
-Source: http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.2.1.tgz
+Source: http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.2.2.tgz
 Buildroot: /var/tmp/%{name}-buildroot
 
 # Requires: 
@@ -69,4 +69,4 @@ rm -rf $RPM_BUILD_ROOT
 /etc/rc4.d
 /etc/rc5.d
 /etc/rc6.d
-/opt/rvi-0.2.1
+/opt/rvi-0.2.2

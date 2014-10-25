@@ -173,7 +173,6 @@ handle_call(_Request, _From, St) ->
 %%--------------------------------------------------------------------
 
 handle_cast( {register_remote_services, NetworkAddress, AvailableServices}, St) ->
-
     ?info("    schedule:register_remote_services(): NetworkAddress:    ~p", [NetworkAddress]),
     ?info("    schedule:register_remote_services(): AvailableService:  ~p", [AvailableServices]),
     {ok, NSt} =  multiple_services_available(AvailableServices, NetworkAddress, St),
@@ -591,16 +590,24 @@ create_transaction_id(St) ->
 calculate_timeout_period(UTC) ->
     { Mega, Sec, _Micro } = now(),
     Now = Mega * 1000000 + Sec,
-    ?debug("schedule:calculate_timeout_period(): Now:     ~p", [ Now ]),
-    ?debug("schedule:calculate_timeout_period(): Timeout: ~p", [ UTC ]),
-    ?debug("schedule:calculate_timeout_period(): Period:  ~p", [ UTC - Now]),
+    ?debug("schedule:calculate_timeout_period(): Timeout(~p) - Now(~p) = ~p", [ UTC, Now, UTC - Now ]),
 
-    case UTC - Now =< 0 of
+    %% Cap the timeout value at something reasonable
+    TOut = 
+	case UTC - Now >= 4294967295 of
+	    true -> 
+		?info("schedule:calculate_timeout_period(): Timeout(~p) - Now(~p) = ~p: Truncated to 4294967295", [ UTC, Now, UTC - Now ]),
+		4294967295;
+
+	false -> UTC - Now
+    end,
+
+    case TOut =< 0 of
 	true ->
 	    1; %% One millisec is the smallest value we will time out on
 
 	false ->
-	    (UTC - Now) * 1000 
+	    TOut * 1000 
     end.
 
 %% Handle a callback for a timed out message.

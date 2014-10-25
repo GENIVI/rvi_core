@@ -6,7 +6,7 @@ All files are available at rvi@rvi1.nginfotpdx.net:sota_demo
 
 Flash the tizen image TizenIVI30_APR22_AGL_19SEP2014.raw.gz
 
-Once up, install the RVI 0.2.1 rpm: rvi-0.2.1-1.i686.rpm
+Once up, install the RVI 0.2.2 rpm: rvi-0.2.2-1.i686.rpm
 
 Install the updated home screen: intelPoc10.HomeScreen.wgt.20141024_3
 wrt-installer -un intelPoc10.HomeScreen
