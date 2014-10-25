@@ -1,0 +1,19 @@
+# systemd(8) setup usde by Tizen and others.
+[Unit]
+Description=Software Over The Air Service
+Wants=network-online.target
+
+[Service]
+Environment="HOME=/opt/sota"
+WorkingDirectory=/opt/sota
+Type=simple
+StandardOutput=journal
+StandardError=journal
+#ExecStart=/bin/sh -c "cd /opt/sota;/usr/bin/python sota_device.py http://localhost:8811"
+ExecStart=/usr/bin/python sota_device.py http://localhost:8811
+#ExecStop=/bin/sh /opt/rvi-0.2.1/bin/rvi stop
+#ExecStopPost=/opt/rvi-0.2.1/erts-5.10.4/bin/epmd -kill
+GuessMainPID=yes
+
+[Install]
+WantedBy=graphical.target multi-user.target
