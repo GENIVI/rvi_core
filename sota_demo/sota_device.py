@@ -46,14 +46,22 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
  
     def handle(self):
         print "Handle"
-        while True:
+        self.active = True
+        while self.active:
             if not self.handshake_done:
                 self.handshake()
             else:
                 self.read_next_message()
  
     def read_next_message(self):
-        length = ord(self.rfile.read(2)[1]) & 127
+        msg = self.rfile.read(2)
+        if len(msg) < 2:
+            print "Connection closed"
+            self.finish()
+            self.active = False
+            return 
+
+        length = ord(msg[1]) & 127
         if length == 126:
             length = struct.unpack(">H", self.rfile.read(2))[0]
         elif length == 127:
@@ -177,6 +185,7 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
 
     def _get_pending_updates(self, tid):
         global available_packagess
+        print "Available Packages:", available_packagess
         result = { 
             'jsonrpc': '2.0',
             'id': tid,

@@ -80,7 +80,7 @@ def package_pusher():
             index += 1
 
         f.close()
-        print "Finishing package:",finish
+        print "Finishing package:",package
 
         transaction_id+=1
         rvi_server.message(calling_service = "/sota",
