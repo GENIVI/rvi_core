@@ -4,7 +4,7 @@ Description=Remote Vehicle Interaction Service
 Wants=network-online.target
 
 [Service]
-Environment="HOME=/opt/rvi-2.0"
+Environment="HOME=/opt/rvi-0.2.1"
 Type=forking
 StandardOutput=journal
 StandardError=journal
