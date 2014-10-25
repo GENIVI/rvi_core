@@ -27,9 +27,14 @@ from mimetools import Message
 from StringIO import StringIO
 import json
 
-rvi_sota_prefix = "jlr.com/backend/sota/"
+g_fd = 0
+g_package = ''
+g_chunk_size = 0
+g_total_size = 0
+g_chunk_index = 0
+
+rvi_sota_prefix = "jlr.com/backend/sota"
 available_packagess = []
-perc = 0
 
 class WebSocketsHandler(SocketServer.StreamRequestHandler):
     magic = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
@@ -88,28 +93,54 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
     
 
     def on_message(self, message):
-        print "Got message", message
-        global perc
         cmd = json.loads(message)
         tid = cmd['id']
         if cmd['method'] == 'GetPendingUpdates':
+            print "Got message", message
             self._get_pending_updates(cmd['id'])
             return
             
         if cmd['method'] == 'StartUpdate':
-            # self._start_update(cmd['id'])
+            print "Got StartUpdate"
+            self._start_update(cmd['id'])
             self.send_message(json.dumps({'jsonrpc': '2.0',
                                           'id': tid,
                                           'result': "" }))
             return 
 
         if cmd['method'] == 'GetCarSyncState':
-            print "Got GetCarSyncState", perc
-            # self._start_update(cmd['id'])
-            perc = perc + 1
+            # Check if we have closed the given file.
+            # If so, return state idle to shut down progress bar
+            # in HMI.
+            if g_fd == -1:
+                print "File has closed. Done"
+                self.send_message(json.dumps({'jsonrpc': '2.0',
+                                              'id': tid,
+                                              'result': { 'progress': 100, 
+                                                          'state': 'Idle'} }))
+                return
+            
+            # CHeck that we have actual progress to report
+            if g_chunk_size == 0 or g_total_size == 0:
+                self.send_message(json.dumps({'jsonrpc': '2.0',
+                                              'id': tid,
+                                              'result': { 'progress': 0, 
+                                                          'state': 'Update'} }))
+                return
+
+            print "Got message", message
+            print "g_chunk_size", g_chunk_size
+            print "g_total_size", g_total_size
+            chunk_frac = float(g_chunk_size) / float(g_total_size )
+            print "frac", chunk_frac
+            print "g_chunk_index", g_chunk_index
+            perc = float(g_chunk_index + 1) * chunk_frac * 100.0
+            print "perc", perc
+
             self.send_message(json.dumps({'jsonrpc': '2.0',
                                           'id': tid,
-                                          'result': { 'progress': perc, 'state': 'Update'} }))
+                                          'result': { 'progress': perc, 
+                                                      'state': 'Update'} }))
             # Change 'state' to Idle when done
     
             return
@@ -123,18 +154,17 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
         # service name to get a destination to send over
         # to the SOTA server's initiate_download
 
-
-
-        last_slash = str.rfind(full_notify_service_name, '/')
+        last_slash = full_notify_service_name.rfind('/')
         destination = full_notify_service_name[:last_slash]
 
         self.send_message(json.dumps({'jsonrpc': '2.0',
                                       'id': tid,
                                       'result': [ ] }))
 
-        package = available_packagess[0]['uuid']
+        package = available_packagess.pop(0)['uuid']
+        
         print "Will initate download of package:",package
-        rvi_server.message(calling_service = chunk_service_name,
+        rvi_server.message(calling_service = "/sota",
                            service_name = rvi_sota_prefix + "/initiate_download",
                            transaction_id = "1",
                            timeout = int(time.time())+60,
@@ -167,14 +197,10 @@ def usage():
     sys.exit(255)
         
  
-def notify(packet_name):
-    global g_fd
-    global g_packet
-    global g_chunk_size
-
-    print "Available packet:", packet_name
+def notify(package):
+    print "Available packet:", package
     available_packagess.append({
-        "uuid": packet_name,
+        "uuid": package,
             "version": {
                 "version_major":1,
                 "version_minor":0,
@@ -184,37 +210,45 @@ def notify(packet_name):
 
     return {u'status': 0}
 
-def start(packet, chunk_size):
+def start(package, chunk_size, total_size):
     global g_fd
-    global g_packet
+    global g_package
     global g_chunk_size
+    global g_total_size
 
-    g_packet = packet
+    g_package = package
     g_chunk_size = chunk_size
-    file_name = "/tmp/" + packet
+    g_total_size = total_size
+    file_name = "/tmp/" + package
 
-    print "Starting packet:", file_name
+    print "Starting package:", file_name
     g_fd = open(file_name, "w")
+    print "open fd = ", g_fd
     return {u'status': 0}
 
 def chunk(index, msg):
     global g_fd
-    global g_packet
+    global g_package
     global g_chunk_size
+    global g_chunk_index
     
+    g_chunk_index = index
     decoded_msg  = base64.b64decode(msg)
-    print "Got part of packet:", g_packet, " chunk:", index, " chunk_size:", g_chunk_size, " message size:", len(decoded_msg)
-    g_fd.seek(index * chunk_size)
+    print "Got part of package:", g_package, " chunk:", index, " chunk_size:", g_chunk_size, " message size:", len(decoded_msg)
+    g_fd.seek(g_chunk_index * g_chunk_size)
     g_fd.write(decoded_msg)
+    g_fd.flush()
     return {u'status': 0}
 
-def finish(x):
+def finish(dummy):
     global g_fd
-    global g_packet
+    global g_package
 
-    print "Packet:", g_packet, " is complete in /tmp"
+    print "Package:", g_package, " is complete in /tmp"
+    print "finish fd = ", g_fd
     g_fd.close()
-    
+    g_fd = -1
+
     print "Uninstalling old package"
     
     return {u'status': 0}

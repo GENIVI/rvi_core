@@ -26,9 +26,68 @@ from hashlib import sha1
 from mimetools import Message
 from StringIO import StringIO
 import json
+import Queue
         
 transaction_id = 0
+package_queue = Queue.Queue()
 
+def package_pusher():
+    global package_queue
+    global transaction_id
+
+    while True:
+        [package, destination] = package_queue.get()
+        print "Package pushed will push",package,"to",destination
+        try:
+            f = open(package)
+
+        except Err:
+            print "Could not open",file_name,":", Err
+            return
+        
+
+        chunk_size = 128*1024
+        f_stat = os.stat(package)
+    
+        transaction_id += 1
+        rvi_server.message(calling_service = "/sota",
+                               service_name = destination + "/start",
+                           transaction_id = str(transaction_id),
+                           timeout = int(time.time())+60,
+                           parameters = [{ u'package': package, 
+                                           u'chunk_size': chunk_size,
+                                           u'total_size': f_stat.st_size
+                                       }])
+
+        index = 0
+
+        while True:
+            msg =  f.read(chunk_size) 
+            if msg == "":
+                break
+
+            print "Sending package:", package, " chunk:", index, " message size: ", len(msg)
+
+            transaction_id+=1
+            rvi_server.message(calling_service = "/sota",
+                               service_name = destination + "/chunk",
+                               transaction_id = str(transaction_id),
+                               timeout = int(time.time())+60,
+                               parameters = [
+                                   { u'index': index }, 
+                                   { u'msg': base64.b64encode(msg) }])
+            
+            index += 1
+
+        f.close()
+        print "Finishing package:",finish
+
+        transaction_id+=1
+        rvi_server.message(calling_service = "/sota",
+                           service_name = destination + "/finish",
+                           transaction_id = str(transaction_id),
+                           timeout = int(time.time())+60,
+                           parameters = [ { u'dummy': 0}])
 
 def usage():
     print "Usage:", sys.argv[0], "<rvi_url>"
@@ -43,55 +102,10 @@ def usage():
     sys.exit(255)
         
  
-def initiate_download(packet_name, destination):
-    print "Will push packet", packet_name, "to",destination
-    try:
-        f = open(packet_name)
-
-    except Err:
-        print "Could not open",file_name,":", Err
-        return
-        
-
-    chunk_size = 128*1024
+def initiate_download(package, destination):
+    print "Will push packet", package, "to",destination
     
-    transaction_id += 1
-    rvi_server.message(calling_service = "/sota",
-                       service_name = destination + "/start",
-                       transaction_id = str(transaction_id),
-                       timeout = int(time.time())+60,
-                       parameters = [{ u'package': package_name, 
-                                       u'chunk_size': chunk_size}])
-
-    index = 0
-
-    while True:
-        msg =  f.read(chunk_size) 
-        if msg == "":
-            break
-
-        print "Sending package:", package_name, " chunk:", index, " message size: ", len(msg)
-
-        transaction_id+=1
-        rvi_server.message(calling_service = "/sota",
-                           service_name = destination + "/chunk",
-                           transaction_id = str(transaction_id),
-                           timeout = int(time.time())+60,
-                           parameters = [
-                               { u'index': index }, 
-                               { u'msg': base64.b64encode(msg) }])
-    
-        index += 1
-
-    f.close()
-
-    transaction_id+=1
-    rvi_server.message(calling_service = "/sota",
-                           service_name = destination + "/finish",
-                           transaction_id = str(transaction_id),
-                           timeout = int(time.time())+60,
-                           parameters = [])
-
+    package_queue.put([package, destination])
     return {u'status': 0}
 
 
@@ -156,11 +170,18 @@ print "Full initiate download service name : ", full_initiate_download_service_n
 
 chunk_size = 1024*64
 
+#
+# Start the queue dispatcher thread
+#
+package_pusher_thr = threading.Thread(target=package_pusher)
+package_pusher_thr.start()
+
 while True:
     transaction_id += 1
     line = raw_input('Enter <vin> <file_name> or "q" for quit: ')
     if line == 'q':
         emulator_service.shutdown()
+        package_pusher_thr.shutdown()
         sys.exit(0)
 
     
