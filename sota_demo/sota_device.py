@@ -291,22 +291,13 @@ ws_thread.start()
 # we register. Let's sleep for a bit to allow the emulator service
 # thread to get up to speed.
 time.sleep(0.5)
-available_packagess.append({
-    "uuid": "test package",
-    "version": {
-        "version_major":1,
-        "version_minor":0,
-        "version_build":0
-    }
-})
-
 
 #
 # Register our HVAC emulator service with the vehicle RVI node's Service Edge.
 # We register both services using our own URL as a callback.
 #
 
-res = rvi_server.register_service(service = "/sota/nottify",
+res = rvi_server.register_service(service = "/sota/notify",
                                   network_address = emulator_service_url)
 
 full_notify_service_name = res['service']
@@ -331,8 +322,9 @@ full_finish_service_name = res['service']
 print "HVAC Emulator."
 print "Vehicle RVI node URL:       ", rvi_url
 print "Emulator URL:               ", emulator_service_url
-print "Full start service name :   ", full_start_service_name
-print "Full chunk service name :   ", full_chunk_service_name
+print "Full notify service name :  ", full_notify_service_name
+print "Full start service name  :  ", full_start_service_name
+print "Full chunk service name  :  ", full_chunk_service_name
 print "Full finish service name :  ", full_finish_service_name
 
 while True:
