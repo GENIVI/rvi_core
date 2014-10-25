@@ -6,10 +6,31 @@ All files are available at rvi@rvi1.nginfotpdx.net:sota_demo/
 
 Flash the tizen image TizenIVI30_APR22_AGL_19SEP2014.raw.gz
 
-Once up, install the RVI 0.2.2 rpm:
-rpm -i rvi-0.2.2-1.i686.rpm
+### Install RVI 
+Once the new Tizen image has booted, install the RVI 0.2.2 rpm:
+    rpm -i rvi-0.2.2-1.i686.rpm
+
+### Set Tizen box VIN number
+Edit the RVI config file to install a VIN number.
+
+    vi /opt/rvi-0.2.2/sys.config
+	
+Append the VIN number to the end of the node_service_prefix value:
+
+Before:
+
+      {node_service_prefix,"jlr.com/vin/"},
+
+After:
+
+      {node_service_prefix,"jlr.com/vin/9UYA31581L000000"},
+
+Save the sys.config and exit with ```<ESC><ESC>ZZ```
+
+### Install the new homescreen
 
 Install the updated home screen: intelPoc10.HomeScreen.wgt.20141025_1
+
     wrt-installer -un intelPoc10.HomeScreen
     wrt-installer -i intelPoc10.HomeScreen.wgt.20141025_1
 
