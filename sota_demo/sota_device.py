@@ -338,8 +338,17 @@ time.sleep(0.5)
 # We register both services using our own URL as a callback.
 #
 
-res = rvi_server.register_service(service = "/sota/notify",
-                                  network_address = emulator_service_url)
+# Repeat registration until we succeeed
+rvi_dead = True
+while rvi_dead:
+    try: 
+        res = rvi_server.register_service(service = "/sota/notify",
+                                          network_address = emulator_service_url)
+        rvi_dead = False
+    except:
+        print "No rvi. Wait and retry"
+        time.sleep(2.0)
+
 
 full_notify_service_name = res['service']
 

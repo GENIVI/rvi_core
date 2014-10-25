@@ -1,7 +1,7 @@
 # systemd(8) setup usde by Tizen and others.
 [Unit]
 Description=Software Over The Air Service
-Wants=network-online.target
+Wants=network-online.target rvi.service
 
 [Service]
 Environment="HOME=/opt/sota"
