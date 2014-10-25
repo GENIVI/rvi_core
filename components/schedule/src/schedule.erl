@@ -48,8 +48,7 @@
 	  timeout_cb,    %% Callback to invoke when timeout occurs. 
 	  parameters,
 	  signature,
-	  certificate,
-	  timeout_counter  %% Avoids race conditions between timeout and processing.
+	  certificate
 	 }).
 
 
@@ -208,24 +207,13 @@ handle_info({ rvi_message_timeout, SvcName, TransID}, #st { services_tid = SvcTi
     ?info("    schedule:timeout(): service:          ~p", [ SvcName]),
     ?info("    schedule:timeout(): trans_id:         ~p", [ TransID]),
 
-    %% Atomically increment our counter to ensure that we are the
-    %% first and only processing accessing the entry.
-    [ Svc] = ets:lookup(SvcTid, SvcName),
-    case ets:update_counter(Svc#service.messages_tid, 
-			    TransID, 
-			    { #message.timeout_counter, 1 }) of 
-	%% If it is one, we were the first one who got an update through.
-	1 ->
+    case ets:lookup(SvcTid, SvcName) of
+	[ Svc ] ->
 	    %% Delete from ets.
 	    [ Msg ] = ets:lookup(Svc#service.messages_tid, TransID),
 	    do_timeout_callback(Svc, Msg),
 	    ets:delete(Svc#service.messages_tid, TransID);
-
-	%% send_messages() processed the message before we had a
-	%% chance to get it.
-	_ ->
-	    ?info("    schedule:timeout(~p/~p): Already processed. Ignored", 
-		  [ SvcName, TransID])
+	_-> ok
     end,
     {noreply, St};
 
@@ -297,8 +285,7 @@ queue_message(SvcName,
 	     timeout_cb = Callback,
 	     parameters = Parameters, 
 	     signature = Signature,
-	     certificate = Certificate,
-	     timeout_counter = 0
+	     certificate = Certificate
 	    },
 
     %% Find or create the service
@@ -356,54 +343,29 @@ try_sending_messages(#service {
 	    { ok, St};
 
 	Key ->
-	    %% Atomically increment counter to catch the (unlikely) race condition where
-	    %% the transaction times out at the same time we are processing it.
-	    %% Will probably not happen since we all run within the same gen_server proc.
-	    %% Better safe than sorry, I guess
-	    case ets:update_counter(Tid, Key, { #message.timeout_counter, 1 }) of 
-		%% If it is one, we were the first one who got an update through.
-		1 ->
-		    ?debug("schedule:try_send(): Sending: ~p", [Key]),
-		    %% Extract first message and try to send it
-		    [ Msg ] = ets:lookup(Tid, Key),
-		    case send_message(NetworkAddress, 
-				      SvcName, 
-				      Msg#message.timeout,
-				      Msg#message.parameters,
-				      Msg#message.signature,
-				      Msg#message.certificate) of
-			ok -> 
-			    %% Send successful - delete entry.
-			    ets:delete(Tid, Key),
-
-			    %% Delete timeout ref
-			    erlang:cancel_timer(Msg#message.timeout_tref),
-
-			    %% Send the rest.
-			    try_sending_messages(Service, St);
-
-			Err ->
-			    %% Failed to send message, leave in queue and err out.
-			    { {send_failed, Err}, St}
-		    end;
-
-		%% Other value means that the timeout handler incremented the counter
-		%% before us. Do nothing since the timeout handler will clean everything
-		%% up
-		_ ->
-		    ?debug("schedule:try_send(~p/~p): Timeout triggered. No ip", 
-			  [SvcName, Key]),
-
-		    %% Timeout manager will have removed the message by now,
-		    %% but just to be sure, let's wipe it from the ets table
-		    %% so that we don't loop into the same message again and again.
+	    ?debug("schedule:try_send(): Sending: ~p", [Key]),
+	    %% Extract first message and try to send it
+	    [ Msg ] = ets:lookup(Tid, Key),
+	    case send_message(NetworkAddress, 
+			      SvcName, 
+			      Msg#message.timeout,
+			      Msg#message.parameters,
+			      Msg#message.signature,
+			      Msg#message.certificate) of
+		ok -> 
+		    %% Send successful - delete entry.
 		    ets:delete(Tid, Key),
 
-		    %% Send remaining messages.
-		    try_sending_messages(Service, St)
+		    %% Delete timeout ref
+		    erlang:cancel_timer(Msg#message.timeout_tref),
+
+		    %% Send the rest.
+		    try_sending_messages(Service, St);
+
+		Err ->
+		    %% Failed to send message, leave in queue and err out.
+		    { {send_failed, Err}, St}
 	    end
-
-
     end.
 
 
