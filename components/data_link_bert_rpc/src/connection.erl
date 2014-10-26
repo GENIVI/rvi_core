@@ -59,12 +59,12 @@ setup(IP, Port, Sock, Mod, Fun, Arg) ->
     end.
 
 send(Pid, Data) when is_pid(Pid) ->
-    gen_server:call(Pid, {send, Data}, 20000).
+    gen_server:call(Pid, {send, Data}).
     
 send(IP, Port, Data) ->
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ok, Pid} ->
-	    gen_server:call(Pid, {send, Data}, 20000);
+	    gen_server:call(Pid, {send, Data});
 
 	_Err -> 
 	    ?info("connection:send(): Connection ~p:~p not found for data: ~p", 
