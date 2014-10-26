@@ -40,7 +40,7 @@ Install the updated home screen: intelPoc10.HomeScreen.wgt.20141025_1
 
 Unpack the sota_demo.tgz file to the Tizen box and unpack it:
 
-    tar xzf sota_demo.tgz
+    tar xzf sota_demo_0.2.2.tgz
 
 Install the sota demo on the Tizen box.
 
