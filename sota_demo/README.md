@@ -29,12 +29,12 @@ After:
 
 Save the sys.config and exit with ```<ESC><ESC>ZZ```
 
-### Install the new homescreen
+### Install the new home screen
 
 Install the updated home screen: intelPoc10.HomeScreen.wgt.20141025_1
 
     wrt-installer -un intelPoc10.HomeScreen
-    wrt-installer -i intelPoc10.HomeScreen.wgt.20141025_1
+    wrt-installer -i intelPoc10.HomeScreen.wgt.20141027_1
 
 ### Install the SOTA device agent
 
@@ -45,7 +45,7 @@ Unpack the sota_demo.tgz file to the Tizen box and unpack it:
 Install the sota demo on the Tizen box.
 
     cd sota_demo
-	sh install.sh
+    sh install.sh
 
 
 ## RUNNING
