@@ -105,10 +105,17 @@ def usage():
     sys.exit(255)
         
  
-def initiate_download(package, destination):
-    print "Will push packet", package, "to",destination
-    
+def initiate_download(package, retry, destination):
+    print "Will push packet", package, " transaction id", retry, " to",destination
     package_queue.put([package, destination])
+    return {u'status': 0}
+
+def cancel_download(retry):
+    print "transaction", retry, "was cancelled by device."
+    return {u'status': 0}
+
+def download_complete(status, retry):
+    print "Download transaction",retry," completed with:",status
     return {u'status': 0}
 
 
@@ -146,6 +153,12 @@ emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_servi
 initiate_download_service_name = "/sota/initiate_download"
 emulator_service.register_function(initiate_download, initiate_download_service_name )
 
+cancel_download_service_name = "/sota/cancel_download"
+emulator_service.register_function(cancel_download, cancel_download_service_name )
+
+download_complete_service_name = "/sota/download_complete"
+emulator_service.register_function(download_complete, download_complete_service_name )
+
 
 # Create a thread to handle incoming stuff so that we can do input
 # in order to get new values
@@ -166,10 +179,24 @@ res = rvi_server.register_service(service = initiate_download_service_name,
 
 full_initiate_download_service_name = res['service']
 
+# Cancel download
+res = rvi_server.register_service(service = cancel_download_service_name,
+                                  network_address = emulator_service_url)
+
+full_cancel_download_service_name = res['service']
+
+# Download complete
+res = rvi_server.register_service(service = download_complete_service_name,
+                                  network_address = emulator_service_url)
+
+full_download_complete_service_name = res['service']
+
 print "HVAC Emulator."
 print "Vehicle RVI node URL:                 ", rvi_url
 print "Emulator URL:                         ", emulator_service_url
 print "Full initiate download service name : ", full_initiate_download_service_name
+print "Full download complete service name : ", full_download_complete_service_name
+print "Full cancel download service name   : ", full_cancel_download_service_name
 
 chunk_size = 1024*64
 
@@ -206,6 +233,7 @@ while True:
                        service_name = dst + "/notify",
                        transaction_id = str(transaction_id),
                        timeout = int(time.time())+60,
-                       parameters = [{ u'package': file_name}])
+                       parameters = [{ u'package': file_name,
+                                       u'retry': transaction_id }])
 
     print('Package {} sent to {}'. format(file_name, dst))

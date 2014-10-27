@@ -33,6 +33,7 @@ g_package = ''
 g_chunk_size = 0
 g_total_size = 0
 g_chunk_index = 0
+g_retry = 0
 
 rvi_sota_prefix = "jlr.com/backend/sota"
 available_packagess = []
@@ -117,6 +118,14 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
                                           'result': "" }))
             return 
 
+        if cmd['method'] == 'CancelUpdate':
+            print "Got CancelUpdate"
+            self._cancel_download()
+            self.send_message(json.dumps({'jsonrpc': '2.0',
+                                          'id': tid,
+                                          'result': "" }))
+            return 
+
         if cmd['method'] == 'GetCarSyncState':
             # Check if we have closed the given file.
             # If so, return state idle to shut down progress bar
@@ -139,7 +148,8 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
 
             chunk_frac = float(g_chunk_size) / float(g_total_size )
             perc = float(g_chunk_index + 1) * chunk_frac * 100.0
-
+            if perc > 100.0:
+                perc = 100.0
 
             self.send_message(json.dumps({'jsonrpc': '2.0',
                                           'id': tid,
@@ -151,9 +161,24 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
         print "UNKNOWN MESSAGE", message
         return 
 
+        
+    def _cancel_download(self):
+        pkg = available_packagess.pop(0)
+        retry = pkg['retry']
+
+        print "Will cancel download of package:",pkg['uuid']
+        rvi_server.message(calling_service = "/sota",
+                           service_name = rvi_sota_prefix + "/cancel_download",
+                           transaction_id = time.time(),
+                           timeout = int(time.time())+60,
+                           parameters = [{ 
+                               u'retry': retry
+                           }])
+        return
+
     def _start_update(self, tid):
         global full_notify_service_name
-
+        global g_retry
         # Strip the last component off self's full notify
         # service name to get a destination to send over
         # to the SOTA server's initiate_download
@@ -165,15 +190,17 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
                                       'id': tid,
                                       'result': [ ] }))
 
-        package = available_packagess.pop(0)['uuid']
-        
+        pkg = available_packagess.pop(0)
+        package = pkg['uuid']
+        g_retry = pkg['retry']
         print "Will initate download of package:",package
         rvi_server.message(calling_service = "/sota",
                            service_name = rvi_sota_prefix + "/initiate_download",
-                           transaction_id = "1",
+                           transaction_id = time.time(),
                            timeout = int(time.time())+60,
                            parameters = [{ 
                                u'package': package,
+                               u'retry': g_retry,
                                u'destination': destination
                            }])
 
@@ -202,16 +229,18 @@ def usage():
     sys.exit(255)
         
  
-def notify(package):
+def notify(package, retry):
     print "Available packet:", package
     available_packagess.append({
         "uuid": package,
+        "retry": retry,
             "version": {
                 "version_major":1,
                 "version_minor":0,
                 "version_build":0
             }
         })
+
 
     return {u'status': 0}
 
@@ -246,6 +275,21 @@ def chunk(index, msg):
     g_fd.write(decoded_msg)
     return {u'status': 0}
 
+
+def _send_download_complete():
+    global g_retry
+    time.sleep(1.0)
+    print "Sending download complete"
+    rvi_server.message(calling_service = "/sota",
+                       service_name = rvi_sota_prefix + "/download_complete",
+                       transaction_id = "2",
+                       timeout = int(time.time())+60,
+                       parameters = [{ 
+                           u'status': 0,
+                           u'retry': g_retry
+                       }])
+    g_retry = 0
+
 def finish(dummy):
     global g_fd
     global g_package
@@ -257,6 +301,11 @@ def finish(dummy):
     g_chunk_index = 0
     call(["wrt-installer", "-up", "/tmp/" + g_package])
     call(["wrt-installer", "-i", "/tmp/" + g_package])
+
+    # Create a thread to handle incoming stuff so that we can do input
+    # in order to get new values
+    thr = threading.Thread(target=_send_download_complete)
+    thr.start()    
     
     return {u'status': 0}
 
