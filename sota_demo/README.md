@@ -7,15 +7,15 @@ All files are available at rvi@rvi1.nginfotpdx.net:sota_demo/
 Flash the tizen image TizenIVI30_APR22_AGL_19SEP2014.raw.gz
 
 ### Install RVI 
-Once the new Tizen image has booted, install the RVI 0.2.2 rpm:
+Once the new Tizen image has booted, install the RVI 0.2.3 rpm:
 
-    rpm -i rvi-0.2.2-1.i686.rpm
+    rpm -i rvi-0.2.3-1.i686.rpm
 
 ### Set Tizen box VIN number
 
 Edit the RVI config file to install a VIN number.
 
-    vi /opt/rvi-0.2.2/sys.config
+    vi /opt/rvi-0.2.3/sys.config
 	
 Append the VIN number to the end of the node_service_prefix value:
 
@@ -40,7 +40,7 @@ Install the updated home screen: intelPoc10.HomeScreen.wgt.20141025_1
 
 Unpack the sota_demo.tgz file to the Tizen box and unpack it:
 
-    tar xzf sota_demo_0.2.2.tgz
+    tar xzf sota_demo_0.2.3.tgz
 
 Install the sota demo on the Tizen box.
 
