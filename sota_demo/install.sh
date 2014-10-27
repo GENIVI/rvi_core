@@ -9,7 +9,7 @@
 (cd jsonrpclib; python setup.py install)
 
 # Install the code.
-rm -r /opt/sota
+rm -fr /opt/sota
 mkdir -p /opt/sota
 
 cp rvi_json_rpc_server.py /opt/sota
