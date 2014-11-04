@@ -22,17 +22,17 @@
 
 
 init() ->
-    ?info("    data_link_bert:init(): Called"),
+    ?info("data_link_bert:init(): Called"),
     %% Dig out the bert rpc server setup
     {ok, BertOpts } = rvi_common:get_component_config(data_link, bert_rpc_server, []),
     IP = proplists:get_value(ip, BertOpts, ?DEFAULT_BERT_RPC_ADDRESS),
     Port = proplists:get_value(port, BertOpts, ?DEFAULT_BERT_RPC_PORT),
-    ?info("    data_link_bert:init(): Starting listener."),
+    ?info("data_link_bert:init(): Starting listener."),
 
     %% Fire up listener
     connection_manager:start_link(), 
     {ok,Pid} = listener:start_link(), 
-    ?info("    data_link_bert:init(): Adding listener ~p:~p", [ IP, Port ]),
+    ?info("data_link_bert:init(): Adding listener ~p:~p", [ IP, Port ]),
     
     %% Add listener port.
     case listener:add_listener(Pid, IP, Port) of
@@ -50,12 +50,12 @@ init() ->
 		    ok;
 
 			Err -> 
-		    ?error("    data_link_bert:init(): Failed to setup exo http server: ~p", 
+		    ?error("data_link_bert:init(): Failed to setup exo http server: ~p", 
 			   [ Err ]),
 		    Err
 	    end;
 	Err -> 
-	    ?error("    data_link_bert:init(): Failed to launch listener: ~p", [ Err ]),
+	    ?error("data_link_bert:init(): Failed to launch listener: ~p", [ Err ]),
 	    Err
     end.
 
@@ -74,15 +74,15 @@ setup_static_node_data_links([ { Prefix, NetworkAddress} | T]) ->
     setup_static_node_data_links(T).
 
 setup_static_node_data_link(Prefix, NetworkAddress) ->
-    [ Address, Port] =  string:tokens(NetworkAddress, ":"),
+    [ Address, Port] = string:tokens(NetworkAddress, ":"),
     case setup_data_link(Address, list_to_integer(Port), undefined) of
 	{ok, _} -> ok;
 
 	{error, _ } = Err -> %% Failed to connect. Sleep and try again
-	    ?notice("    data_link_bert:setup_static_node_data_link(~p): Failed: ~p", 
+	    ?notice("data_link_bert:setup_static_node_data_link(~p): Failed: ~p", 
 			   [NetworkAddress, Err]),
 
-	    ?notice("    data_link_bert:setup_static_node_data_link(~p): Will try again in 5 sec", 
+	    ?notice("data_link_bert:setup_static_node_data_link(~p): Will try again in 5 sec", 
 			   [NetworkAddress]),
 	    timer:apply_after(5000, 
 			      ?MODULE, setup_static_node_data_link, 
@@ -98,17 +98,17 @@ connect_remote(IP, Port) ->
 
 	not_found ->
 	    %% Setup a new outbound connection
-	    ?info("    data_link_bert:connect_remote(): Connecting ~p:~p", 
+	    ?info("data_link_bert:connect_remote(): Connecting ~p:~p", 
 		   [IP, Port]),
 	    case gen_tcp:connect(IP, Port, [binary, {packet, 4}]) of
 		{ ok, Sock } -> 
-		    ?info("    data_link_bert:connect_remote(): Connected ~p:~p", 
+		    ?info("data_link_bert:connect_remote(): Connected ~p:~p", 
 			   [IP, Port]),
 		    %% Setup a genserver around the new connection.
 		    connection:setup(IP, Port, Sock, ?MODULE, handle_socket, []);
 
 		Err -> 
-		    ?info("    data_link_bert:connect_remote(): Failed ~p:~p: ~p",
+		    ?info("data_link_bert:connect_remote(): Failed ~p:~p: ~p",
 			   [IP, Port, Err]),
 		    Err
 	    end
@@ -117,24 +117,24 @@ connect_remote(IP, Port) ->
 
 setup_data_link(RemoteAddress, RemotePort, Service) ->
     { LocalAddress, LocalPort} = rvi_common:node_address_tuple(),
-    ?info("    data_link_bert:setup_data_link(): Remote Address:   ~p", [ RemoteAddress]),
-    ?info("    data_link_bert:setup_data_link(): Remote Port:      ~p", [ RemotePort]),
-    ?info("    data_link_bert:setup_data_link(): Local Address:    ~p", [ LocalAddress]),
-    ?info("    data_link_bert:setup_data_link(): Local Port:       ~p", [ LocalPort]),
-    ?info("    data_link_bert:setup_data_link(): service:          ~p", [ Service]),
+    ?info("data_link_bert:setup_data_link(): Remote Address:   ~p", [ RemoteAddress]),
+    ?info("data_link_bert:setup_data_link(): Remote Port:      ~p", [ RemotePort]),
+    ?info("data_link_bert:setup_data_link(): Local Address:    ~p", [ LocalAddress]),
+    ?info("data_link_bert:setup_data_link(): Local Port:       ~p", [ LocalPort]),
+    ?info("data_link_bert:setup_data_link(): service:          ~p", [ Service]),
 
     
     case connect_remote(RemoteAddress, RemotePort) of
 	already_connected -> 
-	    ?info("    data_link_bert:setup_data_link(): Already connected!"),
+	    ?info("data_link_bert:setup_data_link(): Already connected!"),
 	    {ok, [ { status, rvi_common:json_rpc_status(already_connected)}]};
 	{ ok, Pid } ->
-	    ?info("    data_link_bert:setup_data_link(): New connection!"),
+	    ?info("data_link_bert:setup_data_link(): New connection!"),
 
 	    %% Follow up with an authorize.
-	    ?info("    data_link_bert:setup_data_link(): ---------------"),
-	    ?info("    data_link_bert:setup_data_link(): Sending authorize()"),
-	    ?info("    data_link_bert:setup_data_link(): ---------------"),
+	    ?info("data_link_bert:setup_data_link(): ---------------"),
+	    ?info("data_link_bert:setup_data_link(): Sending authorize()"),
+	    ?info("data_link_bert:setup_data_link(): ---------------"),
 	    connection:send(Pid, { authorize, 
 				   1, LocalAddress, LocalPort, rvi_binary, 
 				   {certificate, {}}, { signature, {}} }),
@@ -146,26 +146,26 @@ setup_data_link(RemoteAddress, RemotePort, Service) ->
 
 
 disconnect_data_link(RemoteAddress, RemotePort) ->
-    ?info("    data_link_bert:disconnect_data_link(): Remote Address: ~p", [ RemoteAddress]),
-    ?info("    data_link_bert:disconnect_data_link(): Remote Port:    ~p", [ RemotePort]),
+    ?info("data_link_bert:disconnect_data_link(): Remote Address: ~p", [ RemoteAddress]),
+    ?info("data_link_bert:disconnect_data_link(): Remote Port:    ~p", [ RemotePort]),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
 
 send_data(RemoteAddress, RemotePort, Data) ->
-    ?info("    data_link_bert:send_data(): Remote Address: ~p", [ RemoteAddress]),
-    ?info("    data_link_bert:send_data(): Remote Port:    ~p", [ RemotePort]),
-    %% ?info("    data_link_bert:send_data(): Data:           ~p", [ Data]),
+    ?info("data_link_bert:send_data(): Remote Address: ~p", [ RemoteAddress]),
+    ?info("data_link_bert:send_data(): Remote Port:    ~p", [ RemotePort]),
+    %% ?info("data_link_bert:send_data(): Data:           ~p", [ Data]),
 
     Res = connection:send(RemoteAddress, RemotePort, {receive_data, Data}),
 
-    ?info ("    data_link_bert:send_data(): bert-rpc result: ~p", [ Res ]),
+    ?info ("data_link_bert:send_data(): bert-rpc result: ~p", [ Res ]),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
     
 announce_new_local_service(Service) ->
-    ?info("    data_link_bert:announce_new_local_service(): Service      ~p",  [Service]),
+    ?info("data_link_bert:announce_new_local_service(): Service      ~p",  [Service]),
     %% Grab our local address.
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
@@ -175,7 +175,7 @@ announce_new_local_service(Service) ->
     case rvi_common:send_component_request(service_discovery, get_remote_network_addresses, [], 
 					   [ addresses ]) of
 	{ ok, _, [ Addresses ], _JSON} -> 
-	    ?info("    data_link_bert:announce_new_local_service(): Addresses      ~p", 
+	    ?info("data_link_bert:announce_new_local_service(): Addresses      ~p", 
 		   [ Addresses]),
 
 	    %% Grab our local address.
@@ -184,7 +184,7 @@ announce_new_local_service(Service) ->
 	    %% Loop over all returned addresses
 	    lists:map(
 	      fun(Address) ->
-		      ?info("    data_link_bert:announce_new_local_service(): Sending to      ~p", 
+		      ?info("data_link_bert:announce_new_local_service(): Sending to      ~p", 
 			    [ Address]),
 		      
 		      %% Split the address into host and port
@@ -195,7 +195,7 @@ announce_new_local_service(Service) ->
 		      Res = connection:send(RemoteAddress, list_to_integer(RemotePort), 
 				      {service_announce, 3,  
 				       [Service], { signature, {}}}),
-		      ?info("    data_link_bert:announce_new_local_service(): Res      ~p", 
+		      ?info("data_link_bert:announce_new_local_service(): Res      ~p", 
 			    [ Res]),
 		      ok
 
@@ -205,13 +205,12 @@ announce_new_local_service(Service) ->
 	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
 
 	Err -> 
-	    ?warning("    data_link_bert:announce_new_local_service() Failed to grab addresses: ~p", 
+	    ?warning("data_link_bert:announce_new_local_service() Failed to grab addresses: ~p", 
 	
 		     [ Err ]),
 	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}
 
     end.
-    
 
 
 
@@ -243,7 +242,7 @@ handle_rpc("send_data", Args) ->
     send_data(RemoteAddress, list_to_integer(RemotePort), Data);
     
 handle_rpc(Other, _Args) ->
-    ?info("    data_link_bert:handle_rpc(~p)", [ Other ]),
+    ?info("data_link_bert:handle_rpc(~p)", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
@@ -256,13 +255,13 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 		Certificate,
 		Signature}, _ExtraArgs) ->
 
-    ?info("    data_link_bert:authorize(): TransactionID:  ~p", [ TransactionID ]),
-    ?info("    data_link_bert:authorize(): Peer Address:   {~p, ~p}", [PeerIP, PeerPort ]),
-    ?info("    data_link_bert:authorize(): Remote Address: ~p", [ RemoteAddress ]),
-    ?info("    data_link_bert:authorize(): Remote Port:    ~p", [ RemotePort ]),
-    ?info("    data_link_bert:authorize(): Protocol:       ~p", [ Protocol ]),
-    ?info("    data_link_bert:authorize(): Certificate:    ~p", [ Certificate ]),
-    ?info("    data_link_bert:authorize(): Signature:      ~p", [ Signature ]),
+    ?info("data_link_bert:authorize(): TransactionID:  ~p", [ TransactionID ]),
+    ?info("data_link_bert:authorize(): Peer Address:   {~p, ~p}", [PeerIP, PeerPort ]),
+    ?info("data_link_bert:authorize(): Remote Address: ~p", [ RemoteAddress ]),
+    ?info("data_link_bert:authorize(): Remote Port:    ~p", [ RemotePort ]),
+    ?info("data_link_bert:authorize(): Protocol:       ~p", [ Protocol ]),
+    ?info("data_link_bert:authorize(): Certificate:    ~p", [ Certificate ]),
+    ?info("data_link_bert:authorize(): Signature:      ~p", [ Signature ]),
 
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
@@ -274,8 +273,8 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	case { RemoteAddress, RemotePort } of
 	    { "0.0.0.0", 0 } ->
 		
-		?info("    data_link_bert:authorize(): Remote Address is nil."),
-		?info("    data_link_bert:authorize(): Will use ~p:~p",  
+		?info("data_link_bert:authorize(): Remote Address is nil."),
+		?info("data_link_bert:authorize(): Will use ~p:~p",  
 		      [PeerIP, PeerPort]),
 		{ PeerIP, PeerPort };
 
@@ -290,14 +289,14 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     %% FIXME: Validate certificate and signature before continuing.
     case connection_manager:find_connection_by_pid(FromPid) of
 	not_found ->
-	    ?info("    data_link_bert:authorize(): New connection!"),
+	    ?info("data_link_bert:authorize(): New connection!"),
 	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
-	    ?info("    data_link_bert:authorize(): Sending authorize."),
+	    ?info("data_link_bert:authorize(): Sending authorize."),
 	    Res = connection:send(FromPid, 
 			    { authorize, 
 			      1, LocalAddress, LocalPort, rvi_binary, 
 			      {certificate, {}}, { signature, {}}}),
-	    ?info("    data_link_bert:authorize(): Sending authorize: ~p", [ Res]),
+	    ?info("data_link_bert:authorize(): Sending authorize: ~p", [ Res]),
 	    ok;
 	_ -> ok
     end,
@@ -316,22 +315,22 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 			    end, 
 			    [], JSONSvc),
 
-	    ?info("    data_link_bert:authorize(): LocalSvc:       ~p", 
+	    ?info("data_link_bert:authorize(): LocalSvc:       ~p", 
 		   [ LocalServices ]),
 
 	    %% Grab our local address.
 	    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
 	    %% Send an authorize back to the remote node
-	    ?info("    data_link_bert:authorize(): -------------------"),
-	    ?info("    data_link_bert:authorize(): Sending announce()"),
-	    ?info("    data_link_bert:authorize(): -------------------"),
+	    ?info("data_link_bert:authorize(): -------------------"),
+	    ?info("data_link_bert:authorize(): Sending announce()"),
+	    ?info("data_link_bert:authorize(): -------------------"),
 	    connection:send(FromPid, 
 			    { service_announce, 2,
 			      LocalServices, { signature, {}}});
 
 	Err -> 
-	    ?warning("    data_link_bert:authorize() Failed at authorize: ~p", 
+	    ?warning("data_link_bert:authorize() Failed at authorize: ~p", 
 
 		     [ Err ]),
 	    ok
@@ -343,11 +342,11 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 		TransactionID, 
 		Services, 
 		Signature}, _ExtraArgs) ->
-    ?info("    data_link_bert:service_announce(): TransactionID: ~p", [ TransactionID ]),
-    ?info("    data_link_bert:service_announce(): Remote IP:     ~p", [ RemoteIP ]),
-    ?info("    data_link_bert:service_announce(): Remote Port:   ~p", [ RemotePort ]),
-    ?info("    data_link_bert:service_announce(): Signature:     ~p", [ Signature ]),
-    ?info("    data_link_bert:service_announce(): Services:      ~p", [ Services ]),
+    ?info("data_link_bert:service_announce(): TransactionID: ~p", [ TransactionID ]),
+    ?info("data_link_bert:service_announce(): Remote IP:     ~p", [ RemoteIP ]),
+    ?info("data_link_bert:service_announce(): Remote Port:   ~p", [ RemotePort ]),
+    ?info("data_link_bert:service_announce(): Signature:     ~p", [ Signature ]),
+    ?info("data_link_bert:service_announce(): Services:      ~p", [ Services ]),
 
     %% Register the received services with all relevant components
     
@@ -363,8 +362,8 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
 	      { receive_data, Data}, _ExtraArgs) ->
-%%    ?info("    data_link_bert:receive_data(): ~p", [ Data ]),
-    ?info("    data_link_bert:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+%%    ?info("data_link_bert:receive_data(): ~p", [ Data ]),
+    ?info("data_link_bert:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     case 
 	rvi_common:send_component_request(protocol, receive_message, 
 					  [
@@ -373,23 +372,28 @@ handle_socket(_FromPid, SetupIP, SetupPort, data,
 	{ ok, _, _JSON} -> 
 	    ok;
 	Err -> 
-	    ?info("    data_link_bert:receive_data(): Failed to send component request: ~p", 
+	    ?info("data_link_bert:receive_data(): Failed to send component request: ~p", 
 		   [ Err ])
     end,
     ok;
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, Data, _ExtraArgs) ->
-    ?warning("    data_link_bert:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ?warning("    data_link_bert:unknown_data(): Unknown data: ~p",  [ Data]),
+    ?warning("data_link_bert:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?warning("data_link_bert:unknown_data(): Unknown data: ~p",  [ Data]),
     ok.
 
 handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
-    ?info("    data_link_bert:socket_closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?info("data_link_bert:socket_closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    RemoteNetworkAddress = SetupIP  ++ ":" ++ integer_to_list(SetupPort),
+    rvi_common:send_component_request(service_discovery, unregister_remote_services, 
+				      [
+				       {network_address, RemoteNetworkAddress}
+				      ]),
     %% FIXME: Report all associated services as being not available
     %% FIXME: Reconnect if static node
     ok;
 
 handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
-    ?info("    data_link_bert:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?info("data_link_bert:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     ok.
 

@@ -28,11 +28,11 @@ init() ->
     ok.
 
 schedule_message(SvcName, Timeout, Parameters, Signature, Certificate) ->
-    ?debug("    schedule_rpc:schedule_request(): service_name:    ~p", [ SvcName]),
-    ?debug("    schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
-%%    ?debug("    schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
-    ?debug("    schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
-    ?debug("    schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
+    ?debug("schedule_rpc:schedule_request(): service_name:    ~p", [ SvcName]),
+    ?debug("schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
+%%    ?debug("schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
+    ?debug("schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
+    ?debug("schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
     {ok, TransID } = schedule:schedule_message(SvcName, 
 					       Timeout, 
 					       no_callback,
@@ -43,15 +43,15 @@ schedule_message(SvcName, Timeout, Parameters, Signature, Certificate) ->
 	   {transaction_id, TransID } ] }.
 
 register_remote_services(NetworkAddress, AvailableServices) ->
-    ?debug("    schedule_rpc:register_remote_services(): network_address: ~p", [ NetworkAddress]),
-    ?debug("    schedule_rpc:register_remote_services(): services:        ~p", [ AvailableServices]),
+    ?debug("schedule_rpc:register_remote_services(): network_address: ~p", [ NetworkAddress]),
+    ?debug("schedule_rpc:register_remote_services(): services:        ~p", [ AvailableServices]),
     schedule:register_remote_services(NetworkAddress, AvailableServices),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
 unregister_remote_services(NetworkAddress, DiscountinuedServices) ->
-    ?debug("    schedule_rpc:unregister_remote_services(): network_address: ~p", [ NetworkAddress]),
-    ?debug("    schedule_rpc:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
+    ?debug("schedule_rpc:unregister_remote_services(): network_address: ~p", [ NetworkAddress]),
+    ?debug("schedule_rpc:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
     schedule:unregister_remote_services(NetworkAddress, DiscountinuedServices),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
@@ -81,6 +81,6 @@ handle_rpc("unregister_remote_services", Args) ->
     unregister_remote_services(NetworkAddress, DiscountinuedServices);
 
 handle_rpc(Other, _Args) ->
-    ?debug("    schedule_rpc:handle_rpc(~p): unknown", [ Other ]),
+    ?debug("schedule_rpc:handle_rpc(~p): unknown", [ Other ]),
     {ok, [ {status, rvi_common:json_rpc_status(invalid_command)}]}.
 

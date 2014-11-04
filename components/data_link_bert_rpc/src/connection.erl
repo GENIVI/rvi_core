@@ -191,13 +191,13 @@ handle_info({tcp, Sock, Data},
     NSt = St#st { ip = inet_parse:ntoa(IP), port = Port },
     handle_info({tcp, Sock, Data}, NSt);
  
+
 handle_info({tcp, Sock, Data}, 
 	    #st { ip = IP,
 		  port = Port,
 		  mod = Mod,
 		  func = Fun,
 		  args = Arg } = State) ->
-
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
 
@@ -216,6 +216,7 @@ handle_info({tcp, Sock, Data},
     inet:setopts(Sock, [{active, once}]),
     {noreply, State};
 
+
 handle_info({tcp_closed, Sock}, 
 	    #st { ip = IP,
 		  port = Port,
@@ -227,6 +228,7 @@ handle_info({tcp_closed, Sock},
     gen_tcp:close(Sock),
     connection_manager:delete_connection_by_pid(self()),
     {stop, normal, State};
+
 
 handle_info({tcp_error, _Sock}, 
 	    #st { ip = IP,

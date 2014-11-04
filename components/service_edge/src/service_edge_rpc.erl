@@ -293,7 +293,7 @@ handle_rpc("register_remote_services", Args) ->
 
 handle_rpc("unregister_remote_services", Args) ->
     {ok, _Services} = rvi_common:get_json_element(["services"], Args),
-    %% FIXME: Report all available services to the connected local services
+    %% FIXME: Report all deleted services to the connected local services
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
 handle_rpc("message", Args) ->

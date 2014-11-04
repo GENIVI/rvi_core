@@ -15,7 +15,7 @@
 -export([start_link/0]).
 -export([schedule_message/6,
 	 register_remote_services/2, 
-	 unregister_remote_services/2]).
+	 unregister_remote_services/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -111,8 +111,8 @@ schedule_message(SvcName,
 register_remote_services(NetworkAddress, AvailableServices) ->
     gen_server:cast(?SERVER, { register_remote_services, NetworkAddress, AvailableServices }).
 
-unregister_remote_services(NetworkAddress, DiscontinuedServices) ->
-    gen_server:cast(?SERVER, { unregister_remote_services, NetworkAddress, DiscontinuedServices }).
+unregister_remote_services(NetworkAddress) ->
+    gen_server:cast(?SERVER, { unregister_remote_services, NetworkAddress }).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -137,13 +137,13 @@ handle_call( { schedule_message,
 	       Certificate
 	     }, _From, St) ->
 
-    ?info("    schedule:sched_msg(): service_name:     ~p", [SvcName]),
-    ?info("    schedule:sched_msg(): timeout:          ~p", [Timeout]),
-    ?info("    schedule:sched_msg(): callback:         ~p", [Callback]),
-%%    ?info("    schedule:sched_msg(): parameters:       ~p", [Parameters]),
-    ?info("    schedule:sched_msg(): signature:        ~p", [Signature]),
-    ?info("    schedule:sched_msg(): certificate:      ~p", [Certificate]),
-    ?info("    schedule:sched_msg(): St:               ~p", [St]),
+    ?info("schedule:sched_msg(): service_name:     ~p", [SvcName]),
+    ?info("schedule:sched_msg(): timeout:          ~p", [Timeout]),
+    ?info("schedule:sched_msg(): callback:         ~p", [Callback]),
+%%    ?info("schedule:sched_msg(): parameters:       ~p", [Parameters]),
+    ?info("schedule:sched_msg(): signature:        ~p", [Signature]),
+    ?info("schedule:sched_msg(): certificate:      ~p", [Certificate]),
+    ?info("schedule:sched_msg(): St:               ~p", [St]),
 
 
     { ok, TransID, NSt } = queue_message(SvcName, 
@@ -173,18 +173,15 @@ handle_call(_Request, _From, St) ->
 %%--------------------------------------------------------------------
 
 handle_cast( {register_remote_services, NetworkAddress, AvailableServices}, St) ->
-    ?info("    schedule:register_remote_services(): NetworkAddress:    ~p", [NetworkAddress]),
-    ?info("    schedule:register_remote_services(): AvailableService:  ~p", [AvailableServices]),
+    ?info("schedule:register_remote_services(): NetworkAddress:    ~p", [NetworkAddress]),
+    ?info("schedule:register_remote_services(): AvailableService:  ~p", [AvailableServices]),
     {ok, NSt} =  multiple_services_available(AvailableServices, NetworkAddress, St),
     {noreply, NSt};
 
 
-handle_cast( {unregister_remote_services, NetworkAddress, DiscontinuedServices}, St) ->
-    ?info("    schedule:register_remote_services(): NetworkAddress:        ~p", [NetworkAddress]),
-    ?info("    schedule:register_remote_services(): DiscontinuedServices:  ~p", 
-	  [DiscontinuedServices]),
+handle_cast( {unregister_remote_services, NetworkAddress}, St) ->
+    ?info("schedule:register_remote_services(): NetworkAddress:        ~p", [NetworkAddress]),
 
-    {ok, NSt } = multiple_services_unavailable(DiscontinuedServices, St),
     {noreply, NSt };
 
 handle_cast(_Msg, St) ->
@@ -203,8 +200,8 @@ handle_cast(_Msg, St) ->
 
 %% Handle timeouts
 handle_info({ rvi_message_timeout, SvcName, TransID}, #st { services_tid = SvcTid } = St) ->
-    ?info("    schedule:timeout(): service:          ~p", [ SvcName]),
-    ?info("    schedule:timeout(): trans_id:         ~p", [ TransID]),
+    ?info("schedule:timeout(): service:          ~p", [ SvcName]),
+    ?info("schedule:timeout(): trans_id:         ~p", [ TransID]),
 
     case  ets:lookup(SvcTid, SvcName) of
 	[ Svc ] ->
@@ -267,12 +264,12 @@ queue_message(SvcName,
 	      Parameters, 
 	      Signature,
 	      Certificate, St) ->
-    ?info("    schedule:sched_msg(): service:      ~p", [SvcName]),
-    ?info("    schedule:sched_msg(): timeout:      ~p", [Timeout]),
-    ?info("    schedule:sched_msg(): callback:     ~p", [Callback]),
-%%    ?info("    schedule:sched_msg(): parameters:   ~p", [Parameters]),
-    ?info("    schedule:sched_msg(): signature:    ~p", [Signature]),
-    ?info("    schedule:sched_msg(): certificate:  ~p", [Certificate]),
+    ?info("schedule:sched_msg(): service:      ~p", [SvcName]),
+    ?info("schedule:sched_msg(): timeout:      ~p", [Timeout]),
+    ?info("schedule:sched_msg(): callback:     ~p", [Callback]),
+%%    ?info("schedule:sched_msg(): parameters:   ~p", [Parameters]),
+    ?info("schedule:sched_msg(): signature:    ~p", [Signature]),
+    ?info("schedule:sched_msg(): certificate:  ~p", [Certificate]),
 
     %% Create a new transaction ID.
     {NewTransID, NSt1} = create_transaction_id(St),
@@ -327,7 +324,7 @@ try_sending_messages(#service {
 			name = SvcName,
 			network_address = unknown_network_address,
 			messages_tid = _Tid } = _Service, St) ->
-    ?info("    schedule:try_send(): SvcName:   ~p: Not available", [SvcName]),
+    ?info("schedule:try_send(): SvcName:   ~p: Not available", [SvcName]),
     {not_available, St};
 
 
@@ -378,7 +375,6 @@ try_sending_messages(#service {
     end.
 
 
-
 %% Mark a service as available, as reported by data_link_up
 %%  If the service does not exist, it will be created as a host
 %%  for future messages destined to that service.
@@ -390,16 +386,16 @@ try_sending_messages(#service {
 %%  to send any messages queued inside it.
 %%
 service_available(SvcName, NetworkAddress, St) ->
-    ?info("    schedule:service_available(): service:         ~p", [ SvcName ]),
-    ?info("    schedule:service_available(): network_address: ~p", [ NetworkAddress ]),
+    ?info("schedule:service_available(): service:         ~p", [ SvcName ]),
+    ?info("schedule:service_available(): network_address: ~p", [ NetworkAddress ]),
 
     %% Find or create the service.
     {ok, Svc, _, NSt1} = find_or_create_service(SvcName, NetworkAddress, St),
 
     try_sending_messages(Svc, NSt1).
 
-service_unavailable(SvcName,  #st { services_tid = SvcTid } = St) ->
-    ?info("    schedule:service_unavailable(): service:         ~p", [ SvcName ]),
+service_unavailable(NetworkAddress,  #st { services_tid = SvcTid } = St) ->
+    ?info("schedule:service_unavailable(): address:         ~p", [ NetworkAddress ]),
 
     NSt1 = 
 	case ets:lookup(SvcTid, SvcName) of
@@ -433,18 +429,18 @@ bring_up_data_link(SvcName) ->
 		{ok, already_connected, _} ->
 		    already_connected;
 		Que -> 
-		    ?info("    schedule:bring_up_data_link() Que:~p.", [Que]),
+		    ?info("schedule:bring_up_data_link() Que:~p.", [Que]),
 		    ok
 	    end;
 
 	{ok, not_found, _, _} ->
-	    ?info("    schedule:bring_up_data_link() Failed to resolve remote Service: ~p."
+	    ?info("schedule:bring_up_data_link() Failed to resolve remote Service: ~p."
 		  "Service not found.", 
 		  [ SvcName ]),
 	    not_found;
 
 	Err ->  
-	    ?info("    schedule:bring_up_data_link() Failed to resolve remote Service: ~p: ~p", 
+	    ?info("schedule:bring_up_data_link() Failed to resolve remote Service: ~p: ~p", 
 		  [ SvcName, Err ]),
 	    err
     end.
@@ -452,12 +448,12 @@ bring_up_data_link(SvcName) ->
 send_message(NetworkAddress, SvcName, Timeout, 
 	     Parameters, Signature, Certificate) ->
 
-    ?info("    schedule:send_message(): network_address: ~p", [NetworkAddress]),
-    ?info("    schedule:send_message(): service:         ~p", [SvcName]),
-    ?info("    schedule:send_message(): timeout:         ~p", [Timeout]),
-%%    ?info("    schedule:send_message(): parameters:      ~p", [Parameters]),
-    ?info("    schedule:send_message(): signature:       ~p", [Signature]),
-    ?info("    schedule:send_message(): certificate:     ~p", [Certificate]),
+    ?info("schedule:send_message(): network_address: ~p", [NetworkAddress]),
+    ?info("schedule:send_message(): service:         ~p", [SvcName]),
+    ?info("schedule:send_message(): timeout:         ~p", [Timeout]),
+%%    ?info("schedule:send_message(): parameters:      ~p", [Parameters]),
+    ?info("schedule:send_message(): signature:       ~p", [Signature]),
+    ?info("schedule:send_message(): certificate:     ~p", [Certificate]),
 
     case rvi_common:send_component_request(
 	   protocol, send_message, 
@@ -483,20 +479,12 @@ send_message(NetworkAddress, SvcName, Timeout,
 %% service.
 %%
 multiple_services_available([], _NetworkAddress, St) ->
-    ?info("    schedule:multiple_services_available():  St: ~p", [ St]),
+    ?info("schedule:multiple_services_available():  St: ~p", [ St]),
     {ok, St};
 
 multiple_services_available([ Svc | T], NetworkAddress, St) ->
     {ok, NSt}  = service_available(Svc, NetworkAddress, St),
     multiple_services_available(T, NetworkAddress, NSt).
-
-multiple_services_unavailable([], St) ->
-    ?info("    schedule:multiple_services_unavailable():  St: ~p", [ St]),
-    {ok, St};
-
-multiple_services_unavailable([ Svc | T], St) ->
-    {ok, NSt}  = service_unavailable(Svc, St),
-    multiple_services_unavailable(T, NSt).
 
 
 find_or_create_service(ServiceName, St) ->
@@ -570,8 +558,8 @@ create_service(ServiceName, NetworkAddress, #st { services_tid = SvcsTid } = St)
     ets:insert(SvcsTid, Svc),
     
     %% Return new service and existing state.
-    ?info("    schedule:create_service():  SvcName:    ~p", [ ServiceName]),
-    ?info("    schedule:create_service():  MessageTID: ~p", [ Svc#service.messages_tid]),
+    ?info("schedule:create_service():  SvcName:    ~p", [ ServiceName]),
+    ?info("schedule:create_service():  MessageTID: ~p", [ Svc#service.messages_tid]),
     Svcs = ets:foldr(fun(SvcElem, Acc) -> [ SvcElem | Acc ] end, [], SvcsTid),
     ?debug("schedule:create_service(): Services: ~p", [ Svcs]),
     { ok, Svc, true, St}.  %% True indicates that the service is newly created.

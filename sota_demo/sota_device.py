@@ -28,7 +28,7 @@ from StringIO import StringIO
 import json
 from subprocess import call
 
-g_fd = 0
+g_fd = -1
 g_package = ''
 g_chunk_size = 0
 g_total_size = 0
@@ -59,7 +59,6 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
         msg = self.rfile.read(2)
         if len(msg) < 2:
             print "Connection closed"
-            self.finish()
             self.active = False
             return 
 
@@ -103,8 +102,12 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
     
 
     def on_message(self, message):
+        global g_fd 
+        global g_chunk_index
+        global g_total_size 
         cmd = json.loads(message)
         tid = cmd['id']
+
         if cmd['method'] == 'GetPendingUpdates':
             print "Got message", message
             self._get_pending_updates(cmd['id'])
@@ -136,24 +139,29 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
                                               'id': tid,
                                               'result': { 'progress': 100, 
                                                           'state': 'Idle'} }))
+                finish(1)
                 return
             
             # CHeck that we have actual progress to report
-            if g_chunk_size == 0 or g_total_size == 0:
+            if g_fd == -1:
+                print "No update in progress."
                 self.send_message(json.dumps({'jsonrpc': '2.0',
                                               'id': tid,
                                               'result': { 'progress': 0, 
                                                           'state': 'Update'} }))
                 return
 
-            chunk_frac = float(g_chunk_size) / float(g_total_size )
-            perc = float(g_chunk_index + 1) * chunk_frac * 100.0
-            if perc > 100.0:
-                perc = 100.0
+            g_chunk_index = g_chunk_index + random.randrange(2,10)
+            print "Chunk is now", g_chunk_index
+            # Are we done faking?
+            if g_chunk_index > 100:
+                g_chunk_index = 100
+                g_fd = -1
+                
 
             self.send_message(json.dumps({'jsonrpc': '2.0',
                                           'id': tid,
-                                          'result': { 'progress': perc, 
+                                          'result': { 'progress': g_chunk_index, 
                                                       'state': 'Update'} }))
             # Change 'state' to Idle when done
     
@@ -179,6 +187,9 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
     def _start_update(self, tid):
         global full_notify_service_name
         global g_retry
+        global g_package
+        global g_fd
+        global g_chunk_index
         # Strip the last component off self's full notify
         # service name to get a destination to send over
         # to the SOTA server's initiate_download
@@ -193,16 +204,19 @@ class WebSocketsHandler(SocketServer.StreamRequestHandler):
         pkg = available_packagess.pop(0)
         package = pkg['uuid']
         g_retry = pkg['retry']
+        g_fd = 1
+        g_chunk_index = 0
+        g_package = package
         print "Will initate download of package:",package
-        rvi_server.message(calling_service = "/sota",
-                           service_name = rvi_sota_prefix + "/initiate_download",
-                           transaction_id = time.time(),
-                           timeout = int(time.time())+60,
-                           parameters = [{ 
-                               u'package': package,
-                               u'retry': g_retry,
-                               u'destination': destination
-                           }])
+#        rvi_server.message(calling_service = "/sota",
+#                           service_name = rvi_sota_prefix + "/initiate_download",
+#                           transaction_id = time.time(),
+#                           timeout = int(time.time())+60,
+#                           parameters = [{ 
+#                               u'package': package,
+#                               u'retry': g_retry,
+#                               u'destination': destination
+#                           }])
 
         return
 
@@ -256,8 +270,8 @@ def start(package, chunk_size, total_size):
     file_name = "/tmp/" + package
 
     print "Starting package:", file_name
-    g_fd = open(file_name, "w")
-    print "open fd = ", g_fd
+    # g_fd = open(file_name, "w")
+    #print "open fd = ", g_fd
     return {u'status': 0}
 
 def chunk(index, msg):
@@ -276,9 +290,31 @@ def chunk(index, msg):
     return {u'status': 0}
 
 
-def _send_download_complete():
+def finish(dummy):
+    global g_fd
     global g_retry
-    time.sleep(1.0)
+    global g_package
+    global g_chunk_index
+
+    print "Package:", g_package, " is complete in /tmp"
+#    g_fd.close()
+    g_fd = -1
+    g_chunk_index = 0
+#    call(["wrt-installer", "-up", "/tmp/" + g_package])
+#    call(["wrt-installer", "-i", "/tmp/" + g_package])
+    if g_package.find("2.0") != -1:
+        print "Doing 2.0"
+        call(["unzip", "-d", "/opt/usr/apps/intelPoc20/res/wgt", "-q", "-o", "/root/AudioSettings.2.0.wgt"])        
+    else:
+        print "Doing 1.0"
+        call(["unzip", "-d", "/opt/usr/apps/intelPoc20/res/wgt", "-q", "-o", "/root/AudioSettings.1.0.wgt"])        
+
+
+    print "Package:", g_package, " unzipped into /opt/usr/apps/intelPoc20/res/wgt"
+
+    # Create a thread to handle incoming stuff so that we can do input
+    # in order to get new values
+
     print "Sending download complete"
     rvi_server.message(calling_service = "/sota",
                        service_name = rvi_sota_prefix + "/download_complete",
@@ -289,23 +325,6 @@ def _send_download_complete():
                            u'retry': g_retry
                        }])
     g_retry = 0
-
-def finish(dummy):
-    global g_fd
-    global g_package
-    global g_chunk_index
-
-    print "Package:", g_package, " is complete in /tmp"
-    g_fd.close()
-    g_fd = -1
-    g_chunk_index = 0
-    call(["wrt-installer", "-up", "/tmp/" + g_package])
-    call(["wrt-installer", "-i", "/tmp/" + g_package])
-
-    # Create a thread to handle incoming stuff so that we can do input
-    # in order to get new values
-    thr = threading.Thread(target=_send_download_complete)
-    thr.start()    
     
     return {u'status': 0}
 
@@ -363,7 +382,7 @@ emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_servi
 
 emulator_service.register_function(notify, "/sota/notify" )
 emulator_service.register_function(start, "/sota/start" )
-emulator_service.register_function(chunk, "/sota/chunk" )
+# emulator_service.register_function(chunk, "/sota/chunk" )
 emulator_service.register_function(finish, "/sota/finish" )
 
 # Create a thread to handle incoming stuff so that we can do input
@@ -374,6 +393,7 @@ thr.start()
 # Setup a websocket thread
 # ws_server = SocketServer.TCPServer(("127.0.0.1", 12999), WebSocketsHandler)
 ws_server = SocketServer.TCPServer(("", 9000), WebSocketsHandler)
+ws_server.allow_reuse_address = True
 ws_thread = threading.Thread(target=ws_server.serve_forever)
 ws_thread.start()
 
@@ -408,10 +428,10 @@ res = rvi_server.register_service(service = "/sota/start",
 full_start_service_name = res['service']
 
 
-res = rvi_server.register_service(service = "/sota/chunk",
-                                  network_address = emulator_service_url)
+#res = rvi_server.register_service(service = "/sota/chunk",
+#                                  network_address = emulator_service_url)
 
-full_chunk_service_name = res['service']
+#full_chunk_service_name = res['service']
 
 res = rvi_server.register_service(service = "/sota/finish",
                                   network_address = emulator_service_url)
@@ -423,7 +443,7 @@ print "Vehicle RVI node URL:       ", rvi_url
 print "Emulator URL:               ", emulator_service_url
 print "Full notify service name :  ", full_notify_service_name
 print "Full start service name  :  ", full_start_service_name
-print "Full chunk service name  :  ", full_chunk_service_name
+#print "Full chunk service name  :  ", full_chunk_service_name
 print "Full finish service name :  ", full_finish_service_name
 
 while True:
