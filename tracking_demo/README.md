@@ -31,7 +31,9 @@ Specifies the channels that we want reported back to the server.
 
 + reporting_interval<br>
 Specifies the number of milliseconds between each data sample that is
-to be sent back end server.
+to be sent back end server.  If reporting interval is a negative
+integer, the channel's value will be reported at the given (absolute
+value) interval, or when the value changes, whatever happens first.
 
 
 ## UNSUBSCRIBE ##
