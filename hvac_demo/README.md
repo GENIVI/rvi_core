@@ -94,8 +94,7 @@ From the rvi root directory, setup the vehicle node:
 
     ./scripts/setup_rvi_node.sh -d -n vehicle -c hvac_demo/vehicle.config
 
-The new developer release will be created in a subdiretory named
-```vehicle```
+The new developer release will be created in a subdiretory named ```vehicle```
 
 
 ## CREATE THE BACKEND DEVELOPMENT RELEASE
@@ -130,8 +129,8 @@ The VIN number that will be used by the mobile device are the digits
 at the end of the "Node Service Prefix" printed out at the end of the
 launch process. 
 
-By default, the ```hvac_demo/vehicle.config``` file has its
-```node_service_prefix``` entry set to ```jlr.com/vin/1234/```,
+By default, the ```hvac_demo/vehicle.config``` file has its ```node_service_prefix```
+entry set to ```jlr.com/vin/1234/```,
 yielding a VIN of "1234". 
 
 
@@ -221,8 +220,7 @@ started with "rvi_node -n vehicle" and registers two services with it:
    its command line
 
 In both cases, ```jlr.com/vin/[vin]``` is the vehicle RVI node's service
-prefix specified in
-```vehicle.configure```->```env```->```rvi```->```node_service_prefix```.
+prefix specified in ```vehicle.configure```->```env```->```rvi```->```node_service_prefix```.
 
 
 The mobile emulator invokes the subscribe service above in order
