@@ -254,8 +254,8 @@ The service name has the following layout:
 
        jlr.com/backend/mobile/[phone_nr]/hvac/publish
  
-   The ```jlr.com/backend``` prefix is the backend RVI node's service prefix specified in
-   ```backend.configure```->```env```->```rvi```->```node_service_prefix```.
+   The ```jlr.com/backend``` prefix is the backend RVI node's service prefix specified 
+   in ```backend.configure```->```env```->```rvi```->```node_service_prefix```.
 
    The ```[phone_nr]``` is the phone number specified on the command
    line when the mobile emulator is started.
