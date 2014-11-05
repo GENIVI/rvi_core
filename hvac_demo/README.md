@@ -246,11 +246,11 @@ The mobile device emulator connects to Service Edge of the backend
 
 At startup, the mobile emulator will do two things:
  
-1. Register a service with the backend RVI node<br>
-This service is invoked by the HVAC emulator to transmit 
-key/value pairs entered on its commandd line.
+1. <b>Register a service with the backend RVI node</b><br>
+   This service is invoked by the HVAC emulator to transmit 
+   key/value pairs entered on its commandd line.
 
-The service name has the following layout:
+   The service name has the following layout:
 
        jlr.com/backend/mobile/[phone_nr]/hvac/publish
  
@@ -260,7 +260,7 @@ The service name has the following layout:
    The ```[phone_nr]``` is the phone number specified on the command
    line when the mobile emulator is started.
 
-2. Send a suscription request to the HVAC emulator<br>
+2. <b>Send a suscription request to the HVAC emulator</b><br>
    The HVAC emulator's subscription service is invoked as
  
       jlr.com/vin/[vin]/hvac/subscribe
