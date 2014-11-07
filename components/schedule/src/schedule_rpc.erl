@@ -49,10 +49,9 @@ register_remote_services(NetworkAddress, AvailableServices) ->
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
-unregister_remote_services(NetworkAddress, DiscountinuedServices) ->
-    ?debug("schedule_rpc:unregister_remote_services(): network_address: ~p", [ NetworkAddress]),
+unregister_remote_services(DiscountinuedServices) ->
     ?debug("schedule_rpc:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
-    schedule:unregister_remote_services(NetworkAddress, DiscountinuedServices),
+    schedule:unregister_remote_services(DiscountinuedServices),
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
@@ -76,9 +75,8 @@ handle_rpc("register_remote_services", Args) ->
     register_remote_services(NetworkAddress, AvailableServices);
 
 handle_rpc("unregister_remote_services", Args) ->
-    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     {ok,  DiscountinuedServices} = rvi_common:get_json_element(["services"], Args),
-    unregister_remote_services(NetworkAddress, DiscountinuedServices);
+    unregister_remote_services(DiscountinuedServices);
 
 handle_rpc(Other, _Args) ->
     ?debug("schedule_rpc:handle_rpc(~p): unknown", [ Other ]),

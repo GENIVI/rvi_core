@@ -41,6 +41,21 @@ init() ->
     ok.
 
     
+
+
+register_remote_service(NetworkAddress) ->
+    ?info("service_discovery_rpc:register_remote_service(): service:         empty"),
+    ?info("service_discovery_rpc:register_remote_service(): network_address: ~p", [NetworkAddress]),
+
+    ets:insert(?REMOTE_ADDRESS_TABLE, 
+	       #service_entry {
+		  service = "",
+		  network_address = NetworkAddress
+		 }),
+
+    {ok, [ {service, ""}, { status, rvi_common:json_rpc_status(ok)}]}.
+
+
 register_remote_service(Service, NetworkAddress) ->
     ?info("service_discovery_rpc:register_remote_service(): service:         ~p", [Service]),
     ?info("service_discovery_rpc:register_remote_service(): network_address: ~p", [NetworkAddress]),
@@ -53,6 +68,14 @@ register_remote_service(Service, NetworkAddress) ->
 		  network_address = NetworkAddress
 		 }),
 
+    %% Delete any addresses stored with an empty service name,
+    %% installed with register_remote_service/1, since we now have at
+    %% least one service name.
+    ets:match_delete(?REMOTE_ADDRESS_TABLE, 
+		     #service_entry { 
+			service = [], 
+			network_address = NetworkAddress 
+		      }),
     ets:insert(?REMOTE_ADDRESS_TABLE, 
 	       #service_entry {
 		  service = FullSvcName,
@@ -72,6 +95,18 @@ unregister_remote_service(NetworkAddress) ->
     ?info("service_discovery_rpc:unregister_remote_service(): ~p -> ~p", 
 	  [NetworkAddress, Svcs]),
     
+
+    %% We now have a bunch of service records, convert them to a list of service
+    %% names and send them of to schedule for deregistration
+    SvcNames = lists:foldr(fun(#service_entry {  service = SvcName }, Acc) -> 
+				       [SvcName | Acc]
+			       end, [], Svcs),
+
+    rvi_common:send_component_request(schedule, unregister_remote_services, 
+				      [
+				       { services, SvcNames }
+				      ]),
+
     [ ets:delete(?REMOTE_SERVICE_TABLE, Svc#service_entry.service) || Svc <- Svcs ],
     ets:delete(?REMOTE_ADDRESS_TABLE, NetworkAddress),
 
@@ -174,7 +209,7 @@ get_services(Table) ->
 %% Get all unique network addresses that are currently active.
 %%
 get_remote_network_addresses() ->
-    get_network_addresses(?REMOTE_SERVICE_TABLE).
+    get_network_addresses(?REMOTE_ADDRESS_TABLE).
 
 get_local_network_addresses() ->
     get_network_addresses(?LOCAL_SERVICE_TABLE).
@@ -215,7 +250,7 @@ handle_rpc("register_remote_services", Args) ->
 
     %% Loop through the services and register them.
     case Services of 
-	[] -> register_remote_service("", Address); 
+	[] -> register_remote_service(Address); 
 	_ -> lists:map(fun(Svc) -> register_remote_service(Svc, Address) end, Services)
     end,
 
@@ -241,12 +276,6 @@ handle_rpc("unregister_remote_services", Args) ->
 
     %% Loop through the services and de-register them.
     unregister_remote_service(Address),
-
-    %% Forward to scheduler now that we have updated our own state
-    rvi_common:send_component_request(schedule, unregister_remote_services, 
-				      [
-				       { network_address, Address }
-				      ]),
     {ok, [ { status, rvi_common:json_rpc_status(ok) } ]};
 
 handle_rpc("resolve_remote_service", Args) ->

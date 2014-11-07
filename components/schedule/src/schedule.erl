@@ -111,8 +111,8 @@ schedule_message(SvcName,
 register_remote_services(NetworkAddress, AvailableServices) ->
     gen_server:cast(?SERVER, { register_remote_services, NetworkAddress, AvailableServices }).
 
-unregister_remote_services(NetworkAddress) ->
-    gen_server:cast(?SERVER, { unregister_remote_services, NetworkAddress }).
+unregister_remote_services(ServiceNames) ->
+    gen_server:cast(?SERVER, { unregister_remote_services, ServiceNames }).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -179,9 +179,9 @@ handle_cast( {register_remote_services, NetworkAddress, AvailableServices}, St) 
     {noreply, NSt};
 
 
-handle_cast( {unregister_remote_services, NetworkAddress}, St) ->
-    ?info("schedule:register_remote_services(): NetworkAddress:        ~p", [NetworkAddress]),
-
+handle_cast( {unregister_remote_services, ServiceNames}, St) ->
+    ?info("schedule:unregister_remote_services(): Services:    ~p", [ServiceNames]),
+    {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
     {noreply, NSt };
 
 handle_cast(_Msg, St) ->
@@ -335,7 +335,7 @@ try_sending_messages(#service {
 
     ?debug("schedule:try_send(): SvcName:         ~p", [SvcName]),
     ?debug("schedule:try_send(): Network Address: ~p", [NetworkAddress]),
-    
+     
     %% Extract the first message of the queue.
     case ets:first(Tid) of
 	%% No more messages to send.
@@ -394,21 +394,10 @@ service_available(SvcName, NetworkAddress, St) ->
 
     try_sending_messages(Svc, NSt1).
 
-service_unavailable(NetworkAddress,  #st { services_tid = SvcTid } = St) ->
-    ?info("schedule:service_unavailable(): address:         ~p", [ NetworkAddress ]),
-
-    NSt1 = 
-	case ets:lookup(SvcTid, SvcName) of
-	    [] ->  %% The given service does not exist.
-		 St ;
-
-	    [ Svc ] ->
-		%% Update the network address, if applicable.
-		{ok, _, TmpSt, _} = update_service_network_address(Svc, unavailable, St),
-		TmpSt
-	end,
-
-    { ok, NSt1 }.
+service_unavailable(SvcName,  #st { services_tid = SvcTid } = St) ->
+    ?info("schedule:service_unavailable(): Service:  ~p", [ SvcName ]),
+    ets:delete(SvcTid, SvcName),
+    { ok, St }.
 
 
 bring_up_data_link(SvcName) ->
@@ -479,12 +468,18 @@ send_message(NetworkAddress, SvcName, Timeout,
 %% service.
 %%
 multiple_services_available([], _NetworkAddress, St) ->
-    ?info("schedule:multiple_services_available():  St: ~p", [ St]),
     {ok, St};
 
 multiple_services_available([ Svc | T], NetworkAddress, St) ->
     {ok, NSt}  = service_available(Svc, NetworkAddress, St),
     multiple_services_available(T, NetworkAddress, NSt).
+
+multiple_services_unavailable([], St) ->
+    {ok, St};
+
+multiple_services_unavailable([ SvcName | T], St) ->
+    {ok, NSt} = service_unavailable(SvcName, St),
+    multiple_services_unavailable(T, NSt).
 
 
 find_or_create_service(ServiceName, St) ->
