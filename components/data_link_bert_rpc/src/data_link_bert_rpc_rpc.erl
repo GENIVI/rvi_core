@@ -360,10 +360,11 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 
 
 
+
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
 	      { receive_data, Data}, _ExtraArgs) ->
 %%    ?info("data_link_bert:receive_data(): ~p", [ Data ]),
-    ?info("data_link_bert:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?info("data_lnik_bert:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     case 
 	rvi_common:send_component_request(protocol, receive_message, 
 					  [
