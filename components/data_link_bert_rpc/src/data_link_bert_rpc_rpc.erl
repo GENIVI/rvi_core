@@ -18,6 +18,7 @@
 -include_lib("lager/include/log.hrl").
 
 -define(DEFAULT_BERT_RPC_PORT, 9999).
+-define(DEFAULT_RECONNECT_INTERVAL, 5000).
 -define(DEFAULT_BERT_RPC_ADDRESS, "0.0.0.0").
 
 
@@ -49,7 +50,7 @@ init() ->
 		    setup_static_node_data_links(),
 		    ok;
 
-			Err -> 
+		Err -> 
 		    ?error("data_link_bert:init(): Failed to setup exo http server: ~p", 
 			   [ Err ]),
 		    Err
@@ -84,7 +85,7 @@ setup_static_node_data_link(Prefix, NetworkAddress) ->
 
 	    ?notice("data_link_bert:setup_static_node_data_link(~p): Will try again in 5 sec", 
 			   [NetworkAddress]),
-	    timer:apply_after(5000, 
+	    timer:apply_after(?DEFAULT_RECONNECT_INTERVAL, 
 			      ?MODULE, setup_static_node_data_link, 
 			      [Prefix, NetworkAddress ]),
 	    not_available
@@ -380,7 +381,7 @@ handle_socket(_FromPid, SetupIP, SetupPort, data,
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, Data, _ExtraArgs) ->
     ?warning("data_link_bert:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ?warning("data_link_bert:unknown_data(): Unknown data: ~p",  [ Data]),
+    ?warning("data_link_bert:unknown_data(): Unknown data:  ~p",  [ Data]),
     ok.
 
 handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
@@ -390,8 +391,20 @@ handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
 				      [
 				       {network_address, RemoteNetworkAddress}
 				      ]),
-    %% FIXME: Report all associated services as being not available
-    %% FIXME: Reconnect if static node
+
+    %% Check if this is a static node. If so, setup a timer for a reconnect
+    case lists:keyfind(RemoteNetworkAddress, 2, rvi_common:static_nodes()) of
+	false ->
+	    true;
+
+	{ StaticPrefix, StaticNetworkAddress } ->
+	    ?info("data_link_bert:socket_closed(): Reconnect service:  ~p", [ StaticPrefix ]),
+	    ?info("data_link_bert:socket_closed(): Reconnect address:  ~p", [ StaticNetworkAddress ]),
+	    ?info("data_link_bert:socket_closed(): Reconnect interval: ~p", [ ?DEFAULT_RECONNECT_INTERVAL ]),
+	    timer:apply_after(?DEFAULT_RECONNECT_INTERVAL, 
+			      ?MODULE, setup_static_node_data_link, 
+			      [StaticPrefix, StaticNetworkAddress ])
+    end,
     ok;
 
 handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
