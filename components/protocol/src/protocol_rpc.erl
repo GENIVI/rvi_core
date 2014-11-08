@@ -11,17 +11,31 @@
 
 
 -export([handle_rpc/2]).
--export([init/0]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+	 terminate/2, code_change/3]).
+-export([init_http_server/0]).
 
 -include_lib("lager/include/log.hrl").
 
-init() ->
+-define(SERVER, ?MODULE). 
+-record(st, { }).
+
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+init([]) ->
+    ?debug("protocol_rpc:init(): called."),
+    {ok, #st {}}.
+
+init_http_server() ->
     case rvi_common:get_component_config(protocol, exo_http_opts) of
 	{ ok, ExoHttpOpts } ->
 	    exoport_exo_http:instance(protocol_sup, 
 				      protocol_rpc,
 				      ExoHttpOpts);
-	Err -> Err
+	_ ->
+	    ?info("protocol_rpc:init_http_server(): exo_http_opts not specified. Gen Server only"),
+	    ok
     end,
 
     ok.
@@ -104,3 +118,36 @@ handle_rpc(Other, _Args) ->
     ?debug("    protocol_rpc:handle_rpc(~p): Unknown~n", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
+handle_call({rvi_call, send_message, Args}, _From, State) ->
+    {_, ServiceName} = lists:keyfind(service_name, 1, Args),
+    {_, Timeout} = lists:keyfind(timeout, 1, Args),
+    {_, NetworkAddress} = lists:keyfind(network_address, 1, Args),
+    {_, Parameters} = lists:keyfind(parameters, 1, Args),
+    {_, Signature} = lists:keyfind(signature, 1, Args),
+    {_, Certificate} = lists:keyfind(certificate, 1, Args),
+    { reply, send_message(ServiceName,
+			  Timeout,
+			  NetworkAddress,
+			  Parameters,
+			  Signature, 
+			  Certificate), State };
+
+
+handle_call({rvi_call, receive_message, Args}, _From, State) ->
+    {_, Data} = lists:keyfind(data, 1, Args),
+    {reply, receive_message(Data), State};
+
+handle_call(Other, _From, State) ->
+    ?warning("authorize_call:handle_rpc(~p): unknown", [ Other ]),
+    { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
