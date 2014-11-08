@@ -15,7 +15,8 @@
 -export([send_http_request/3]).
 -export([send_component_request/3]).
 -export([send_component_request/4]).
--export([find_component_address/1]).
+-export([get_component_url/1]).
+-export([get_component_process/1]).
 -export([json_rpc_status/1]).
 -export([get_json_element/2]).
 -export([sanitize_service_string/1]).
@@ -24,7 +25,7 @@
 -export([remote_service_to_string/1]).
 -export([remote_service_to_string/2]).
 -export([local_service_prefix/0]).
--export([find_static_node/1]).
+-export([get_static_node/1]).
 -export([static_nodes/0]).
 -export([is_local_service/1]).
 -export([node_address_string/0]).
@@ -130,29 +131,48 @@ get_request_result(Other)->
 %% Send a request to another component (service_edge, authorize, etc).
 send_component_request(Component, Service, ArgList) ->
     case send_component_request(Component, Service, ArgList, []) of
-	{ ok, Status, _, Body} ->
-	    { ok, Status, Body };
+	{ ok, Status, _} ->
+	    { ok, Status };
 
 	Err -> Err
     end.
 
 send_component_request(Component, Service, ArgList, ReturnParams) ->
-    Address = rvi_common:find_component_address(Component),
 
     %% ?debug("send_component_request(): Component:      ~p", [ Component]),
     %% ?debug("send_component_request(): Address:        ~p", [ Address ]),
     %% ?debug("send_component_request(): Service:        ~p", [ Service]),
     %% ?debug("send_component_request(): ArgList:        ~p", [ ArgList]),
     %% ?debug("send_component_request(): ReturnParams:   ~p", [ ReturnParams]),
+	    
 
-    case get_request_result(
-	   send_http_request(Address, atom_to_list(Service),  ArgList)
-	  ) of
-	{ok, Status, JSONBody} ->
-	    ReturnVal = retrieve_reply_elements(ReturnParams, JSONBody),
-	    { ok, Status, ReturnVal, JSONBody };
-		
-	Err -> Err
+    %%
+    %% Send to gen_server, if configured, else URL
+    %%
+    case { rvi_common:get_component_process(Component), 
+	   rvi_common:get_component_url(Component) }  of
+
+	%% We have a gen_server process to send to
+	{ Proc, undefined } ->
+	    ?info("Sending ~p:~p to ~p", [Component, Service, Proc]),
+	    { Reply, ReplyArg} = gen_server:call(Proc, { rvi_call, Service, ArgList }),
+	    %% Retrieve the status from the reply
+	    [ Status | ReturnValues ] = retrieve_reply_elements([ status | ReturnParams], ReplyArg),
+	    %% Return
+	    { Reply, json_rpc_status(Status), ReturnValues };
+	
+	{ undefined, Address } ->
+	    case get_request_result(
+		   send_http_request(Address, atom_to_list(Service),  ArgList)
+		  ) of
+		{ok, Status, JSONBody} ->
+		    ReturnVal = retrieve_json_reply_elements(ReturnParams, JSONBody),
+		    { ok, Status, ReturnVal };
+
+		Err -> Err
+	    end;
+
+	_ -> { error, {unknown_component, Component} }
     end.
 
 send_http_request(Url,Method, Args) ->
@@ -182,10 +202,19 @@ send_http_request(Url,Method, Args) ->
     end.
 	
 
-find_component_address(Component) when is_atom(Component) ->
+get_component_url(Component) when is_atom(Component) ->
     %% Locate the correct service address for the given component
     case get_component_config(Component, url) of
 	{ok, URL } -> URL;
+
+	_ -> undefined
+    end.
+
+
+get_component_process(Component) when is_atom(Component) ->
+    %% Locate the correct service address for the given component
+    case get_component_config(Component, gen_server) of
+	{ok, GenServer } -> GenServer;
 	_ -> undefined
     end.
 
@@ -245,24 +274,39 @@ get_json_element_(Path,JSON) ->
 	     [Path, JSON]),
     { error, undefined }.
 
-    
-retrieve_reply_elements(Elem, JSON) ->
-    retrieve_reply_elements(Elem, JSON, []).
+retrieve_reply_elements(ElemList, Reply) ->
+    retrieve_reply_elements(ElemList, Reply, []).
 
 retrieve_reply_elements([], _, Acc) ->
     lists:reverse(Acc);
 
-retrieve_reply_elements([Elem | T], JSON, Acc) when is_atom(Elem) ->
-    retrieve_reply_elements([[Elem] | T], JSON, Acc);
+
+retrieve_reply_elements([Elem | T], Reply, Acc) ->
+    case lists:keyfind(Elem, 1, Reply) of 
+	{ _, Value } ->
+	    retrieve_reply_elements(T, Reply, [ Value | Acc ]);
+	false ->
+	    retrieve_reply_elements(T, Reply, [ undefined | Acc ])
+    end.
     
 
-retrieve_reply_elements([Elem | T], JSON, Acc) when is_list(Elem) ->
+retrieve_json_reply_elements(Elem, JSON) ->
+    retrieve_json_reply_elements(Elem, JSON, []).
+
+retrieve_json_reply_elements([], _, Acc) ->
+    lists:reverse(Acc);
+
+retrieve_json_reply_elements([Elem | T], JSON, Acc) when is_atom(Elem) ->
+    retrieve_json_reply_elements([[Elem] | T], JSON, Acc);
+    
+
+retrieve_json_reply_elements([Elem | T], JSON, Acc) when is_list(Elem) ->
     %% prefix with result since that is where all reply elements are stored.
     case get_json_element([ result | Elem ], JSON) of 
 	{ ok, Value } ->
-	    retrieve_reply_elements(T, JSON, [ Value | Acc ]);
+	    retrieve_json_reply_elements(T, JSON, [ Value | Acc ]);
 	{ error, undefined } ->
-	    retrieve_reply_elements(T, JSON, [ undefined | Acc ])
+	    retrieve_json_reply_elements(T, JSON, [ undefined | Acc ])
     end.
 
 
@@ -333,46 +377,46 @@ static_nodes() ->
 %% Locate the statically configured node whose service(s) prefix-
 %% matches the provided service.
 %% FIXME: Longest prefix match.
-find_static_node(Service) ->
+get_static_node(Service) ->
 	case application:get_env(rvi, ?STATIC_NODES) of
 
 	    {ok, NodeList} when is_list(NodeList) -> 
-		find_static_node(Service, NodeList);
+		get_static_node(Service, NodeList);
 
 	    undefined -> 
 		?debug("No ~p configured under rvi.", [?STATIC_NODES]),
 		not_found
 	end.
 
-find_static_node(_Service, []) ->
+get_static_node(_Service, []) ->
     not_found;
 
 %% Validate that argumenst are all lists.
-find_static_node(Service, [{ SvcPrefix, NetworkAddress} | T ]) when 
+get_static_node(Service, [{ SvcPrefix, NetworkAddress} | T ]) when 
       not is_list(Service); not is_list(SvcPrefix); not is_list(NetworkAddress) ->
-    ?warning("rvi_common:find_static_node(): Could not resolve ~p against {~p, ~p}:"
+    ?warning("rvi_common:get_static_node(): Could not resolve ~p against {~p, ~p}:"
 	     "One or more elements not strings.",  [ Service, SvcPrefix, NetworkAddress]),
-    find_static_node(Service, T );
+    get_static_node(Service, T );
     
 
 %% If the service we are trying to resolve has a shorter name than
 %% the prefix we are comparing with, ignore.
-find_static_node(Service, [{ SvcPrefix, _NetworkAddress } | T ]) when 
+get_static_node(Service, [{ SvcPrefix, _NetworkAddress } | T ]) when 
       length(Service) < length(SvcPrefix) ->
-    ?debug("rvi_common:find_static_node(): Service: ~p is shorter than prefix ~p. Ignore.",
+    ?debug("rvi_common:get_static_node(): Service: ~p is shorter than prefix ~p. Ignore.",
 	   [ Service, SvcPrefix]),
-    find_static_node(Service, T );
+    get_static_node(Service, T );
 
-find_static_node(Service, [{ SvcPrefix, NetworkAddress} | T] ) ->
+get_static_node(Service, [{ SvcPrefix, NetworkAddress} | T] ) ->
     case string:str(Service, SvcPrefix) of
 	1 ->
-	    ?debug("rvi_common:find_static_node(): Service: ~p -> { ~p, ~p}.",
+	    ?debug("rvi_common:get_static_node(): Service: ~p -> { ~p, ~p}.",
 		   [ Service, SvcPrefix, NetworkAddress]),
 	    NetworkAddress;
 	_ ->
-	    ?debug("rvi_common:find_static_node(): Service: ~p != { ~p, ~p}.",
+	    ?debug("rvi_common:get_static_node(): Service: ~p != { ~p, ~p}.",
 		   [ Service, SvcPrefix, NetworkAddress]),
-	    find_static_node(Service, T )
+	    get_static_node(Service, T )
     end.
 	    
 %% Return true if the provided service is locally connected to this
@@ -444,7 +488,7 @@ get_component_config(Component, Key) ->
 
 		undefined ->
 		    Err = {missing_env, {rvi, { component, [ { Component, { Key, {}}} ]}}},
-		    ?warning("get_component_config(): Missing app environment: ~p", [Err]),
+		    ?debug("get_component_config(): Missing app environment: ~p", [Err]),
 		    {error, Err};
 
 		Config-> 

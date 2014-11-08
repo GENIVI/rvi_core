@@ -42,7 +42,7 @@ send_message(ServiceName, Timeout, NetworkAddress, Parameters, Signature, Certif
 				       {network_address, NetworkAddress}, 
 				       {data, Data}
 				      ]) of 
-	{ ok, _JSONStatus, _JSON} -> 
+	{ ok, _JSONStatus } -> 
 	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
 	
 	Err -> 
@@ -70,7 +70,7 @@ receive_message(Data) ->
 					   { signature, Signature},
 					   { certificate, Certificate }
 					  ]) of
-	{ ok, _JSONStatus, _JSON} -> 
+	{ ok, _JSONStatus} -> 
 	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
 	
 	Err -> 

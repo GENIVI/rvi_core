@@ -166,7 +166,7 @@ resolve_service(Table, RawService) ->
 
 	    
 	    %% Check if this is a service residing on the backend server
-	    case rvi_common:find_static_node(Service) of
+	    case rvi_common:get_static_node(Service) of
 		not_found -> %% Not found
 		    ?info("service_discovery_rpc:resolve_service(~p): Service not found in static nodes", 
 			   [Service]),

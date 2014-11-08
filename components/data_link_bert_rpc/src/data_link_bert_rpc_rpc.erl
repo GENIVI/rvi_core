@@ -175,7 +175,7 @@ announce_new_local_service(Service) ->
     %% we currently have a conneciton to.
     case rvi_common:send_component_request(service_discovery, get_remote_network_addresses, [], 
 					   [ addresses ]) of
-	{ ok, _, [ Addresses ], _JSON} -> 
+	{ ok, _, [ Addresses ] } -> 
 	    ?info("data_link_bert:announce_new_local_service(): Addresses      ~p", 
 		   [ Addresses]),
 
@@ -308,7 +308,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     %% First grab all our services.
     case rvi_common:send_component_request(service_discovery, get_local_services, [], 
 					   [ services ]) of
-	{ ok, _, [ JSONSvc], _JSON} -> 
+	{ ok, _, [ JSONSvc] } -> 
 	    %% Covnert to JSON structured typles.
 	    LocalServices = 
 		lists:foldl(fun({struct, JSONElem}, Acc) -> 
@@ -371,7 +371,7 @@ handle_socket(_FromPid, SetupIP, SetupPort, data,
 					  [
 					   { data, Data }
 					  ]) of
-	{ ok, _, _JSON} -> 
+	{ ok, _ } -> 
 	    ok;
 	Err -> 
 	    ?info("data_link_bert:receive_data(): Failed to send component request: ~p", 

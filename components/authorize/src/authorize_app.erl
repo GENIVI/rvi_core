@@ -24,9 +24,13 @@ start(_StartType, _StartArgs) ->
     authorize_sup:start_link().
 
 start_phase(init, _, _) ->
-    authorize_rpc:init(),
+    authorize_rpc:init_http_server(),
+    ok;
+
+start_phase(_Other, _, _) ->
     ok.
 
 
 stop(_State) ->
+
     ok.

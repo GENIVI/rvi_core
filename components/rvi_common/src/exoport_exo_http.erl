@@ -26,8 +26,9 @@ instance(SupMod, AppMod, Opts) ->
 				 {?MODULE, handle_body, [AppMod]}}]]},
 	     permanent, 5000, worker, [exo_http_server]},
     case supervisor:start_child(SupMod, Child) of
-	{ok, _} -> ok;
+	{ok, _} ->  ok;
 	{ok, _, _} -> ok;
+
 	Err -> Err
     end.
 

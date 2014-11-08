@@ -408,21 +408,21 @@ bring_up_data_link(SvcName) ->
 					   [ {service, SvcName} ],
 					   [ network_address ]) of
 
-	{ ok, ok, [ NetworkAddress], _SDJSON } -> 
+	{ ok, ok, [ NetworkAddress] } -> 
 	    %% Tell data link to bring up a communicationc hannel.
 	    case rvi_common:send_component_request(data_link, setup_data_link, 
 						   [
 						    {service, SvcName}, 
 						    {network_address, NetworkAddress}
 						   ]) of
-		{ok, already_connected, _} ->
+		{ok, already_connected } ->
 		    already_connected;
 		Que -> 
 		    ?info("schedule:bring_up_data_link() Que:~p.", [Que]),
 		    ok
 	    end;
 
-	{ok, not_found, _, _} ->
+	{ok, not_found, _ } ->
 	    ?info("schedule:bring_up_data_link() Failed to resolve remote Service: ~p."
 		  "Service not found.", 
 		  [ SvcName ]),
@@ -454,7 +454,7 @@ send_message(NetworkAddress, SvcName, Timeout,
 	    { signature, Signature},
 	    { certificate, Certificate }
 	   ]) of
-	{ ok, _, _} -> ok;
+	{ ok, _ } -> ok;
 	Err -> Err
     end.
 

@@ -20,7 +20,7 @@
 
 %% Called by service_edge_app:start_phase().
 init() ->
-    ?notice("---- Service Edge URL:          ~s", [ rvi_common:find_component_address(service_edge)]),
+    ?notice("---- Service Edge URL:          ~s", [ rvi_common:get_component_url(service_edge)]),
     ?notice("---- Node Service Prefix:       ~s", [ rvi_common:local_service_prefix()]),
     case rvi_common:get_component_config(service_edge, exo_http_opts) of
 	{ ok, ExoHttpOpts } ->
@@ -33,19 +33,22 @@ init() ->
     %%
     %% Fire up the websocket subsystem, if configured
     %%
-    case rvi_common:get_component_config(service_edge, websocket) of
+    case rvi_common:get_component_config(service_edge, websocket, not_found) of
+	{ok, not_found} -> 
+	    ?notice("service_edge:init(): No websocket config specified. Will use JSON-RPC/HTTP only."),
+	    ok;
+
 	{ ok, WSOpts } ->
 	    case proplists:get_value(port, WSOpts, undefined ) of
 		undefined -> 
-		    {error, { missing_config, service_edge, port}};
-
+		    ok;
+		
 		Port ->
 		    %% FIXME: MONITOR AND RESTART
 		    wse_server:start(Port, proplists:delete(port, WSOpts)),
 		    ok
-	    end;
+	    end
 
-	WSErr -> WSErr
     end.
 
 
@@ -60,7 +63,7 @@ register_service(Service, Address) ->
 					   {service, Service}, 
 					   {network_address, Address}
 					  ], [service]) of
-	{ ok, JSONStatus, [ FullSvcName], _JSON} -> 
+	{ ok, JSONStatus, [ FullSvcName]} -> 
 	    
 	    %% Announce the new service
 	    rvi_common:send_component_request(data_link, announce_new_local_service,
@@ -101,7 +104,7 @@ handle_local_message(ServiceName, Timeout, Parameters, CallingService) ->
 					   {service_name, ServiceName}
 					  ],
 					  [ certificate, signature ]) of
-	{ ok, ok, [Certificate, Signature], _AuthJSON } -> 
+	{ ok, ok, [Certificate, Signature] } -> 
 
 	    %%
 	    %% Check if this is a local service. If so, just forward it to its service_name.
@@ -141,11 +144,11 @@ handle_remote_message(ServiceName, Timeout, Parameters, Signature, Certificate) 
 					   {certificate, Certificate},
 					   {signature, Signature}
 					  ]) of
-	{ ok, ok, _AuthJSON } -> 
+	{ ok, ok } -> 
 	    forward_message_to_local_service(ServiceName, Parameters);
 
 	%% Authorization failed.
-	{ ok, Err, _} ->
+	{ ok, Err } ->
 	    ?warning("    service_edge:remote_msg(): Authorization failed:     ~p", [Err]),
 	    {error, { authorization, Err }};
 
@@ -199,7 +202,7 @@ forward_message_to_local_service(ServiceName, Parameters) ->
 					   resolve_local_service,
 					   [ {service, ServiceName} ],
 					   [ network_address ]) of
-	{ ok, ok, [ NetworkAddress], _SDJSON } -> 
+	{ ok, ok, [ NetworkAddress] } -> 
 	    ?debug("service_edge:forward_to_local(): URL:         ~p", [NetworkAddress]),
 
 	    %%
@@ -242,7 +245,7 @@ forward_message_to_local_service(ServiceName, Parameters) ->
 	    end;
 		
 	%% Local service could not be resolved to an URL
-	{ok, not_found, _, _} ->
+	{ok, not_found, _} ->
 	    ?info("    service_edge_rpc:local_msg() Local service ~p not found.", 
 		   [ ServiceName ]),
 	    { ok, [ { status, rvi_common:json_rpc_status(not_found)} ] };
@@ -266,7 +269,7 @@ forward_message_to_scheduler(ServiceName, Timeout, Parameters, Certificate, Sign
 					   { service_name, ServiceName }
 					  ]) of
 
-	{ ok,  ok, _SchJSON } -> 
+	{ ok,  ok } -> 
 	    %% We are happy. Return.
 	    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 

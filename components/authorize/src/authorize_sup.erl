@@ -34,11 +34,5 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-%%          ?CHILD(authorize_alarms, worker),
-%%	    ?CHILD(authorize_log, worker),
-%%	    ?CHILD(authorize_can, worker),
-%%	    ?CHILD(authorize_waypoints, worker)
-	    %% ?CHILD(authorize_gps, worker),
-	    %% ?CHILD(exodmo_config, worker)
+	    ?CHILD(authorize_rpc, worker)
 	   ]} }.
-
