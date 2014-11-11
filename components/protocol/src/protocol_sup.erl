@@ -34,6 +34,6 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-%%          ?CHILD(protocol_something, worker)
+	    ?CHILD(protocol_rpc, worker)
 	   ]} }.
 

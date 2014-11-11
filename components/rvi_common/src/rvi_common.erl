@@ -152,15 +152,11 @@ send_component_request(Component, Service, ArgList, ReturnParams) ->
     case { rvi_common:get_component_process(Component), 
 	   rvi_common:get_component_url(Component) }  of
 
-	%% We have a gen_server process to send to
-	{ Proc, undefined } ->
-	    ?info("Sending ~p:~p to ~p", [Component, Service, Proc]),
-	    { Reply, ReplyArg} = gen_server:call(Proc, { rvi_call, Service, ArgList }),
-	    %% Retrieve the status from the reply
-	    [ Status | ReturnValues ] = retrieve_reply_elements([ status | ReturnParams], ReplyArg),
-	    %% Return
-	    { Reply, json_rpc_status(Status), ReturnValues };
-	
+	%% We have a gen_server process to send to. Let the gen_server take priority
+	%% over JSON-RPC URL
+	{undefined, undefined} -> 
+	    { error, {unknown_component, Component} };
+
 	{ undefined, Address } ->
 	    case get_request_result(
 		   send_http_request(Address, atom_to_list(Service),  ArgList)
@@ -172,7 +168,14 @@ send_component_request(Component, Service, ArgList, ReturnParams) ->
 		Err -> Err
 	    end;
 
-	_ -> { error, {unknown_component, Component} }
+	{ Proc, _ } ->
+	    ?info("Sending ~p:~p to ~p", [Component, Service, Proc]),
+	    { Reply, ReplyArg} = gen_server:call(Proc, { rvi_call, Service, ArgList }),
+	    %% Retrieve the status from the reply
+	    [ Status | ReturnValues ] = retrieve_reply_elements([ status | ReturnParams], ReplyArg),
+	    %% Return
+	    { Reply, json_rpc_status(Status), ReturnValues }
+	
     end.
 
 send_http_request(Url,Method, Args) ->

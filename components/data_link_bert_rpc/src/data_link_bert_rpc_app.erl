@@ -24,7 +24,7 @@ start(_StartType, _StartArgs) ->
     data_link_bert_rpc_sup:start_link().
 
 start_phase(init, _, _) ->
-    data_link_bert_rpc_rpc:init().
+    data_link_bert_rpc_rpc:init_rvi_component().
 
 
 stop(_State) ->

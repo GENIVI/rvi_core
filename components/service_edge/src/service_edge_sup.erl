@@ -34,7 +34,7 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-	    %% ?CHILD(some_module, worker),
-	   %% ?CHILD(exodmo_config, worker)
+	    ?CHILD(service_edge_rpc, worker)
+	    %% ?CHILD(exodmo_config, worker)
 	   ]} }.
 

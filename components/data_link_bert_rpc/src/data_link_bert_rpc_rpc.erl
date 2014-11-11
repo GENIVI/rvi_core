@@ -13,7 +13,11 @@
 -export([handle_socket/6]).
 -export([handle_socket/5]).
 -export([setup_static_node_data_link/2]).
--export([init/0]).
+-export([init_rvi_component/0]).
+
+-export([start_link/0]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+	 terminate/2, code_change/3]).
 
 -include_lib("lager/include/log.hrl").
 
@@ -21,19 +25,30 @@
 -define(DEFAULT_RECONNECT_INTERVAL, 5000).
 -define(DEFAULT_BERT_RPC_ADDRESS, "0.0.0.0").
 
+-define(SERVER, ?MODULE). 
+-record(st, { }).
 
-init() ->
-    ?info("data_link_bert:init(): Called"),
+
+
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+init([]) ->
+    ?debug("data_link_bert_rpc_rpc:init(): called."),
+    {ok, #st {}}.
+
+init_rvi_component() ->
+    ?info("data_link_bert:init_rvi_component(): Called"),
     %% Dig out the bert rpc server setup
     {ok, BertOpts } = rvi_common:get_component_config(data_link, bert_rpc_server, []),
     IP = proplists:get_value(ip, BertOpts, ?DEFAULT_BERT_RPC_ADDRESS),
     Port = proplists:get_value(port, BertOpts, ?DEFAULT_BERT_RPC_PORT),
-    ?info("data_link_bert:init(): Starting listener."),
+    ?info("data_link_bert:init_rvi_component(): Starting listener."),
 
     %% Fire up listener
     connection_manager:start_link(), 
     {ok,Pid} = listener:start_link(), 
-    ?info("data_link_bert:init(): Adding listener ~p:~p", [ IP, Port ]),
+    ?info("data_link_bert:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
     
     %% Add listener port.
     case listener:add_listener(Pid, IP, Port) of
@@ -50,13 +65,13 @@ init() ->
 		    setup_static_node_data_links(),
 		    ok;
 
-		Err -> 
-		    ?error("data_link_bert:init(): Failed to setup exo http server: ~p", 
-			   [ Err ]),
-		    Err
+		_ -> 
+		    ?info("data_link_bert_rpc_rpc:init_rvi_component(): exo_http_opts not specified. Gen Server only"),
+		    ok
+		
 	    end;
-	Err -> 
-	    ?error("data_link_bert:init(): Failed to launch listener: ~p", [ Err ]),
+	Err -> 	
+	    ?error("data_link_bert:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
 	    Err
     end.
 
@@ -214,37 +229,6 @@ announce_new_local_service(Service) ->
     end.
 
 
-
-%% JSON-RPC entry point
-%% CAlled by local exo http server
-handle_rpc("announce_new_local_service", Args) ->
-    { ok,  Service } = rvi_common:get_json_element(["service"], Args),
-    announce_new_local_service(Service);
-
-handle_rpc("setup_data_link", Args) ->
-    { ok, NetworkAddress } = rvi_common:get_json_element(["network_address"], Args),
-    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
-    { ok,  Service } = rvi_common:get_json_element(["service"], Args),
-
-    setup_data_link(RemoteAddress, list_to_integer(RemotePort), Service);
-
-
-handle_rpc("disconenct_data_link", Args) ->
-    { ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
-    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
-
-    disconnect_data_link(RemoteAddress, list_to_integer(RemotePort));    
-
-handle_rpc("send_data", Args) ->
-    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
-    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
-    { ok,  Data} = rvi_common:get_json_element(["data"], Args),
-
-    send_data(RemoteAddress, list_to_integer(RemotePort), Data);
-    
-handle_rpc(Other, _Args) ->
-    ?info("data_link_bert:handle_rpc(~p)", [ Other ]),
-    { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
 handle_socket(FromPid, PeerIP, PeerPort, data, 
@@ -410,4 +394,81 @@ handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
 handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
     ?info("data_link_bert:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     ok.
+
+
+%% JSON-RPC entry point
+%% CAlled by local exo http server
+handle_rpc("announce_new_local_service", Args) ->
+    { ok,  Service } = rvi_common:get_json_element(["service"], Args),
+    announce_new_local_service(Service);
+
+handle_rpc("setup_data_link", Args) ->
+    { ok, NetworkAddress } = rvi_common:get_json_element(["network_address"], Args),
+    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
+    { ok,  Service } = rvi_common:get_json_element(["service"], Args),
+
+    setup_data_link(RemoteAddress, list_to_integer(RemotePort), Service);
+
+
+handle_rpc("disconenct_data_link", Args) ->
+    { ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
+    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
+
+    disconnect_data_link(RemoteAddress, list_to_integer(RemotePort));    
+
+handle_rpc("send_data", Args) ->
+    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
+    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
+    { ok,  Data} = rvi_common:get_json_element(["data"], Args),
+
+    send_data(RemoteAddress, list_to_integer(RemotePort), Data);
+    
+handle_rpc(Other, _Args) ->
+    ?info("data_link_bert:handle_rpc(~p)", [ Other ]),
+    { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
+
+
+handle_call({rvi_call, announce_new_local_service, Args}, _From, State) ->
+    {_, Service} = lists:keyfind(service, 1, Args),
+    {reply, announce_new_local_service(Service), State};
+
+handle_call({rvi_call, setup_data_link, Args}, _From, State) ->
+    {_, NetworkAddress} = lists:keyfind(network_address, 1, Args),
+    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
+    {_, Service} = lists:keyfind(service, 1, Args),
+
+    { reply, setup_data_link(RemoteAddress, 
+			     list_to_integer(RemotePort), Service), State };
+
+
+handle_call({rvi_call, disconnect_data_link, Args}, _From, State) ->
+    {_, NetworkAddress} = lists:keyfind(network_address, 1, Args),
+    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
+
+    { reply, disconnect_data_link(RemoteAddress, 
+				  list_to_integer(RemotePort)), State };
+
+
+handle_call({rvi_call, send_data, Args}, _From, State) ->
+    {_, NetworkAddress} = lists:keyfind(network_address, 1, Args),
+    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
+    {_, Data} = lists:keyfind(data, 1, Args),
+    { reply, send_data(RemoteAddress, 
+		       list_to_integer(RemotePort), Data), State };
+
+
+handle_call(Other, _From, State) ->
+    ?warning("data_link_bert_rpc_rpc:handle_rpc(~p): unknown", [ Other ]),
+    { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 

@@ -24,7 +24,7 @@ start(_StartType, _StartArgs) ->
     service_edge_sup:start_link().
 
 start_phase(init, _, _) ->
-    service_edge_rpc:init(),
+    service_edge_rpc:init_rvi_component(),
     ok.
 
 stop(_State) ->

@@ -8,6 +8,7 @@
 
 -module(schedule).
 
+
 -behaviour(gen_server).
 -include_lib("lager/include/log.hrl").
 
@@ -109,10 +110,10 @@ schedule_message(SvcName,
 		      }).
 
 register_remote_services(NetworkAddress, AvailableServices) ->
-    gen_server:cast(?SERVER, { register_remote_services, NetworkAddress, AvailableServices }).
+    gen_server:call(?SERVER, { register_remote_services, NetworkAddress, AvailableServices }).
 
 unregister_remote_services(ServiceNames) ->
-    gen_server:cast(?SERVER, { unregister_remote_services, ServiceNames }).
+    gen_server:call(?SERVER, { unregister_remote_services, ServiceNames }).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -139,11 +140,11 @@ handle_call( { schedule_message,
 
     ?info("schedule:sched_msg(): service_name:     ~p", [SvcName]),
     ?info("schedule:sched_msg(): timeout:          ~p", [Timeout]),
-    ?info("schedule:sched_msg(): callback:         ~p", [Callback]),
-%%    ?info("schedule:sched_msg(): parameters:       ~p", [Parameters]),
-    ?info("schedule:sched_msg(): signature:        ~p", [Signature]),
-    ?info("schedule:sched_msg(): certificate:      ~p", [Certificate]),
-    ?info("schedule:sched_msg(): St:               ~p", [St]),
+    ?debug("schedule:sched_msg(): callback:         ~p", [Callback]),
+    ?debug("schedule:sched_msg(): parameters:       ~p", [Parameters]),
+    ?debug("schedule:sched_msg(): signature:        ~p", [Signature]),
+    ?debug("schedule:sched_msg(): certificate:      ~p", [Certificate]),
+    ?debug("schedule:sched_msg(): St:               ~p", [St]),
 
 
     { ok, TransID, NSt } = queue_message(SvcName, 
@@ -155,6 +156,57 @@ handle_call( { schedule_message,
 					 St),
 
     { reply, {ok, TransID}, NSt };
+
+handle_call({rvi_call, schedule_message, Args}, From, St) ->
+    {_, SvcName} = lists:keyfind(service_name, 1, Args),
+    {_, Timeout} = lists:keyfind(timeout, 1, Args),
+    {_, Parameters} = lists:keyfind(parameters, 1, Args),
+    {_, Signature} = lists:keyfind(signature, 1, Args),
+    {_, Certificate} = lists:keyfind(certificate, 1, Args),
+    { reply, { ok, TransID}, NSt} = 
+	handle_call( { schedule_message,
+		       SvcName, 
+		       Timeout, 
+		       no_callback,
+		       Parameters,
+		       Signature,
+		       Certificate
+		     }, From, St),
+    { reply, { ok, [ 
+		     { status, rvi_common:json_rpc_status(ok)},
+		     { transaction_id, TransID }]}, NSt};
+    
+  
+
+
+handle_call( {register_remote_services, NetworkAddress, AvailableServices}, _From, St) ->
+    ?info("schedule:register_remote_services(): NetworkAddress:    ~p", [NetworkAddress]),
+    ?info("schedule:register_remote_services(): AvailableService:  ~p", [AvailableServices]),
+    {ok, NSt} =  multiple_services_available(AvailableServices, NetworkAddress, St),
+    {reply, ok, NSt};
+
+
+handle_call({rvi_call, register_remote_services, Args}, From, St) ->
+    {_, NetworkAddress } = lists:keyfind(network_address, 1, Args),
+    {_, AvailableServices } = lists:keyfind(services, 1, Args),
+    {reply, ok, NSt } = handle_call({ register_remote_services, 
+				      NetworkAddress, 
+				      AvailableServices}, From, St),
+
+    { reply, { ok, [{ status, rvi_common:json_rpc_status(ok) }] } , NSt}; 
+
+handle_call( {unregister_remote_services, ServiceNames}, _From, St) ->
+    ?info("schedule:unregister_remote_services(): Services:    ~p", [ServiceNames]),
+    {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
+    {reply, ok, NSt };
+
+handle_call({rvi_call, unregister_remote_services, Args}, From, St) ->
+    {_, Services } = lists:keyfind(services, 1, Args),
+    {reply, ok, NSt} = handle_call({ unregister_remote_services, Services}, From, St),
+    { reply, { ok, [{ status, rvi_common:json_rpc_status(ok) } ]}, NSt};
+
+
+
 
 handle_call(_Request, _From, St) ->
     Reply = ok,
@@ -171,18 +223,6 @@ handle_call(_Request, _From, St) ->
 %%                                  {stop, Reason, St}
 %% @end
 %%--------------------------------------------------------------------
-
-handle_cast( {register_remote_services, NetworkAddress, AvailableServices}, St) ->
-    ?info("schedule:register_remote_services(): NetworkAddress:    ~p", [NetworkAddress]),
-    ?info("schedule:register_remote_services(): AvailableService:  ~p", [AvailableServices]),
-    {ok, NSt} =  multiple_services_available(AvailableServices, NetworkAddress, St),
-    {noreply, NSt};
-
-
-handle_cast( {unregister_remote_services, ServiceNames}, St) ->
-    ?info("schedule:unregister_remote_services(): Services:    ~p", [ServiceNames]),
-    {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
-    {noreply, NSt };
 
 handle_cast(_Msg, St) ->
     {noreply, St}.
@@ -602,3 +642,4 @@ do_timeout_callback(Service, #message { timeout_cb = { M, F, A},
 %% callback element of #message is not an {M,F,A} format, ignore.
 do_timeout_callback(_,_) ->
     ok.
+

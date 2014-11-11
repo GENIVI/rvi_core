@@ -15,7 +15,7 @@
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
--export([init_http_server/0]).
+-export([init_rvi_component/0]).
 -include_lib("lager/include/log.hrl").
 
 -define(SERVER, ?MODULE). 
@@ -31,8 +31,8 @@ init([]) ->
     ?debug("authorize_rpc:init(): called."),
     {ok, #st {}}.
 
-init_http_server() ->
-    ?debug("authorize_rpc:init_http_server(): called"),
+init_rvi_component() ->
+    ?debug("authorize_rpc:init_rvi_component(): called"),
     case rvi_common:get_component_config(authorize, exo_http_opts) of
 	{ ok, ExoHttpOpts } ->
 	    exoport_exo_http:instance(authorize_sup, 
@@ -41,7 +41,7 @@ init_http_server() ->
 	    ok;
 	
 	_ -> 	
-	    ?info("authorize_rpc:init_http_server(): exo_http_opts not specified. Gen Server only"),
+	    ?info("authorize_rpc:init_rvi_component(): exo_http_opts not specified. Gen Server only"),
 	    ok
     end.
 
@@ -163,7 +163,7 @@ handle_call({rvi_call, authorize_remote_message, Args}, _From, State) ->
     {reply, authorize_remote_message(ServiceName, Signature, Certificate), State};
 
 handle_call(Other, _From, State) ->
-    ?warning("authorize_call:handle_rpc(~p): unknown", [ Other ]),
+    ?warning("authorize_rpc:handle_call(~p): unknown", [ Other ]),
     { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, State}.
 
 handle_cast(_Msg, State) ->

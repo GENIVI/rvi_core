@@ -34,11 +34,6 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-%%          ?CHILD(service_discovery_alarms, worker),
-%%	    ?CHILD(service_discovery_log, worker),
-%%	    ?CHILD(service_discovery_can, worker),
-%%	    ?CHILD(service_discovery_waypoints, worker)
-	    %% ?CHILD(service_discovery_gps, worker),
-	    %% ?CHILD(exodmo_config, worker)
+	    ?CHILD(service_discovery_rpc, worker)
 	   ]} }.
 

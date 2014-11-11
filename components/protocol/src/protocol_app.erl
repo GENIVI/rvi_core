@@ -24,7 +24,7 @@ start(_StartType, _StartArgs) ->
     protocol_sup:start_link().
 
 start_phase(init, _, _) ->
-    protocol_rpc:init_http_server(),
+    protocol_rpc:init_rvi_component(),
     ok.
 
 stop(_State) ->

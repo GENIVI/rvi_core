@@ -34,6 +34,6 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-	    %% ?CHILD(data_link_bert_rpc_server, worker)
+	    ?CHILD(data_link_bert_rpc_rpc, worker)
 	   ]} }.
 

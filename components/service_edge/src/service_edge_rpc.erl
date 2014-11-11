@@ -8,18 +8,35 @@
 
 
 -module(service_edge_rpc).
-
+-behaviour(gen_server).
 
 -export([handle_rpc/2]).
 -export([wse_register_service/2]).
 -export([wse_message/5]).
--export([init/0]).
+
+-export([start_link/0]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+	 terminate/2, code_change/3]).
+
+-export([init_rvi_component/0]).
+
 
 %%-include_lib("lhttpc/include/lhttpc.hrl").
 -include_lib("lager/include/log.hrl").
 
+-define(SERVER, ?MODULE). 
+-record(st, { }).
+
+
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+init([]) ->
+    ?debug("service_edge_rpc:init(): called."),
+    {ok, #st {}}.
+
 %% Called by service_edge_app:start_phase().
-init() ->
+init_rvi_component() ->
     ?notice("---- Service Edge URL:          ~s", [ rvi_common:get_component_url(service_edge)]),
     ?notice("---- Node Service Prefix:       ~s", [ rvi_common:local_service_prefix()]),
     case rvi_common:get_component_config(service_edge, exo_http_opts) of
@@ -334,3 +351,51 @@ wse_message(Ws, ServiceName, Timeout, JSONParameters, CallingService) ->
     ?debug("service_edge_rpc:wse_message(~p) CallingService:  ~p", [ Ws, CallingService ]),
     ?debug("service_edge_rpc:wse_message(~p) Parameters:      ~p", [ Ws, Parameters ]),
     handle_local_message( ServiceName, Timeout,  [Parameters] , CallingService).
+
+
+%% Handle calls received through regular gen_server calls, routed byh
+%% rvi_common:send_component_request()
+%% We only need to implement register_remote_serviecs() and handle_remote_message
+%% Since they are the only calls invoked by other components, and not the
+%% locally connected services that uses the same HTTP port to transmit
+%% their register_service, and message calls.
+
+handle_call({rvi_call, register_remote_services, Args}, _From, _State) ->
+    {_, _Services} = lists:keyfind(services, 1, Args),
+    %% FIXME: Report all added services to the connected local services
+    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+
+handle_call({rvi_call, unregister_remote_services, Args}, _From, _State) ->
+    {_, _Services} = lists:keyfind(services, 1, Args),
+    %% FIXME: Report all deleted services to the connected local services
+    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+
+
+handle_call({rvi_call, handle_remote_message, Args}, _From, State) ->
+    { _, ServiceName } = lists:keyfind(service_name, 1, Args),
+    { _, Timeout } = lists:keyfind(timeout, 1, Args),
+    { _, Parameters } = lists:keyfind(parameters, 1, Args),
+    { _, Certificate } = lists:keyfind(certificate, 1, Args),
+    { _, Signature } = lists:keyfind(signature, 1, Args),
+    
+    {reply, handle_remote_message(ServiceName, 
+				  Timeout, 
+				  Parameters, 
+				  Certificate, 
+				  Signature), State };
+
+handle_call(Other, _From, State) ->
+    ?warning("service_edge_rpc:handle_call(~p): unknown", [ Other ]),
+    { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
