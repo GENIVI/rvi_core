@@ -137,6 +137,12 @@ send_component_request(Component, Service, ArgList) ->
 	Err -> Err
     end.
 
+%% FIXME:
+%% This function shooudl clean up the values in ReturnParams
+%% so that they are regular tuples. 
+%% Today ReturnParams contains { struct, { "some_element", { array, [...]}}}.
+%% Callers to send_component_request() Need to be fixed as well.
+
 send_component_request(Component, Service, ArgList, ReturnParams) ->
 
     %% ?debug("send_component_request(): Component:      ~p", [ Component]),

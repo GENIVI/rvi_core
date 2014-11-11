@@ -67,9 +67,12 @@ send_message(ServiceName, Timeout, NetworkAddress, Parameters, Signature, Certif
 	    Err
     end.
 
-receive_message(Data) ->
+receive_message(Data) when is_list(Data) ->
+    receive_message(list_to_binary(Data));
+
+receive_message(Data) when is_binary(Data) ->
     { ServiceName, Timeout, NetworkAddress, Parameters, Signature, Certificate } = 
-	binary_to_term(list_to_binary(Data)),
+	binary_to_term(Data),
     ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
     ?debug("    protocol:rcv(): network_address: ~p~n", [NetworkAddress]),

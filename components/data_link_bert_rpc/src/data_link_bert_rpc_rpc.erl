@@ -298,11 +298,13 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    %% Covnert to JSON structured typles.
 	    LocalServices = 
 		lists:foldl(fun({struct, JSONElem}, Acc) -> 
-				    [ proplists:get_value("service", JSONElem, undefined) | Acc]
-			    end, 
+				    [ proplists:get_value("service", JSONElem, undefined) | Acc];
+			       (Elem, Acc) -> 
+				    [ Elem | Acc ]
+			    end,
 			    [], JSONSvc),
 
-	    ?info("data_link_bert:authorize(): LocalSvc:       ~p", 
+	    ?info("data_link_bert:authorize(): Local Services:       ~p", 
 		   [ LocalServices ]),
 
 	    %% Grab our local address.
