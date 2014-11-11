@@ -102,7 +102,7 @@ Go to the top directory of RVI and execute:
 An RPM file will be generated at the end of the build which can be
 installed on a Tizen box. The RPM can be found at:
 
-    ~/GBS-ROOT/local/repos/tizen/i586/RPMS/rvi-0.2.3-1.i686.rpm
+    ~/GBS-ROOT/local/repos/tizen/i586/RPMS/rvi-0.3.0-1.i686.rpm
 
 
 

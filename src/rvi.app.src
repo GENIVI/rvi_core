@@ -11,7 +11,7 @@
 {application, rvi,
  [
   {description, ""},
-  {vsn, "0.2.3"},
+  {vsn, "0.3.0"},
   {registered, []},
   {applications, [
                   kernel,
