@@ -62,7 +62,6 @@ init_rvi_component() ->
 		    exoport_exo_http:instance(data_link_bert_rpc_sup, 
 					      data_link_bert_rpc_rpc,
 					      ExoHttpOpts),
-		    setup_static_node_data_links(),
 		    ok;
 
 		_ -> 
@@ -73,7 +72,10 @@ init_rvi_component() ->
 	Err -> 	
 	    ?error("data_link_bert:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
 	    Err
-    end.
+    end,
+    ?info("data_link_bert_rpc_rpc:init_rvi_component(): Setting up static nodes."),
+    setup_static_node_data_links(),
+    ok.
 
 %%
 %% Since we, in this demo code, haven't done pure P2P service discovery yet,
