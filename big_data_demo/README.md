@@ -73,7 +73,7 @@ msec timestamp when the value was sample.
 	     "method": "message",
 		 "params": {
 			 "service": "jlr.com/backend/logging/report",
-	         "origin":  "1234",
+	         "vin":  "1234",
 	         "timestamp":  1415143459110,
 		     "data":, [
 				 { "channel": "odo", "value": 10022 },
