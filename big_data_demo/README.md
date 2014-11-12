@@ -80,7 +80,7 @@ msec timestamp when the value was sample.
 				 { "channel": "odo", "value": 10023 },
 				 { "channel": "speed", "value": 113 },
 				 { "channel": "waypoint",
-				   "value": { "lat": 39.0319, "lon": 125.7538 } } 		 
+				   "value": { "lat": 39.0319, "lon": 125.7538, "alt": 222.3 } } 		 
 	         ]
 		 }
 	 } 
