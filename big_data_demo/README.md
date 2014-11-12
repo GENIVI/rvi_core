@@ -1,4 +1,4 @@
-# TRACKING DEMO #
+# BIG DATA DEMO #
 
 
 # RVI COMMANDS #
@@ -19,7 +19,7 @@ reported
 	     "id": 1,
 	     "method": "message",
 		 "params": {
-			 "service": "jlr.com/vin/123456/tracking/subscribe",
+			 "service": "jlr.com/vin/123456/logging/subscribe",
 		     "channels":, ["location", "odometer", "speed"],
 			 "reporting_interval": 5000
 		 }
@@ -47,7 +47,7 @@ through a ```subscribe``` command.
 	     "id": 2,
 	     "method": "message",
 		 "params": {
-			 "service": "jlr.com/vin/123456/tracking/unsubscribe",
+			 "service": "jlr.com/vin/123456/logging/unsubscribe",
 		     "channels":, ["location", "odometer", "speed"]
 		 }
 	 } 
@@ -72,7 +72,7 @@ msec timestamp when the value was sample.
 	     "id": 3,
 	     "method": "message",
 		 "params": {
-			 "service": "jlr.com/backend/tracking/report",
+			 "service": "jlr.com/backend/logging/report",
 	         "timestamp":  1415143459110,
 		     "data":, [
 				 { "channel": "odo", "value": 10022 },
