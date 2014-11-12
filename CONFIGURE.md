@@ -295,10 +295,15 @@ An example entry is gven below:
 *Please note that IP addresses, not DNS names, should be used in all
  network addresses.*
 
-# SPECIFY URLS OF REMAINING RVI COMPONENTS #
-The remaining nodes in an RVI system needs to have their URLs and
+# SPECIFY URLS OF RVI COMPONENTS #
+The remaining components in an RVI system needs to have their URLs and
 listening ports setup as well.  It is recommended that consecutive
 ports after that used for ```service_edge``` are used.
+
+Please note that if only erlang components are used (as is the case in
+the reference implementation), native erlang gen_server calls can be
+used instead of URLs, providing a 400% transactional speedup. Please
+see the genserver components chapter below for details.
 
 Below is an example of a complete port/url configuration for all
 components, including the ```bert_rpc_server``` entry described in the
@@ -346,6 +351,75 @@ external node address chapter:
 
 *Please note that IP addresses, not DNS names, should be used in all
  network addresses.*
+
+
+# SPECIFY GEN_SERVER ADDRESSES FOR RVI COMPONENTS #
+
+Communication between the RVi components can be either JSON-RPC or
+gen_server calls.
+	
+JSON-RPC calls provide compatability with replacement components
+written in languages other than Erlang. Gen_server calls provide
+native erlang inter-process calls that are about 4x faster than
+JSON-RPC when transmitting large data volumes.
+	
+If one or more of the RVI components are replaced with external
+components, use JSON-RPC by specifying url and exo_http_opts
+for all components.
+	
+If you are running an all-native erlang system, use gen_server calls
+by configuring gen_server.
+
+If you specify both gen_server and url/exo_http_opts, the gen_server
+communicaiton path will be used for inter component communication.
+	
+Please note that communication between two RVI nodes are not affected
+by this since data_link_bert_rpc will use BERT-RPC to communicate (
+using the address/port specified by ```bert_rpc_server```).
+
+Below is an example of where gen_server is used where approrpiate.
+
+Please note that ```service_edge always``` need to have its ```url```
+and ```exo_http_pts``` options specified since local services need an
+HTTP port to send JSON-RPC to. However, gen_server can still be
+specified in parallel, allowing for gen_server calls to be made
+between Servie Edge and other RVI components.
+
+<pre>
+[
+  ...
+  { env, [
+    ...
+    { rvi, [
+      ...
+      { components, [
+        ...
+        <b>{ service_edge, [ 
+	      { gen_server, service_edge_rpc },
+          { url, "http://127.0.0.1:8811" },
+          { exo_http_opts, [ { port, 8811 } ]}
+        ]},
+        { service_discovery, [ 
+	      { gen_server, service_discovery_rpc }
+        ]},
+        { schedule, [
+	      { gen_server, schedule }
+        ]},
+        { authorize, [
+	      { gen_server, authorize_rpc }
+        ]},
+        { protocol, [ 
+	      { gen_server, protocol_rpc }
+        ]},
+        { data_link, [ 
+	      { gen_server, data_link_bert_rpc_rpc },
+          { bert_rpc_server, [ {port, 8817 } ] } 
+        ]}</b>
+      ]}
+    ]}
+  ]}
+]
+</pre>
 
 # SETTING UP WEBSOCKET SUPPORT ON A NODE
 The service edge can, optionally, turn on its websocket support in order to
