@@ -47,13 +47,14 @@ class GPSCollector:
     """
     """
     
-    def __init__(self, vin, interval, nofix=False):
+    def __init__(self, destination,vin, interval, nofix=False):
         self.vin = vin
         self.interval = interval
         self.nofix = nofix
         self.last_speed = 1.0
         self.gps_poller = GPSPoller()
-
+        self.destination = destination
+        self.transaction_id = 1
     def run(self):
         # start GPS polling thread
         self.gps_poller.start()
@@ -69,9 +70,18 @@ class GPSCollector:
                 
                 # process GPS data
                 session = self.gps_poller.session
-                if (session.status == STATUS_NO_FIX) and not self.nofix:
+                print session
+                if (session.status == MODE_NO_FIX) and not self.nofix:
                     print "Waiting for GPS to fix..."
                     continue
+
+                #time = session.utc
+                # location.loc_latitude = session.fix.latitude
+                #location.loc_longitude = session.fix.longitude
+                #location.loc_altitude = session.fix.altitude
+                #location.loc_speed = session.fix.speed
+                #location.loc_climb = session.fix.climb
+                #location.loc_track = session.fix.track
                 
                 if not isnan(session.fix.time):
                     if (session.fix.speed < 0.1) and (self.last_speed < 0.1):
@@ -81,14 +91,34 @@ class GPSCollector:
                     self.last_speed = session.fix.speed
                     # if the time is valid the data record is valid
 
-                    logger.info("%s: Valid location: %s", MY_NAME, location)
+                    print "Location:", session
+                    rvi_server.message(calling_service = "/big_data",
+                                   service_name = self.destination + "/logging/report",
+                                   transaction_id = self.transaction_id,
+                                   timeout = int(time.time())+60,
+                                   parameters = [{ 
+                                       u'vin': self.vin,
+                                       u'timestamp': session.utc,
+                                       u'data': [
+                                           {  u'channel': 'waypoint', 
+                                              u'value': { 
+                                                  u'lat': session.fix.latitude,
+                                                  u'lon': session.fix.longitude,
+                                                  u'alt': session.fix.altitude
+                                              }
+                                          }
+                                       ]
+                                   }])
+                    self.transaction_id += 1
+
                 else:
-                    logger.debug("%s: Invalid location: %s", MY_NAME)
+                    print "Invalid location:", session
                     
 
             except KeyboardInterrupt:
                 print ('\n')
                 break
+            
 
     def cleanup(self, *args):
         logger.info('%s: Caught signal: %d. Shutting down...', MY_NAME, args[0])
@@ -177,20 +207,17 @@ if __name__ == "__main__":
     res = rvi_server.register_service(service = "/logging/unsubscribe", network_address = service_url)
     full_unsubscribe_name = res['service']
 
-    res = rvi_server.register_service(service = "/sota/finish", network_address = service_url)
-    full_finish_service_name = res['service']
-
     print "HVAC Emulator."
     print "Vehicle RVI node URL:       ", rvi_url
     print "Emulator URL:               ", service_url
     print "Full subscribe service name :  ", full_subscribe_name
     print "Full unsubscribe service name  :  ", full_unsubscribe_name
 
-    interval = 5
+    interval = 2
     gps_collector = None
     nofix = False
 
-    gps_collector = GPSCollector(vin, interval, nofix)
+    gps_collector = GPSCollector("jlr.com/backend", vin, interval, nofix)
 
     # Let the main thread run the gps collector
 
