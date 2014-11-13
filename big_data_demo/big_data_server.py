@@ -109,7 +109,7 @@ print "Full report service name: ", full_report_name
 
 while True:
     transaction_id += 1
-    line = raw_input('Enter <vin> <subscribe|unsubscrube> <channel> or "q" for quit: ')
+    line = raw_input('Enter <subscribe|unsubscribe> <vin>  <channel> [subscribe-interval] or "q" for quit: ')
     if line == 'q':
         emulator_service.shutdown()
         sys.exit(0)
@@ -118,22 +118,36 @@ while True:
         
     # Read a line and split it into a key val pair
     lst = line.split(' ')
-    if len(lst) != 3:
+    if len(lst) == 3:
+        [cmd, vin, channel] = line.split(' ')
+        interval = 0
+    elif len(lst) == 4:
+        [cmd, vin, channel, interval] = line.split(' ')
+    else:
         print "Nope", len(lst), lst
         continue
     
-    [vin, cmd, channel] = line.split(' ')
-    dst = 'jlr.com/vin/'+vin+'/report'
+    dst = 'jlr.com/vin/'+vin+'/logging/'
     
-    if cmd[1] == 's':
-        command == 'subscribe'
+    if cmd[0] == 's':
+        command = 'subscribe'
+        if interval == 0:
+            print 'Please specify interval parameter for subscribe commands.'
+            continue
+
+        params = [{ u'channels': [ channel ], u'interval': interval}]
     else:
-        command == 'unsubscribe'
-        
-    rvi_server.message(calling_service = "/sota",
-                       service_name = dst + "/logger/" + command,
+        if interval != 0:
+            print 'Please do not specify interval parameter for unsubscribe commands.'
+            continue
+            
+        command = 'unsubscribe'
+        params = [{ u'channels': [ channel ]}]
+   
+    rvi_server.message(calling_service = "/big_data",
+                       service_name = dst + command,
                        transaction_id = str(transaction_id),
                        timeout = int(time.time())+60,
-                       parameters = [{ u'channels': [ channel ]}])
+                       parameters = params)
 
     print('{}({}) sent to {}'.format(command, channel, vin))

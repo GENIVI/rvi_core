@@ -102,3 +102,6 @@ defined by the channel name.
 + timestamp<br>
 Specifies the timestamp in millisecond UTC when the value was sampled
 from the vehicle.
+
+
+# STARTING THE DEVICE SIDE #

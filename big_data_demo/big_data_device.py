@@ -132,7 +132,7 @@ def subscribe(channels, interval):
     return {u'status': 0}
 
 
-def unsubscribe(channels, interval):
+def unsubscribe(channels):
     print "unsubscribe(): channels:", channels
     return {u'status': 0}
 
@@ -172,7 +172,7 @@ if __name__ == "__main__":
     #
         
     service.register_function(subscribe, "/logging/subscribe" )
-    service.register_function(subscribe, "/logging/unsubscribe" )
+    service.register_function(unsubscribe, "/logging/unsubscribe" )
 
     # Create a thread to handle incoming stuff so that we can do input
     # in order to get new values
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     print "Full subscribe service name :  ", full_subscribe_name
     print "Full unsubscribe service name  :  ", full_unsubscribe_name
 
-    interval = 2
+    interval = 100
     gps_collector = None
     nofix = False
 
