@@ -10,8 +10,8 @@
 
 #
 # GPS Data Collector
-# This tool collects data from the gpsd daemon and stores it in the RVI Backend
-# database using the Django ORM.
+# A sample device implementation that collects GPS position data from gpsd
+# and sends it to an RVI backend.
 #
 
 import sys
@@ -25,11 +25,57 @@ from gps import *
 import json
 from rvi_json_rpc_server import RVIJSONRPCServer
 import jsonrpclib
+from urlparse import urlparse
 
 
 MY_NAME = "GPS Collector"
 
+class RVICallbackServer(threading.Thread):
+    """
+    RPC server thread responding to incoming callbacks from the RVI framework
+    """
+    
+    def __init__(self, service_edge, callback_url):
+        self.service_edge = service_edge
+        self.callback_url = callback_url
+        threading.Thread.__init__(self)
+        url = urlparse(self.callback_url)
+        self.localServer =  RVIJSONRPCServer(addr=((url.hostname, url.port)), logRequests=False)
+        self.register_services()
+        
+    def register_services(self):
+        # register callback functions with RPC server
+        self.localServer.register_function(subscribe, "/logging/subscribe" )
+        self.localServer.register_function(unsubscribe, "/logging/unsubscribe" )
+       
+        # register services with RVI framework
+        rvi_dead = True
+        services = []
+        while rvi_dead:
+            try: 
+                res = self.service_edge.register_service(service = "/logging/subscribe",
+                                                  network_address = self.callback_url)
+                services.append(res['service'])
+                res = self.service_edge.register_service(service = "/logging/unsubscribe",
+                                                  network_address = self.callback_url)
+                services.append(res['service'])
+                rvi_dead = False
+            except:
+                print "No RVI. Wait and retry..."
+                time.sleep(2.0)
+        print 'Service registration successful. Services: ', services
+
+    def run(self):
+        self.localServer.serve_forever()
+        
+    def shutdown(self):
+        self.localServer.shutdown()
+
+ 
 class GPSPoller(threading.Thread):
+    """
+    Polls GPS devices via gpsd
+    """
     
     def __init__(self):
         threading.Thread.__init__(self)
@@ -47,7 +93,7 @@ class GPSCollector:
     """
     """
     
-    def __init__(self, destination,vin, interval, nofix=False):
+    def __init__(self, destination, vin, interval, nofix=False):
         self.vin = vin
         self.interval = interval
         self.nofix = nofix
@@ -55,13 +101,11 @@ class GPSCollector:
         self.gps_poller = GPSPoller()
         self.destination = destination
         self.transaction_id = 1
+
+    
     def run(self):
         # start GPS polling thread
         self.gps_poller.start()
-
-        # catch signals for proper shutdown
-        for sig in (SIGABRT, SIGTERM, SIGINT):
-            signal(sig, self.cleanup)
 
         # main execution loop
         while True:
@@ -70,8 +114,7 @@ class GPSCollector:
                 
                 # process GPS data
                 session = self.gps_poller.session
-                print session
-                if (session.status == MODE_NO_FIX) and not self.nofix:
+                if (session.fix.mode == MODE_NO_FIX) and not self.nofix:
                     print "Waiting for GPS to fix..."
                     continue
 
@@ -86,7 +129,7 @@ class GPSCollector:
                 if not isnan(session.fix.time):
                     if (session.fix.speed < 0.1) and (self.last_speed < 0.1):
                         print "Waiting for speed..."
-                        # continue
+                        continue
 
                     self.last_speed = session.fix.speed
                     # if the time is valid the data record is valid
@@ -100,13 +143,16 @@ class GPSCollector:
                                        u'vin': self.vin,
                                        u'timestamp': session.utc,
                                        u'data': [
-                                           {  u'channel': 'waypoint', 
-                                              u'value': { 
-                                                  u'lat': session.fix.latitude,
-                                                  u'lon': session.fix.longitude,
-                                                  u'alt': session.fix.altitude
+                                           { u'channel': 'waypoint', 
+                                             u'value': { 
+                                                 u'lat': session.fix.latitude,
+                                                 u'lon': session.fix.longitude,
+                                                 u'alt': session.fix.altitude
                                               }
-                                          }
+                                           },
+                                           { u'channel': 'speed',
+                                             u'value':   session.fix.speed
+                                           },
                                        ]
                                    }])
                     self.transaction_id += 1
@@ -120,11 +166,10 @@ class GPSCollector:
                 break
             
 
-    def cleanup(self, *args):
-        logger.info('%s: Caught signal: %d. Shutting down...', MY_NAME, args[0])
+    def shutdown(self):
         if self.gps_poller:
             self.gps_poller.shutdown()
-        sys.exit(0)
+
 
 def subscribe(channels, interval):
     print "subscribe(): channels:", channels
@@ -137,9 +182,19 @@ def unsubscribe(channels):
     return {u'status': 0}
 
 
+def cleanup(*args):
+    print "Caught signal:", args[0], "Shutting down..."
+    if gps_collector:
+        gps_collector.shutdown()
+    if rvi_callback:
+        rvi_callback.shutdown()
+    sys.exit(0)
+
+
 def usage():
     print "Usage: %s RVI-URL VIN" % sys.argv[0]
     sys.exit(255)
+
         
 if __name__ == "__main__":
     #
@@ -160,67 +215,30 @@ if __name__ == "__main__":
     # Grab the URL to use
     [ progname, rvi_url, vin ] = sys.argv   
 
+    # Welcome message
+    print "RVI Big Data Device"
+    print "Outbound URL to RVI:  ", rvi_url
+    print "Inbound URL from RVI: ", service_url
 
-    # Setup an outbound JSON-RPC connection to the RVI Service Edeg.
+    # Setup outbound JSON-RPC connection to the RVI Service Edge
     rvi_server = jsonrpclib.Server(rvi_url)
+    
+    # Setup inbound JSON-RPC server
+    rvi_callback = RVICallbackServer(rvi_server, service_url)
+    rvi_callback.start()
 
-    service = RVIJSONRPCServer(addr=((service_host, service_port)), logRequests=False)
+    # catch signals for proper shutdown
+    for sig in (SIGABRT, SIGTERM, SIGINT):
+        signal(sig, cleanup)
 
-    #
-    # Regsiter callbacks for incoming JSON-RPC calls delivered to
-    # this program
-    #
-        
-    service.register_function(subscribe, "/logging/subscribe" )
-    service.register_function(unsubscribe, "/logging/unsubscribe" )
-
-    # Create a thread to handle incoming stuff so that we can do input
-    # in order to get new values
-    thr = threading.Thread(target=service.serve_forever)
-    thr.start()
-
-
-    # We may see traffic immediately from the RVI node when
-    # we register. Let's sleep for a bit to allow the emulator service
-    # thread to get up to speed.
-    time.sleep(0.5)
-
-    #
-    # Register our HVAC emulator service with the vehicle RVI node's Service Edge.
-    # We register both services using our own URL as a callback.
-    #
-
-    # Repeat registration until we succeeed
-    rvi_dead = True
-    while rvi_dead:
-        try: 
-            res = rvi_server.register_service(service = "/logging/subscribe",
-                                              network_address = service_url)
-            rvi_dead = False
-        except:
-            print "No rvi. Wait and retry"
-            time.sleep(2.0)
-
-
-    full_subscribe_name = res['service']
-
-    res = rvi_server.register_service(service = "/logging/unsubscribe", network_address = service_url)
-    full_unsubscribe_name = res['service']
-
-    print "HVAC Emulator."
-    print "Vehicle RVI node URL:       ", rvi_url
-    print "Emulator URL:               ", service_url
-    print "Full subscribe service name :  ", full_subscribe_name
-    print "Full unsubscribe service name  :  ", full_unsubscribe_name
-
-    interval = 100
+    # Start GPS data collection
+    interval = 5
     gps_collector = None
     nofix = False
 
     gps_collector = GPSCollector("jlr.com/backend", vin, interval, nofix)
 
     # Let the main thread run the gps collector
-
     gps_collector.run()
             
 
