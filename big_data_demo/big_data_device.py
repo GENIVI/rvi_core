@@ -25,10 +25,57 @@ from gps import *
 import json
 from rvi_json_rpc_server import RVIJSONRPCServer
 import jsonrpclib
+import sqlite3
 
 
 MY_NAME = "GPS Collector"
 
+class Logger:
+    def __init__(self, db_file = /var/tmp/big_data_demo.sql):
+        self.dbc = sqlite3.connect(db_file)
+        self.subscriptions = {}
+
+        # Create the table that stores log data and index it on its timestamps
+        self.dbc.execute('''CREATE TABLE IF NOT EXISTS log (timestamp, channel, value)''')
+        self.dbc.execute('''CREATE INDEX IF NOT EXISTS ts_index on log (timestamp)''')
+
+        # Create a table to store all our subscriptions so that they survive a 
+        # system restert.
+        self.dbc.execute('''CREATE TABLE IF NOT EXISTS subscription (channel, interval)''')
+
+        # Retrieve all our subscriptions so that they are easily accessible
+        for subscription in c.execute('''SELECT channel, interval FROM subscription'''):
+            (channel, interval) = subscription
+            # Interval is the sample interval in sec. 
+            # 0 is when the UTC of when last sample was made.
+            self.subscriptions['channel'] = ( interval, 0 )
+            
+
+    def add_subsciption(channel, sample_interval):
+        if not channel in self.subscriptions:
+            # Setup a new channel in the dictionary
+            self.subscriptions(channel) = (sample_interval, 0)
+            self.dbc.execute('''INSERT INTO subscriptions (?, ?)''', channel, sample_interval)
+
+    def delete_subsciption(channel):
+        if channel in self.subscriptions:
+            # Remove from subscriptions
+            self.subscriptions.del(channel)
+            self.dbc.execute('''DELETE FROM subscriptions WHERE channel=?''', channel)
+
+
+    def add_sample(channel, value):
+        # If the channel is not among our subscriptions, then ignore.
+        if not channel in self.subscriptions:
+            return False
+
+        # If it is not time for us to sample the given channel yet, then ignore
+        
+        self.dbc.execute('''INSERT INTO  (?, ?)''', channel, sample_interval)
+        
+    
+
+    
 class GPSPoller(threading.Thread):
     
     def __init__(self):
