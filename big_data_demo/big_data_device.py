@@ -10,8 +10,8 @@
 
 #
 # GPS Data Collector
-# This tool collects data from the gpsd daemon and stores it in the RVI Backend
-# database using the Django ORM.
+# A sample device implementation that collects GPS position data from gpsd
+# and sends it to an RVI backend.
 #
 
 import sys
@@ -26,57 +26,202 @@ import json
 from rvi_json_rpc_server import RVIJSONRPCServer
 import jsonrpclib
 import sqlite3
+from urlparse import urlparse
 
 
 MY_NAME = "GPS Collector"
 
 class Logger:
-    def __init__(self, db_file = /var/tmp/big_data_demo.sql):
+    def __init__(self, db_file = '/var/tmp/big_data_demo.sql'):
         self.dbc = sqlite3.connect(db_file)
         self.subscriptions = {}
 
+        print "Starting logger at {}".format(db_file)
+        print "SELF {}".format(self)
+
         # Create the table that stores log data and index it on its timestamps
         self.dbc.execute('''CREATE TABLE IF NOT EXISTS log (timestamp, channel, value)''')
-        self.dbc.execute('''CREATE INDEX IF NOT EXISTS ts_index on log (timestamp)''')
+        self.dbc.execute('''CREATE INDEX IF NOT EXISTS ts_index on log (timestamp ASC)''')
 
         # Create a table to store all our subscriptions so that they survive a 
         # system restert.
-        self.dbc.execute('''CREATE TABLE IF NOT EXISTS subscription (channel, interval)''')
+        self.dbc.execute('''CREATE TABLE IF NOT EXISTS subscriptions (channel, interval)''')
 
         # Retrieve all our subscriptions so that they are easily accessible
-        for subscription in c.execute('''SELECT channel, interval FROM subscription'''):
+        for subscription in self.dbc.execute('''SELECT channel, interval FROM subscriptions'''):
             (channel, interval) = subscription
             # Interval is the sample interval in sec. 
             # 0 is when the UTC of when last sample was made.
             self.subscriptions['channel'] = ( interval, 0 )
             
+    def run(self):
+        
 
-    def add_subsciption(channel, sample_interval):
-        if not channel in self.subscriptions:
-            # Setup a new channel in the dictionary
-            self.subscriptions(channel) = (sample_interval, 0)
-            self.dbc.execute('''INSERT INTO subscriptions (?, ?)''', channel, sample_interval)
-
-    def delete_subsciption(channel):
+    def add_subscription(self, channel, sample_interval):
         if channel in self.subscriptions:
-            # Remove from subscriptions
-            self.subscriptions.del(channel)
-            self.dbc.execute('''DELETE FROM subscriptions WHERE channel=?''', channel)
+            print "Called {} already in subscriptions. Ignored".format(channel)
+            return False
 
+        print "Adding {} to subscriptions. Interval {}".format(channel, sample_interval)
+        # Setup a new channel in the dictionary
+        self.subscriptions[channel] = (sample_interval, 0)
+        try: 
+            print "1"
+            print sqlite3.complete_statement('''INSERT INTO subscriptions VALUES ('waypoint', 12);''')
+            print "1.2"
+            self.dbc.execute('''INSERT INTO subscriptions VALUES (?, ?)''', (channel, sample_interval))
+            print "2"
+            self.dbc.commit()
+        except sqlite3.Error as e:
+            print "An error occurred:", e.args[0]
 
-    def add_sample(channel, value):
-        # If the channel is not among our subscriptions, then ignore.
+        print "3"
+        return True
+
+    def delete_subscription(self, channel):
         if not channel in self.subscriptions:
+            print "unsubscribe(): Channel {} not in subscriptions. Ignored".format(channel)
+            return False
+
+        # Remove from subscriptions
+        del self.subscriptions[channel]
+        self.dbc.execute('''DELETE FROM subscriptions WHERE channel=?''', (channel,))
+        return True
+
+    def add_sample(self, channel, value):
+        # If the channel is not among our subscriptions, then ignore.
+        print "add_sample({}): {}".format(channel, value)
+        # [ind for ind, elem in enumerate(self.subscriptions) if v[0] == 53]
+     
+        if not channel in self.subscriptions:
+            print "add_sample({}): Not subscribed to. Ignored".format(channel)
+            print "add_sample(): ".format(self.subscriptions)
             return False
 
         # If it is not time for us to sample the given channel yet, then ignore
-        
-        self.dbc.execute('''INSERT INTO  (?, ?)''', channel, sample_interval)
-        
-    
+        c_time = int(time.time())
 
+        ( sample_interval, last_sample_ts ) = self.subscriptions[channel]
+
+        # Return if we have previously received a sample and
+        # the interval to the next sample has yet to elapse.
+        if last_sample_ts > 0 and c_time < last_sample_ts + sample_interval:
+            print "add_sample({}): c_time < last_sample_ts={} + sample_interval={}. Skipped".format(c_time, last_sample_ts, sample_interval)
+            return False
+        
+        # Store the sample
+        # Convert the value dictionary to a string.
+        self.dbc.execute('''INSERT INTO log VALUES (?, ?, ?)''', (c_time, channel, str(value)))
+        self.dbc.commit()
+        
+        # Update the last sample timestamp
+        print "Updating subscriptions[{}] with ({}, {})".format(channel, sample_interval, c_time)
+        self.subscriptions[channel] = ( sample_interval, c_time)
+        return True
+
+    # Retrieve all samples for the oldest time stamp in the database
+    # Return:
+    #  False - no samples
+    #  (timestamp, [ ( channel, value), ... ]) - Samples for the given timestamp
+    #
+    def retrieve_next_sample():
+        # Get the oldest timestamp that we have stored.
+        (ts, ) = dbc.execute('''SELECT min(timestamp) FROM log''').fetchone()
+
+        # If no timestamp, then we have no data in db.
+        if ts == None:
+            return False
+            
+        res = []
+        # Retrieve all rows with a matching timestamp[
+        for row in dbc.execute('''SELECT channel, value FROM log where timestamp=?''', (ts,)):
+            # Convert value from string back to dict
+            res.append(row[0], eval(row[1]))
+
+        return (ts, res)
+
+    # Delete samples with the given timestamp.
+    def delete_sample(timestamp):
+        dbc.execute('''DELETE FROM log WHERE timestamp=?''', (timestamp,))
+
+
+    # Delete allsamples with the given timestamp.
+    def delete_all_samples():
+        dbc.execute('''DELETE FROM log''')
+
+    def dump_db():
+        print "LOG dump:"
+        for row in dbc.execute('''SELECT timestamp, channel, value FROM log'''):
+            print row
+        print "---"
+        print "Subscription dump:"
+        for row in dbc.execute('''SELECT * FROM subscriptions'''):
+            print row
+        print "---"
     
+class RVICallbackServer(threading.Thread):
+    """
+    RPC server thread responding to incoming callbacks from the RVI framework
+    """
+    
+    def __init__(self, logger, service_edge, callback_url):
+        self.logger = logger
+        self.service_edge = service_edge
+        self.callback_url = callback_url
+        threading.Thread.__init__(self)
+        url = urlparse(self.callback_url)
+        self.localServer =  RVIJSONRPCServer(addr=((url.hostname, url.port)), logRequests=False)
+        self.register_services()
+        
+    def subscribe(self, channels, interval):
+        for channel in channels:
+            self.logger.add_subscription(channel, int(interval))
+            
+        self.logger.dump_db()
+        return {u'status': 0}
+
+
+    def unsubscribe(self, channels):
+        print "unsubscribe(): channels:", channels
+        for channel in channels:
+            self.logger.delete_subscription(channel)
+
+        return {u'status': 0}
+
+    def register_services(self):
+        # register callback functions with RPC server
+        self.localServer.register_function(self.subscribe, "/logging/subscribe" )
+        self.localServer.register_function(self.unsubscribe, "/logging/unsubscribe" )
+       
+        # register services with RVI framework
+        rvi_dead = True
+        services = []
+        while rvi_dead:
+            try: 
+                res = self.service_edge.register_service(service = "/logging/subscribe",
+                                                  network_address = self.callback_url)
+                services.append(res['service'])
+                res = self.service_edge.register_service(service = "/logging/unsubscribe",
+                                                  network_address = self.callback_url)
+                services.append(res['service'])
+                rvi_dead = False
+            except:
+                print "No RVI. Wait and retry..."
+                time.sleep(2.0)
+        print 'Service registration successful. Services: ', services
+
+    def run(self):
+        self.localServer.serve_forever()
+        
+    def shutdown(self):
+        self.localServer.shutdown()
+
+
+ 
 class GPSPoller(threading.Thread):
+    """
+    Polls GPS devices via gpsd
+    """
     
     def __init__(self):
         threading.Thread.__init__(self)
@@ -89,104 +234,127 @@ class GPSPoller(threading.Thread):
         while True:
             self.session.next()
 
+class DataSender(threading.Thread):
+    """
+    Sends data from the database to RVI
+    """
+    
+    def __init__(self, destination, vin, rvi_server, logger, send_interval):
+        threading.Thread.__init__(self)
+        self.destination = destination
+        self.vin = vin
+        self.rvi_server = rvi_server
+        self.logger = logger
+        self.send_interval = send_interval
+        self.transaction_id = 1
+
+    def shutdown(self):
+        self._Thread__stop()
+        
+    def run(self):
+        while True:
+            sample = logger.retrieve_next_sample()
+
+            # If no samples are to be had, sleep on it and try again.
+            if sample == False:
+                time.sleep(self.send_interval)
+                continue
+
+            ( timestamp, values ) = sample
+            print "Sending timestamp: {} - values {}".format(timestamp, values)
+            rvi_server.message(calling_service = "/big_data",
+                               service_name = self.destination + "/logging/report",
+                               transaction_id = self.transaction_id,
+                               timeout = int(time.time())+60,
+                               parameters = [{ 
+                                   u'vin': self.vin,
+                                   u'timestamp': timestamp,
+                                   u'data': values
+                               }])
+            self.transaction_id += 1
+            
+
 
 class GPSCollector:
     """
+    Collect GPS data
     """
     
-    def __init__(self, destination,vin, interval, nofix=False):
+    def __init__(self, logger, gps_interval):
         self.vin = vin
-        self.interval = interval
-        self.nofix = nofix
+        self.gps_interval = gps_interval
         self.last_speed = 1.0
         self.gps_poller = GPSPoller()
-        self.destination = destination
+        self.logger = logger
         self.transaction_id = 1
+
+    
     def run(self):
         # start GPS polling thread
         self.gps_poller.start()
 
-        # catch signals for proper shutdown
-        for sig in (SIGABRT, SIGTERM, SIGINT):
-            signal(sig, self.cleanup)
-
         # main execution loop
         while True:
             try:
-                time.sleep(self.interval)
+                time.sleep(self.gps_interval)
                 
                 # process GPS data
                 session = self.gps_poller.session
-                print session
-                if (session.status == MODE_NO_FIX) and not self.nofix:
+                if session.fix.mode == MODE_NO_FIX:
                     print "Waiting for GPS to fix..."
                     continue
 
-                #time = session.utc
-                # location.loc_latitude = session.fix.latitude
-                #location.loc_longitude = session.fix.longitude
-                #location.loc_altitude = session.fix.altitude
-                #location.loc_speed = session.fix.speed
-                #location.loc_climb = session.fix.climb
-                #location.loc_track = session.fix.track
-                
-                if not isnan(session.fix.time):
-                    if (session.fix.speed < 0.1) and (self.last_speed < 0.1):
-                        print "Waiting for speed..."
-                        # continue
-
-                    self.last_speed = session.fix.speed
-                    # if the time is valid the data record is valid
-
-                    print "Location:", session
-                    rvi_server.message(calling_service = "/big_data",
-                                   service_name = self.destination + "/logging/report",
-                                   transaction_id = self.transaction_id,
-                                   timeout = int(time.time())+60,
-                                   parameters = [{ 
-                                       u'vin': self.vin,
-                                       u'timestamp': session.utc,
-                                       u'data': [
-                                           {  u'channel': 'waypoint', 
-                                              u'value': { 
-                                                  u'lat': session.fix.latitude,
-                                                  u'lon': session.fix.longitude,
-                                                  u'alt': session.fix.altitude
-                                              }
-                                          }
-                                       ]
-                                   }])
-                    self.transaction_id += 1
-
-                else:
+                if isnan(session.fix.time):
                     print "Invalid location:", session
-                    
+                    continue
+
+                if (session.fix.speed < 0.1) and (self.last_speed < 0.1):
+                    print "Waiting for speed..."
+#                    continue
+
+                self.last_speed = session.fix.speed
+
+                logger.add_sample('waypoint', { 
+                    u'lat': session.fix.latitude,
+                    u'lon': session.fix.longitude,
+                    u'alt': session.fix.altitude
+                })
+
+                # time = session.utc
+                # location.loc_latitude = session.fix.latitude
+                # location.loc_longitude = session.fix.longitude
+                # location.loc_altitude = session.fix.altitude
+                # location.loc_speed = session.fix.speed
+                # location.loc_climb = session.fix.climb
+                # location.loc_track = session.fix.track
+                
+                # if the time is valid the data record is valid
+                
 
             except KeyboardInterrupt:
                 print ('\n')
                 break
             
 
-    def cleanup(self, *args):
-        logger.info('%s: Caught signal: %d. Shutting down...', MY_NAME, args[0])
+    def shutdown(self):
         if self.gps_poller:
             self.gps_poller.shutdown()
-        sys.exit(0)
-
-def subscribe(channels, interval):
-    print "subscribe(): channels:", channels
-    print "subscribe(): interval:", interval
-    return {u'status': 0}
 
 
-def unsubscribe(channels):
-    print "unsubscribe(): channels:", channels
-    return {u'status': 0}
+
+def cleanup(*args):
+    print "Caught signal:", args[0], "Shutting down..."
+    if gps_collector:
+        gps_collector.shutdown()
+    if rvi_callback:
+        rvi_callback.shutdown()
+    sys.exit(0)
 
 
 def usage():
     print "Usage: %s RVI-URL VIN" % sys.argv[0]
     sys.exit(255)
+
         
 if __name__ == "__main__":
     #
@@ -207,68 +375,32 @@ if __name__ == "__main__":
     # Grab the URL to use
     [ progname, rvi_url, vin ] = sys.argv   
 
+    # Welcome message
+    print "RVI Big Data Device"
+    print "Outbound URL to RVI:  ", rvi_url
+    print "Inbound URL from RVI: ", service_url
 
-    # Setup an outbound JSON-RPC connection to the RVI Service Edeg.
+
+    # Setip the logger.
+    logger = Logger()
+    logger.start()
+    # Setup outbound JSON-RPC connection to the RVI Service Edge
     rvi_server = jsonrpclib.Server(rvi_url)
+    
+    # Setup inbound JSON-RPC server
+    rvi_callback = RVICallbackServer(logger, rvi_server, service_url)
+    rvi_callback.start()
 
-    service = RVIJSONRPCServer(addr=((service_host, service_port)), logRequests=False)
+    # catch signals for proper shutdown
+    for sig in (SIGABRT, SIGTERM, SIGINT):
+        signal(sig, cleanup)
 
-    #
-    # Regsiter callbacks for incoming JSON-RPC calls delivered to
-    # this program
-    #
-        
-    service.register_function(subscribe, "/logging/subscribe" )
-    service.register_function(unsubscribe, "/logging/unsubscribe" )
-
-    # Create a thread to handle incoming stuff so that we can do input
-    # in order to get new values
-    thr = threading.Thread(target=service.serve_forever)
-    thr.start()
-
-
-    # We may see traffic immediately from the RVI node when
-    # we register. Let's sleep for a bit to allow the emulator service
-    # thread to get up to speed.
-    time.sleep(0.5)
-
-    #
-    # Register our HVAC emulator service with the vehicle RVI node's Service Edge.
-    # We register both services using our own URL as a callback.
-    #
-
-    # Repeat registration until we succeeed
-    rvi_dead = True
-    while rvi_dead:
-        try: 
-            res = rvi_server.register_service(service = "/logging/subscribe",
-                                              network_address = service_url)
-            rvi_dead = False
-        except:
-            print "No rvi. Wait and retry"
-            time.sleep(2.0)
-
-
-    full_subscribe_name = res['service']
-
-    res = rvi_server.register_service(service = "/logging/unsubscribe", network_address = service_url)
-    full_unsubscribe_name = res['service']
-
-    print "HVAC Emulator."
-    print "Vehicle RVI node URL:       ", rvi_url
-    print "Emulator URL:               ", service_url
-    print "Full subscribe service name :  ", full_subscribe_name
-    print "Full unsubscribe service name  :  ", full_unsubscribe_name
-
-    interval = 100
+    # Start GPS data collection
+    interval = 5
     gps_collector = None
-    nofix = False
 
-    gps_collector = GPSCollector("jlr.com/backend", vin, interval, nofix)
+    gps_collector = GPSCollector(logger, interval)
 
     # Let the main thread run the gps collector
-
     gps_collector.run()
-            
-
-
+    print "gps_collector.run() exited."
