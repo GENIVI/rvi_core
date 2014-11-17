@@ -68,7 +68,8 @@ class Logger(threading.Thread):
             (channel, interval) = subscription
             # Interval is the sample interval in sec. 
             # 0 is when the UTC of when last sample was made.
-            self.subscriptions['channel'] = ( interval, 0 )
+            print "Adding subscription {}. Interval {}".format(channel, interval)
+            self.subscriptions[channel] = ( interval, 0 )
 
         
         while True:
