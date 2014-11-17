@@ -76,7 +76,7 @@ class Logger(threading.Thread):
             # call invoked by another thread.
             
             elem = self.queue.get()
-            print "Elem:",elem
+            print "Elem:", elem
             ( command, arg ) =  elem
 
             
@@ -191,25 +191,25 @@ class Logger(threading.Thread):
     #  (timestamp, [ ( channel, value), ... ]) - Samples for the given timestamp
     #
     def retrieve_next_sample(self):
-        q = Queue()
-        self.queue.put((CMD_RETRIEVE_NEXT_SAMPLE, True))
+        q = Queue.Queue()
+        self.queue.put((CMD_RETRIEVE_NEXT_SAMPLE, q))
         # Wait for a reply to come back and return whatever it was
         return q.get()
         
     def __retrieve_next_sample(self, queue):
         # Get the oldest timestamp that we have stored.
-        (ts, ) = dbc.execute('''SELECT min(timestamp) FROM log''').fetchone()
+        (ts, ) = self.dbc.execute('''SELECT min(timestamp) FROM log''').fetchone()
 
         # If no timestamp, then we have no data in db.
         if ts == None:
-            queue.put((False,))
+            queue.put(False)
             return False
             
         res = []
         # Retrieve all rows with a matching timestamp[
-        for row in dbc.execute('''SELECT channel, value FROM log where timestamp=?''', (ts,)):
+        for row in self.dbc.execute('''SELECT channel, value FROM log where timestamp=?''', (ts,)):
             # Convert value from string back to dict
-            res.append(row[0], eval(row[1]))
+            res.append((row[0], eval(row[1])))
 
         queue.put((ts, res))
         return True
@@ -354,6 +354,8 @@ class DataSender(threading.Thread):
                                    u'timestamp': timestamp,
                                    u'data': values
                                }])
+            # Wipe sample now that we have sent it
+            logger.delete_sample(timestamp)
             self.transaction_id += 1
             
 
@@ -433,6 +435,8 @@ def cleanup(*args):
         rvi_callback.shutdown()
     if logger:
         logger.shutdown()
+    if data_sender:
+        data_sender.shutdown()
     sys.exit(0)
 
 
@@ -469,6 +473,7 @@ if __name__ == "__main__":
     # Setip the logger.
     logger = Logger()
     logger.start()
+
     # Setup outbound JSON-RPC connection to the RVI Service Edge
     rvi_server = jsonrpclib.Server(rvi_url)
     
@@ -476,12 +481,16 @@ if __name__ == "__main__":
     rvi_callback = RVICallbackServer(logger, rvi_server, service_url)
     rvi_callback.start()
 
+    # Setup data sender
+    data_sender = DataSender("jlr.com/backend", vin, rvi_url, logger, 3)
+    data_sender.start()
+
     # catch signals for proper shutdown
     for sig in (SIGABRT, SIGTERM, SIGINT):
         signal(sig, cleanup)
 
     # Start GPS data collection
-    interval = 5
+    interval = 2
     gps_collector = None
 
     gps_collector = GPSCollector(logger, interval)
