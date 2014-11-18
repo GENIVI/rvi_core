@@ -59,12 +59,12 @@ setup(IP, Port, Sock, Mod, Fun, Arg) ->
     end.
 
 send(Pid, Data) when is_pid(Pid) ->
-    gen_server:call(Pid, {send, Data}).
+    gen_server:cast(Pid, {send, Data}).
     
 send(IP, Port, Data) ->
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ok, Pid} ->
-	    gen_server:call(Pid, {send, Data});
+	    gen_server:cast(Pid, {send, Data});
 
 	_Err -> 
 	    ?info("connection:send(): Connection ~p:~p not found for data: ~p", 
@@ -140,11 +140,6 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({send, Data}, _From,  St) ->
-    ?debug("~p:handle_call(send): Sending: ~p", 
-	     [ ?MODULE, Data]),
-
-    {reply, gen_tcp:send(St#st.sock, term_to_binary(Data)), St};
 
 
 handle_call(terminate_connection, _From,  St) ->
@@ -169,6 +164,13 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({send, Data},  St) ->
+    ?debug("~p:handle_call(send): Sending: ~p", 
+	     [ ?MODULE, Data]),
+
+    gen_tcp:send(St#st.sock, term_to_binary(Data)),
+    {noreply, St};
+
 handle_cast(_Msg, State) ->
     ?warning("~p:handle_cast(): Unknown call: ~p", [ ?MODULE, _Msg]),
     {noreply, State}.
