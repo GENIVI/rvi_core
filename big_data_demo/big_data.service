@@ -1,0 +1,18 @@
+# systemd(8) setup usde by Tizen and others.
+[Unit]
+Description=Software Over The Air Service
+Wants=network-online.target rvi.service
+
+[Service]
+Environment="HOME=/opt/big_data_demo-0.3.0"
+Environment="PYTHONPATH=/opt/big_data_demo-0.3.0/mod/lib/python"
+Environment="HOME=/opt/big_data_demo-0.3.0 PYTHONPATH=/opt/big_data_demo-0.3.0/mod/lib/python "
+WorkingDirectory=/opt/big_data_demo-0.3.0
+Type=simple
+StandardOutput=journal
+StandardError=journal
+ExecStart=/bin/sh -c "sleep 10;/usr/bin/python big_data_device.py http://localhost:8811"
+GuessMainPID=yes
+
+[Install]
+WantedBy=graphical.target multi-user.target
