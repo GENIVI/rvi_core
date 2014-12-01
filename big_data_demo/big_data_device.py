@@ -28,6 +28,7 @@ from urlparse import urlparse
 import amb_dbus
 import data_logger
 import gps_collector 
+import traceback
 MY_NAME = "Big Data Demo"
     
 class RVICallbackServer(threading.Thread):
@@ -73,15 +74,23 @@ class RVICallbackServer(threading.Thread):
             try: 
                 res = self.service_edge.register_service(service = "/logging/subscribe",
                                                   network_address = self.callback_url)
+
                 services.append(res['service'])
                 res = self.service_edge.register_service(service = "/logging/unsubscribe",
                                                   network_address = self.callback_url)
                 services.append(res['service'])
                 rvi_dead = False
-            except:
+            except Exception, err:
                 print "No RVI. Wait and retry..."
                 time.sleep(2.0)
+
         print 'Service registration successful. Services: ', services
+        # Retrieve the Vin number from the returned service name
+        vin = services[0]
+        vin = vin[0:len(vin)-18]
+        vin = vin[vin.rindex('/')+1:]
+        print "Retrieved VIN:", vin
+        self.vin = vin
 
     def run(self):
         self.localServer.serve_forever()
@@ -150,7 +159,7 @@ def cleanup(*args):
 
 
 def usage():
-    print "Usage: %s RVI-URL VIN" % sys.argv[0]
+    print "Usage: %s RVI-URL" % sys.argv[0]
     sys.exit(255)
 
         
@@ -167,11 +176,11 @@ if __name__ == "__main__":
     # 
     # Check that we have the correct arguments
     #
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 2:
         usage()
 
     # Grab the URL to use
-    [ progname, rvi_url, vin ] = sys.argv   
+    [ progname, rvi_url ] = sys.argv   
 
     # Welcome message
     print "RVI Big Data Device"
@@ -186,7 +195,7 @@ if __name__ == "__main__":
     
     # Setup outbound JSON-RPC connection to the RVI Service Edge
     rvi_server = jsonrpclib.Server(rvi_url)
-    
+    print "SERVER:", rvi_server
 
     # Setup AMB DBUS integartion
     amb = amb_dbus.DBUSMonitor(logger)
@@ -197,7 +206,7 @@ if __name__ == "__main__":
     rvi_callback.start()
 
     # Setup data sender
-    data_sender = DataSender("jlr.com/backend", vin, rvi_url, logger, 3)
+    data_sender = DataSender("jlr.com/backend", rvi_callback.vin, rvi_url, logger, 3)
     data_sender.start()
 
     # Retrieve (persistent) subscriptions from

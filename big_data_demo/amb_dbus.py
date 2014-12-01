@@ -60,7 +60,7 @@ class DBUSMonitor(threading.Thread):
             # Get object path for name
             obj_path = self.mgr_if.FindObject(name)[0]
             # obj_path = self.sysbus.get_object("org.automotive.message.broker", name)
-            print "add_object({}) -> {}".format(name, obj_path)
+            # print "add_object({}) -> {}".format(name, obj_path)
             self.name_to_path[name] = obj_path
             self.path_to_name[obj_path] = name
             self.path_to_interval[obj_path] = 0 # Not subscribed to
