@@ -4,8 +4,9 @@ Description=Software Over The Air Service
 Wants=network-online.target rvi.service
 
 [Service]
-Environment="HOME=/opt/sota"
-WorkingDirectory=/opt/sota
+Environment="HOME=/opt/sota_demo-0.3.0"
+Environment="PYTHONPATH=/opt/sota_demo-0.3.0/mod/lib/python"
+WorkingDirectory=/opt/sota_demo-0.3.0
 Type=simple
 StandardOutput=journal
 StandardError=journal
