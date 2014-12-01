@@ -38,6 +38,7 @@ Scheduler
    when the node does become connected. Scheduluer should queue
    messages on a per-node basis, not per-service. 
 
+FIXED:
 Data Link
    Any broken connection to a statically configured node should
    periodically get a reconnect attempt.
