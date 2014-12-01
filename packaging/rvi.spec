@@ -2,8 +2,8 @@ Summary:    Remote Vehicle Interaction Node, running on top of Erlang,
 Name:       rvi
 Version:    0.3.0
 Release:    1
-Group:      Applications/System
-License:    Mozilla Public License v2
+Group:      App Framework/Application Communication
+License:    Mozilla Public License 2.0
 Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.3.0.tgz
 
 BuildRequires:  make
@@ -13,15 +13,7 @@ BuildRequires:  git
 BuildRequires:  erlang
 
 %description
-RVI Node running on Tizen. Needs erlang
-
-%package devel
-Summary:    RVI development headers
-Group:      Development/Libraries
-Requires:   %{name} = %{version}
-
-%description devel
-RVI development headers
+RVI Node running on Tizen. Needs erlang. See README.md
 
 %prep
 %setup -c rvi-$RPM_PACKAGE_VERSION
