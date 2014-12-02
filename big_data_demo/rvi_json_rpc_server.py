@@ -12,7 +12,6 @@ class RVIJSONRPCServer(SimpleJSONRPCServer):
     # Check if method is 'message', if so dispatch on
     # name 'service_name' instead.
     def _dispatch(self, method, params):
-        # print "dispatch:", params
         if method == 'message':
             # print "Will dispatch message to: " + params['service_name']
             dict_param = {}
@@ -34,4 +33,4 @@ class RVIJSONRPCServer(SimpleJSONRPCServer):
             return SimpleJSONRPCServer._dispatch(self, params['service_name'], dict_param)           
 
 
-        return SimpleJSONRPCServer._dispatch(self,message, params)           
+        return SimpleJSONRPCServer._dispatch(self,method, params)           
