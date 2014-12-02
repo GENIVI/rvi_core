@@ -1,3 +1,10 @@
+In service_edge_rpc:
+   Report local service registrations to other locally connected services.
+   Today only remote service registrations are forwarded to the locally connceted services
+   through register_remote_service(). When register_service() is invoked from a local service
+   registering itself, that registraion should be forwarded to all other local services.
+
+
 In doc and code, convert JSON-RPC param "parameters" to "arguments" in order to avoid
    confusion with JSON-RPC "params"
 
@@ -15,24 +22,13 @@ In HLD, schedule, data link, and service discovery - Fix code so that
    moved to Servide Discovery, which should forward the call to
    schedule. HLD
 
-All repos
-   Update README.md.
-   Remove find_setup.sh
-   Fix config.
-   Prune xxx_lib.erl
-
-Service Discovery
+Service Discovery [Moved to https://github.com/PDXostc/rvi/issues/5]
    Node service prefix matching should return the one with the longest
    prefix match. This allows for default static nodes to be setup with
    only a root prefix that can be used as a fallback.
 
-Service Discovery, Service Edge, Data Link
-   If a new local service connects and registers with a Service Edge,
-   the service should be announced to other RVI nodes that are
-   currently connected to the local node. (Real time service
-   announcement)
 
-Scheduler
+Scheduler [https://github.com/PDXostc/rvi/issues/6]
    If two different services are invoked on a remote node that is
    currently not available, the services may be invoked out of order
    when the node does become connected. Scheduluer should queue
@@ -42,3 +38,15 @@ FIXED:
 Data Link
    Any broken connection to a statically configured node should
    periodically get a reconnect attempt.
+
+Service Discovery, Service Edge, Data Link
+   If a new local service connects and registers with a Service Edge,
+   the service should be announced to other RVI nodes that are
+   currently connected to the local node. (Real time service
+   announcement)
+
+All repos
+   Update README.md.
+   Remove find_setup.sh
+   Fix config.
+   Prune xxx_lib.erl
