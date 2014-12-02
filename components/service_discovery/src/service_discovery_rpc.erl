@@ -123,6 +123,23 @@ unregister_remote_services(NetworkAddress) ->
     [ ets:delete(?REMOTE_SERVICE_TABLE, Svc#service_entry.service) || Svc <- Svcs ],
     ets:delete(?REMOTE_ADDRESS_TABLE, NetworkAddress),
 
+    %% Forward to service edge so that it can inform its locally
+    %% connected services.
+    %% Build a list of all our local services' addresses to provide
+    %% to service edge so that it knows where to send the,
+    LocalSvcAddresses = 
+	ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
+			  [ LocalAddress | Acc ] end, 
+		  [], ?LOCAL_SERVICE_TABLE),
+
+    %% Call service edge with local addresses (sorted and de-duped) and
+    %% the services to register.
+    rvi_common:send_component_request(service_edge, unregister_remote_services, 
+     				      [
+     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+     				       { services, SvcNames}				       
+     				      ]),
+
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
@@ -164,12 +181,22 @@ register_remote_services(Address, Services) ->
 				       { network_address, Address }
 				      ]),
 
-    %% Leave service edge out of it for now, to ease use cases.
-    %% rvi_common:send_component_request(service_edge, register_remote_services, 
-    %% 				      [
-    %% 				       {services, Services}, 
-    %% 				       { network_address, Address }
-    %% 				      ]),
+    %% Forward to service edge so that it can inform its locally
+    %% connected services.
+    %% Build a list of all our local services' addresses to provide
+    %% to service edge so that it knows where to send the,
+    LocalSvcAddresses = 
+	ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
+			  [ LocalAddress | Acc ] end, 
+		  [], ?LOCAL_SERVICE_TABLE),
+
+    %% Call service edge with local addresses (sorted and de-duped) and
+    %% the services to register.
+    rvi_common:send_component_request(service_edge, register_remote_services, 
+     				      [
+     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+     				       { services, Services}				       
+     				      ]),
 
     {ok, [ { status, rvi_common:json_rpc_status(ok) } ]}.
 
@@ -229,6 +256,7 @@ get_services(Table) ->
     {ok, [ { status, rvi_common:json_rpc_status(ok) },
 	   { services, Services }]}.
 
+
 get_json_services(Table) ->
     Services = ets:foldl(fun(#service_entry {service = ServiceName, 
 					     network_address = ServiceAddr}, Acc) -> 
@@ -239,7 +267,6 @@ get_json_services(Table) ->
 				    ]
 				   } | Acc ] end, 
 			 [], Table),
-
     ?info("service_discovery_rpc:get_services(): ~p", [ Services]),
     {ok, [ { status, rvi_common:json_rpc_status(ok) },
 	   { services, {array, Services }}]}.
