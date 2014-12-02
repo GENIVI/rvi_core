@@ -110,6 +110,23 @@ def publish(vin, key, value):
 
 
 
+def services_available(services):
+    print
+    print "Services available: ", services
+
+    sys.stdout.write("Enter <key> <val> or q to quit: ")
+    sys.stdout.flush()
+    return ['ok']
+
+def services_unavailable(services):
+    print
+    print "Services not available: ", services
+
+    sys.stdout.write("Enter <key> <val> or q to quit: ")
+    sys.stdout.flush()
+    return ['ok']
+
+
 # 
 # Check that we have the correct arguments
 #
@@ -179,12 +196,15 @@ print "Emulator service URL", emulator_service_url
 res = rvi_server.register_service(service = emulator_service_name, 
                                   network_address = emulator_service_url)
 
+
 # Service Edge will return the full, global service name that the
 # registration was recorded as:
 #
 #  jlr.com/backend/mobile/[phone_number]/hvac/publish
 #
 full_emulator_service_name = res['service']
+emulator_service.register_function(services_available, 'services_available')
+emulator_service.register_function(services_unavailable, 'services_unavailable')
 
 #
 # Send of a subscribe to the hvac emulator running on the

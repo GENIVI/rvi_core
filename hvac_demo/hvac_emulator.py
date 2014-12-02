@@ -79,6 +79,22 @@ def publish(key, value):
     sys.stdout.flush()
     return ['ok']
 
+def services_available(services):
+    print
+    print "Services available: ", services
+
+    sys.stdout.write("Enter <key> <val> or q to quit: ")
+    sys.stdout.flush()
+    return ['ok']
+
+def services_unavailable(services):
+    print
+    print "Services not available: ", services
+
+    sys.stdout.write("Enter <key> <val> or q to quit: ")
+    sys.stdout.flush()
+    return ['ok']
+
 #
 # Subscribe command is invoked by the mobile emulator when it sends
 # messages to the jlr.com/vin/1234/hvac/subscribe service.
@@ -164,6 +180,8 @@ emulator_service = RVIJSONRPCServer(addr=((emulator_service_host, emulator_servi
 #
 emulator_service.register_function(publish, emulator_publish_service_name)
 emulator_service.register_function(subscribe, emulator_subscribe_service_name)
+emulator_service.register_function(services_available, 'services_available')
+emulator_service.register_function(services_unavailable, 'services_unavailable')
 
 
 # Create a thread to handle incoming stuff so that we can do input
@@ -182,7 +200,6 @@ time.sleep(0.5)
 # We register both services using our own URL as a callback.
 #
 res = rvi_server.register_service(service = emulator_publish_service_name, 
-
                                   network_address = emulator_service_url)
 
 # 
