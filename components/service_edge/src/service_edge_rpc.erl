@@ -68,7 +68,6 @@ init_rvi_component() ->
 
     end.
 
-
 register_service(Service, Address) ->
     ?debug("service_edge_rpc:register_service(): service: ~p ", [Service]),
     ?debug("service_edge_rpc:register_service(): address: ~p ", [Address]),
@@ -80,15 +79,15 @@ register_service(Service, Address) ->
 					   {service, Service}, 
 					   {network_address, Address}
 					  ], [service]) of
-	{ ok, JSONStatus, [ FullSvcName]} -> 
+	{ ok, JSONStatus, [ FullSvcName ]} -> 
 	    
 	    %% Announce the new service
 	    rvi_common:send_component_request(data_link, announce_new_local_service,
 					      [
 					       %% Convert /some/svc to jlr.com/some/svc
 					       {service, rvi_common:local_service_to_string(Service)}
-					      ], [service]),
-	    { ok, [ {service, FullSvcName}, 
+					      ], [service]),	
+    { ok, [ {service, FullSvcName}, 
 		    {status, rvi_common:json_rpc_status(JSONStatus)} ] };
 
 	Err -> 
@@ -97,6 +96,27 @@ register_service(Service, Address) ->
 	    Err
     end.
 
+manage_remote_service(Cmd, LocalServiceAddress, Services) ->
+    ?info("service_edge_rpc:manage_remote_service(~p, ~p, ~p): Called.", 
+		  [ Cmd, LocalServiceAddress, Services ]),
+    
+    dispatch_to_local_service(LocalServiceAddress, Cmd, 
+			      [ { services, Services }]),
+    ok.
+
+
+%% Register the services listed in Services wit all 
+%% local services listed under LocalServices
+manage_remote_services(Cmd, LocalServiceAddresses, Services) ->
+    ?info("service_edge_rpc:manage_remote_services(~p, ~p, ~p): Called.", 
+		  [ Cmd, LocalServiceAddresses, Services ]),
+    
+    lists:map(fun(LocalServiceAddress) -> 
+		      manage_remote_service(Cmd, LocalServiceAddress, Services)
+	      end, LocalServiceAddresses),
+    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] }.
+    
+    
 
 %%
 %% Handle a message, delivered from a locally connected service, that is
@@ -108,7 +128,6 @@ handle_local_message(ServiceName, Timeout, Parameters, CallingService) ->
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
     ?debug("service_edge_rpc:local_msg: calling_service: ~p", [CallingService]),
 
-    
     case 
 	%%
 	%% Authorize local message and retrieve a certificate / signature
@@ -307,13 +326,15 @@ handle_rpc("register_service", Args) ->
 
 
 handle_rpc("register_remote_services", Args) ->
-    {ok, _Services} = rvi_common:get_json_element(["services"], Args),
-    %% FIXME: Report all available services to the connected local services
+    {ok, Services} = rvi_common:get_json_element(["services"], Args),
+    {ok, LocalServiceAddresses} = rvi_common:get_json_element(["local_service_addresses"], Args),
+    manage_remote_services("services_available", LocalServiceAddresses, Services),
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
 handle_rpc("unregister_remote_services", Args) ->
-    {ok, _Services} = rvi_common:get_json_element(["services"], Args),
-    %% FIXME: Report all deleted services to the connected local services
+    {ok, Services} = rvi_common:get_json_element(["services"], Args),
+    {ok, LocalServiceAddresses} = rvi_common:get_json_element(["local_service_addresses"], Args),
+    manage_remote_services("services_unavailable", LocalServiceAddresses, Services),
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
 handle_rpc("message", Args) ->
@@ -360,15 +381,17 @@ wse_message(Ws, ServiceName, Timeout, JSONParameters, CallingService) ->
 %% locally connected services that uses the same HTTP port to transmit
 %% their register_service, and message calls.
 
-handle_call({rvi_call, register_remote_services, Args}, _From, _State) ->
-    {_, _Services} = lists:keyfind(services, 1, Args),
-    %% FIXME: Report all added services to the connected local services
-    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+handle_call({rvi_call, register_remote_services, Args}, _From, State) ->
+    {_, Services} = lists:keyfind(services, 1, Args),
+    {_, LocalServiceAddresses} = lists:keyfind(local_service_addresses, 1, Args),
+    manage_remote_services("services_available", LocalServiceAddresses, Services),
+    { reply, { ok, [ { status, rvi_common:json_rpc_status(ok)} ]}, State };
 
-handle_call({rvi_call, unregister_remote_services, Args}, _From, _State) ->
-    {_, _Services} = lists:keyfind(services, 1, Args),
-    %% FIXME: Report all deleted services to the connected local services
-    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+handle_call({rvi_call, unregister_remote_services, Args}, _From, State) ->
+    {_, Services} = lists:keyfind(services, 1, Args),
+    {_, LocalServiceAddresses} = lists:keyfind(local_service_addresses, 1, Args),
+    manage_remote_services("services_unavailable", LocalServiceAddresses, Services),
+    { reply, {ok, [ { status, rvi_common:json_rpc_status(ok)} ] }, State };
 
 
 handle_call({rvi_call, handle_remote_message, Args}, _From, State) ->
