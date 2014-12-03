@@ -1,5 +1,10 @@
 # SETUP INSTRUCTIONS FOR SOTA DEMO ON TIZEN BOX #
 
+**Please note that there is a bug in Tizen WRT where the
+  wrt-installer regularly hangs the Tizen box when invoked to install
+  the transmitted package. This will be fixed when we move to
+  crosswalk.**
+
 ## SETUP
 
 All files are available at rvi@rvi1.nginfotpdx.net:sota_demo/
