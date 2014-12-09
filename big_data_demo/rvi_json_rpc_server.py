@@ -20,7 +20,7 @@ class RVIJSONRPCServer(SimpleJSONRPCServer):
             # Convert 'parameters' from [{'vin': 1234}, {hello: 'world'}] to
             # a regular dictionary: {'vin': 1234, hello: 'world'}
 
-            # print "Parameters:", params['parameters']
+            print "Parameters:", params['parameters']
             msg_params = params['parameters'] 
             for i in range(0, len(msg_params)):
                 for j in range(0, len(msg_params[i].keys())):

@@ -18,6 +18,7 @@ import sys
 import getopt
 import os
 import time
+from datetime import tzinfo, timedelta, datetime
 import threading
 import random 
 from signal import *
@@ -46,10 +47,10 @@ class RVICallbackServer(threading.Thread):
         self.register_services()
         self.amb = amb
         
-    def subscribe(self, channels, report_interval):
+    def subscribe(self, channels, reporting_interval):
         for channel in channels:
-            self.amb.subscribe(channel, int(report_interval))
-            self.logger.add_subscription(channel, int(report_interval))
+            self.amb.subscribe(channel, int(reporting_interval))
+            self.logger.add_subscription(channel, int(reporting_interval))
             
         self.logger.dump_db()
         return {u'status': 0}
@@ -100,6 +101,16 @@ class RVICallbackServer(threading.Thread):
 
 
  
+class UTC(tzinfo):
+    """UTC"""
+    def utcoffset(self, dt):
+        return timedelta(0)
+
+    def tzname(self, dt):
+        return "UTC"
+
+    def dst(self, dt):
+        return timedelta(0)
 
 class DataSender(threading.Thread):
     """
@@ -119,6 +130,8 @@ class DataSender(threading.Thread):
         self._Thread__stop()
         
     def run(self):
+
+        utc = UTC()
         while True:
             sample = logger.retrieve_next_sample()
 
@@ -128,17 +141,26 @@ class DataSender(threading.Thread):
                 time.sleep(self.send_interval)
                 continue
 
-            ( timestamp, values ) = sample
-            print "Sending timestamp: {} - values {}".format(timestamp, values)
+            ( timestamp, datapoints ) = sample
+            data_arg = []
+            for dp in datapoints:
+                (channel, value) = dp
+                data_arg.append({ u'channel': channel, u'value': value })
+
+            utc_ts = datetime.fromtimestamp(timestamp, utc).isoformat()
+            param = [{
+                u'vin': self.vin,
+                u'timestamp': utc_ts,
+                u'data': data_arg
+            }]
+
+            print "Sending: {}".format(param)
             rvi_server.message(calling_service = "/big_data",
                                service_name = self.destination + "/logging/report",
                                transaction_id = self.transaction_id,
                                timeout = int(time.time())+60,
-                               parameters = [{ 
-                                   u'vin': self.vin,
-                                   u'timestamp': timestamp,
-                                   u'data': values
-                               }])
+                               parameters = param)
+
             # Wipe sample now that we have sent it
             logger.delete_sample(timestamp)
             self.transaction_id += 1

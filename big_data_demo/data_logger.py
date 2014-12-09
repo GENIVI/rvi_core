@@ -75,8 +75,7 @@ class Logger(threading.Thread):
                 self.__delete_subscription(arg)
                     
             elif command == CMD_ADD_SAMPLE:
-                (channel, value) = arg
-                self.__add_sample(channel, value)
+                self.__add_sample(arg)
 
             elif command == CMD_RETRIEVE_NEXT_SAMPLE:
                 # Arg is a queue object to send back the result over
@@ -149,37 +148,40 @@ class Logger(threading.Thread):
         self.dbc.execute('''DELETE FROM subscriptions WHERE channel=?''', (channel,))
         return True
 
-    def add_sample(self, channel, value):
-        self.queue.put((CMD_ADD_SAMPLE, (channel, value)))
+    def add_sample(self, values):
+        self.queue.put((CMD_ADD_SAMPLE, values))
 
-    def __add_sample(self, channel, value):
+    def __add_sample(self, values):
         # If the channel is not among our subscriptions, then ignore.
         # [ind for ind, elem in enumerate(self.subscriptions) if v[0] == 53]
      
-        if not channel in self.subscriptions:
-            # print "add_sample({}): Not subscribed to. Ignored".format(channel)
-            return False
-
         # If it is not time for us to sample the given channel yet, then ignore
         c_time = int(time.time())
 
-        ( sample_interval, last_sample_ts ) = self.subscriptions[channel]
+        print "add_sample({})".format(values)
+        for (channel, value) in values:
+            if not channel in self.subscriptions:
+                # print "add_sample({}): Not subscribed to. Ignored".format(channel)
+                continue
 
-        # Return if we have previously received a sample and
-        # the interval to the next sample has yet to elapse.
-        if last_sample_ts > 0 and c_time < last_sample_ts + sample_interval:
-            # print "add_sample({}): c_time < last_sample_ts={} + sample_interval={}. Skipped".format(c_time, last_sample_ts, sample_interval)
-            return False
+            ( sample_interval, last_sample_ts ) = self.subscriptions[channel]
+
+            # Skip if we have previously received a sample and
+            # the interval to the next sample has yet to elapse.
+            if last_sample_ts > 0 and c_time < last_sample_ts + sample_interval:
+                # print "add_sample({}): c_time < last_sample_ts={} + sample_interval={}. Skipped".format(c_time, last_sample_ts, sample_interval)
+                continue
         
-        print "add_sample({}): {}".format(channel, value)
-        # Store the sample
-        # Convert the value dictionary to a string.
-        self.dbc.execute('''INSERT INTO log VALUES (?, ?, ?)''', (c_time, channel, str(value)))
-        self.dbc.commit()
+            print "add_sample({}): {}".format(channel, value)
+            # Store the sample
+            # Convert the value dictionary to a string.
+            self.dbc.execute('''INSERT INTO log VALUES (?, ?, ?)''', (c_time, channel, str(value)))
+            self.dbc.commit()
         
-        # Update the last sample timestamp
-        # print "Updating subscriptions[{}] with ({}, {})".format(channel, sample_interval, c_time)
-        self.subscriptions[channel] = ( sample_interval, c_time)
+            # Update the last sample timestamp
+            # print "Updating subscriptions[{}] with ({}, {})".format(channel, sample_interval, c_time)
+            self.subscriptions[channel] = ( sample_interval, c_time)
+
         return True
 
     # Retrieve all samples for the oldest time stamp in the database

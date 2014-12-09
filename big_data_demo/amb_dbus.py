@@ -151,7 +151,7 @@ class DBUSMonitor(threading.Thread):
             res[entry] = val
             
         print "dumping:", res
-        self.logger.add_sample(obj_name, res)
+        self.logger.add_sample([(obj_name, res),])
         
     def run(self):
         while True:
