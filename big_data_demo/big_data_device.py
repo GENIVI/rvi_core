@@ -46,10 +46,10 @@ class RVICallbackServer(threading.Thread):
         self.register_services()
         self.amb = amb
         
-    def subscribe(self, channels, interval):
+    def subscribe(self, channels, report_interval):
         for channel in channels:
-            self.amb.subscribe(channel, int(interval))
-            self.logger.add_subscription(channel, int(interval))
+            self.amb.subscribe(channel, int(report_interval))
+            self.logger.add_subscription(channel, int(report_interval))
             
         self.logger.dump_db()
         return {u'status': 0}

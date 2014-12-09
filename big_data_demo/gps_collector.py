@@ -70,11 +70,13 @@ class GPSCollector:
 
                 self.last_speed = session.fix.speed
 
-                self.logger.add_sample('waypoint', { 
+                self.logger.add_sample('location', { 
                     u'lat': session.fix.latitude,
                     u'lon': session.fix.longitude,
                     u'alt': session.fix.altitude
                 })
+
+                self.logger.add_sample('speed', session.fix.speed)
 
                 # time = session.utc
                 # location.loc_latitude = session.fix.latitude

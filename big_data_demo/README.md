@@ -76,10 +76,10 @@ msec timestamp when the value was sample.
 	         "vin":  "1234",
 	         "timestamp":  1415143459110,
 		     "data":, [
-				 { "channel": "odo", "value": 10022 },
-				 { "channel": "odo", "value": 10023 },
+				 { "channel": "odometer", "value": 10022 },
+				 { "channel": "odometer", "value": 10023 },
 				 { "channel": "speed", "value": 113 },
-				 { "channel": "waypoint",
+				 { "channel": "location",
 				   "value": { "lat": 39.0319, "lon": 125.7538, "alt": 222.3 } } 		 
 	         ]
 		 }
