@@ -143,14 +143,18 @@ handle_local_message(ServiceName, Timeout, Parameters, CallingService) ->
 	{ ok, ok, [Certificate, Signature] } -> 
 
 	    %%
-	    %% Check if this is a local service. If so, just forward it to its service_name.
+	    %% Check if this is a local service by trying to resolve its service name. 
+	    %% If successful, just forward it to its service_name.
 	    %% 
-	    case rvi_common:is_local_service(ServiceName) of
-		true ->  %% ServiceName is local. Forward message
+	    case rvi_common:send_component_request(service_discovery, resolve_local_service,
+						   [
+						    {service, ServiceName}
+						   ], [ network_address ]) of
+		{ ok, ok, [ NetworkAddress] } -> %% ServiceName is local. Forward message
 		    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
-		    forward_message_to_local_service(ServiceName, Parameters);
+		    forward_message_to_local_service(ServiceName, NetworkAddress, xParameters);
 		    
-		false -> %% ServiceName is remote
+		_ -> %% ServiceName is remote
 		    %% Ask Schedule the request to resolve the network address
 		    ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
 		    forward_message_to_scheduler(ServiceName, Timeout, Parameters, Certificate, Signature)
@@ -217,7 +221,7 @@ flatten_ws_args(Args) ->
     flatten_ws_args(Args, []).
     
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], Command, Args) ->
-    ?debug("service_edge:dispatch_to_local_service(): Websocket!: ~p, ~p", [ Command, Args]),
+    ?info("service_edge:dispatch_to_local_service(): Websocket!: ~p, ~p", [ Command, Args]),
     wse:call(list_to_pid(WSPidStr), wse:window(),
 	     Command, flatten_ws_args(Args)),
     ok;
@@ -227,6 +231,48 @@ dispatch_to_local_service(NetworkAddress, Command, Args) ->
     rvi_common:send_http_request(NetworkAddress, Command, Args).
     
 
+forward_message_to_local_service(ServiceName, NetworkAddress, Parameters) ->
+    ?debug("service_edge:forward_to_local(): URL:         ~p", [NetworkAddress]),
+
+    %%
+    %% Strip our node prefix from service_name so that
+    %% the service receiving the JSON rpc call will have
+    %% a service_name that is identical to the service name
+    %% it registered with.
+    %%
+    SvcName = string:substr(ServiceName, 
+			    length(rvi_common:local_service_prefix())),
+
+    %% Deliver the message to the local service, which can
+    %% be either a wse websocket, or a regular HTTP JSON-RPC call
+    case rvi_common:get_request_result(
+	   dispatch_to_local_service(NetworkAddress, 
+				     "message", 
+				     [ { service_name, SvcName },
+				       { parameters, Parameters }])) of
+
+	%% Request delivered.
+	{ ok, ok, _ } ->
+	    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+
+	%% status returned was an error code.
+	{ ok, undefined } ->
+	    ?warning("service_edge:forward_to_local(): "
+		     "Local Service ~p at ~p not available.", 
+		     [ServiceName, NetworkAddress]),
+	    { ok, [ { status, rvi_common:json_rpc_status(not_available)}]};
+
+	{ ok, Status } ->
+	    ?warning("    service_edge:forward_to_local(): Status:   ~p", 
+		     [Status]),
+	    { error, [{ status, rvi_common:json_rpc_status(Status)}]};
+
+	%% HTTP or similar error.
+	Err -> 
+	    ?warning("service_edge:forward_to_local(): Local service failed: ~p", [Err]),
+	    Err
+    end.
+    
 forward_message_to_local_service(ServiceName, Parameters) ->
     %%
     %% Resolve the local service name to an URL that we can send the
@@ -239,47 +285,8 @@ forward_message_to_local_service(ServiceName, Parameters) ->
 					   [ {service, ServiceName} ],
 					   [ network_address ]) of
 	{ ok, ok, [ NetworkAddress] } -> 
-	    ?debug("service_edge:forward_to_local(): URL:         ~p", [NetworkAddress]),
+	    forward_message_to_local_service(ServiceName, NetworkAddress, Parameters);
 
-	    %%
-	    %% Strip our node prefix from service_name so that
-	    %% the service receiving the JSON rpc call will have
-	    %% a service_name that is identical to the service name
-	    %% it registered with.
-	    %%
-	    SvcName = string:substr(ServiceName, 
-				    length(rvi_common:local_service_prefix())),
-
-	    %% Deliver the message to the local service, which can
-	    %% be either a wse websocket, or a regular HTTP JSON-RPC call
-	    case rvi_common:get_request_result(
-		   dispatch_to_local_service(NetworkAddress, 
-					     "message", 
-					     [ { service_name, SvcName },
-					       { parameters, Parameters }])) of
-
-		%% Request delivered.
-		{ ok, ok, _ } ->
-		    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
-
-		%% status returned was an error code.
-		{ ok, undefined } ->
-		    ?warning("service_edge:forward_to_local(): "
-			     "Local Service ~p at ~p not available.", 
-			     [ServiceName, NetworkAddress]),
-		    { ok, [ { status, rvi_common:json_rpc_status(not_available)}]};
-
-		{ ok, Status } ->
-		    ?warning("    service_edge:forward_to_local(): Status:   ~p", 
-			     [Status]),
-		    { error, [{ status, rvi_common:json_rpc_status(Status)}]};
-
-		%% HTTP or similar error.
-		Err -> 
-		    ?warning("service_edge:forward_to_local(): Local service failed: ~p", [Err]),
-		    Err
-	    end;
-		
 	%% Local service could not be resolved to an URL
 	{ok, not_found, _} ->
 	    ?info("    service_edge_rpc:local_msg() Local service ~p not found.", 

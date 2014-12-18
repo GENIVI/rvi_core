@@ -27,7 +27,6 @@
 -export([local_service_prefix/0]).
 -export([get_static_node/1]).
 -export([static_nodes/0]).
--export([is_local_service/1]).
 -export([node_address_string/0]).
 -export([node_address_tuple/0]).
 -export([get_request_result/1]).
@@ -427,30 +426,6 @@ get_static_node(Service, [{ SvcPrefix, NetworkAddress} | T] ) ->
 		   [ Service, SvcPrefix, NetworkAddress]),
 	    get_static_node(Service, T )
     end.
-	    
-%% Return true if the provided service is locally connected to this
-%% node. In such cases, service edge should just bounce the request
-%% off directly to the targeted service without invoking the rest of
-%% the RVI structure.
-%%
-is_local_service(Service) ->
-     case application:get_env(rvi, ?NODE_SERVICE_PREFIX) of
- 	{ok, P} when is_list(P) -> 
-	     case string:str(sanitize_service_string(Service), P) of
- 		1 -> 
- 		    ?debug("is_local_service(~p): Is local", [ Service ]),
- 		    true;				
-
- 		Err -> 
- 		    ?debug("is_local_service(~p): Not local: ~p", [ Service, Err ]),
- 		    false
- 	    end;
-	    
- 	undefined -> 
- 	    ?warning("WARNING: Please set application rvi environment ~p", 
- 		      [?NODE_SERVICE_PREFIX]),
- 	    false
-     end.
 
 
 node_address_string() ->
