@@ -55,6 +55,16 @@ init_rvi_component() ->
     end,
     ok.
 
+dump_table(_Table, '$end_of_table') ->
+    true;
+
+dump_table(Table, Key) ->
+    Val = ets:lookup(Table, Key),
+    ?info("Table: ~p(~p) - ~p", [ Table, Key, Val ]),
+    dump_table(Table, ets:next(Table, Key)).
+
+dump_table(Table) ->
+    dump_table(Table, ets:first(Table)).
 
 register_remote_service(NetworkAddress) ->
     ?info("service_discovery_rpc:register_remote_service(): service:         empty"),
@@ -66,6 +76,7 @@ register_remote_service(NetworkAddress) ->
 		  network_address = NetworkAddress
 		 }),
 
+    dump_table(?REMOTE_ADDRESS_TABLE),
     {ok, [ {service, ""}, { status, rvi_common:json_rpc_status(ok)}]}.
 
 
@@ -89,6 +100,15 @@ register_remote_service(Service, NetworkAddress) ->
 			service = [], 
 			network_address = NetworkAddress 
 		      }),
+
+    %% Delete any previous instances of the given entry, in case
+    %% the service registers multiple times
+    ets:match_delete(?REMOTE_ADDRESS_TABLE, 
+		     #service_entry { 
+			service = FullSvcName, 
+			network_address = NetworkAddress 
+		      }),
+
     ets:insert(?REMOTE_ADDRESS_TABLE, 
 	       #service_entry {
 		  service = FullSvcName,
@@ -115,30 +135,35 @@ unregister_remote_services(NetworkAddress) ->
 				       [SvcName | Acc]
 			       end, [], Svcs),
 
-    rvi_common:send_component_request(schedule, unregister_remote_services, 
+    ets:delete(?REMOTE_ADDRESS_TABLE, NetworkAddress),
+    case Svcs of 
+	[] ->
+	    true;
+	_ ->
+	    rvi_common:send_component_request(schedule, unregister_remote_services, 
 				      [
 				       { services, SvcNames }
 				      ]),
 
-    [ ets:delete(?REMOTE_SERVICE_TABLE, Svc#service_entry.service) || Svc <- Svcs ],
-    ets:delete(?REMOTE_ADDRESS_TABLE, NetworkAddress),
+	    [ ets:delete(?REMOTE_SERVICE_TABLE, Svc#service_entry.service) || Svc <- Svcs ],
 
-    %% Forward to service edge so that it can inform its locally
-    %% connected services.
-    %% Build a list of all our local services' addresses to provide
-    %% to service edge so that it knows where to send the,
-    LocalSvcAddresses = 
-	ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
-			  [ LocalAddress | Acc ] end, 
-		  [], ?LOCAL_SERVICE_TABLE),
+	    %% Forward to service edge so that it can inform its locally
+	    %% connected services.
+	    %% Build a list of all our local services' addresses to provide
+	    %% to service edge so that it knows where to send the,
+	    LocalSvcAddresses = 
+		ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
+				  [ LocalAddress | Acc ] end, 
+			  [], ?LOCAL_SERVICE_TABLE),
 
-    %% Call service edge with local addresses (sorted and de-duped) and
-    %% the services to register.
-    rvi_common:send_component_request(service_edge, unregister_remote_services, 
-     				      [
-     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-     				       { services, SvcNames}				       
-     				      ]),
+	    %% Call service edge with local addresses (sorted and de-duped) and
+	    %% the services to register.
+	    rvi_common:send_component_request(service_edge, unregister_remote_services, 
+					      [
+					       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+					       { services, SvcNames}				       
+					      ])
+    end,
 
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
@@ -170,33 +195,34 @@ register_remote_services(Address, Services) ->
     %% Loop through the services and register them.
     case Services of 
 	[] -> register_remote_service(Address); 
-	_ -> lists:map(fun(Svc) -> register_remote_service(Svc, Address) end, Services)
+	_ -> 
+	    lists:map(fun(Svc) -> register_remote_service(Svc, Address) end, Services),
+
+	    %% Forward to scheduler now that we have updated our own state
+	    rvi_common:send_component_request(schedule, register_remote_services, 
+						  [
+						   {services, Services}, 
+						   { network_address, Address }
+						  ]),
+
+	    %% Forward to service edge so that it can inform its locally
+	    %% connected services.
+	    %% Build a list of all our local services' addresses to provide
+	    %% to service edge so that it knows where to send the,
+	    LocalSvcAddresses = 
+		ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
+				  [ LocalAddress | Acc ] end, 
+			  [], ?LOCAL_SERVICE_TABLE),
+
+	    %% Call service edge with local addresses (sorted and de-duped) and
+	    %% the services to register.
+	    rvi_common:send_component_request(service_edge, register_remote_services, 
+					      [
+					       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+					       { services, Services}				       
+					      ])
     end,
 
-
-    %% Forward to scheduler now that we have updated our own state
-    rvi_common:send_component_request(schedule, register_remote_services, 
-				      [
-				       {services, Services}, 
-				       { network_address, Address }
-				      ]),
-
-    %% Forward to service edge so that it can inform its locally
-    %% connected services.
-    %% Build a list of all our local services' addresses to provide
-    %% to service edge so that it knows where to send the,
-    LocalSvcAddresses = 
-	ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
-			  [ LocalAddress | Acc ] end, 
-		  [], ?LOCAL_SERVICE_TABLE),
-
-    %% Call service edge with local addresses (sorted and de-duped) and
-    %% the services to register.
-    rvi_common:send_component_request(service_edge, register_remote_services, 
-     				      [
-     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-     				       { services, Services}				       
-     				      ]),
 
     {ok, [ { status, rvi_common:json_rpc_status(ok) } ]}.
 

@@ -222,6 +222,8 @@ flatten_ws_args(Args) ->
     
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], Command, Args) ->
     ?info("service_edge:dispatch_to_local_service(): Websocket!: ~p, ~p", [ Command, Args]),
+    %% wse:call(list_to_pid(WSPidStr), wse:window(),
+    %% 	     Command, flatten_ws_args(Args)),
     wse:call(list_to_pid(WSPidStr), wse:window(),
 	     Command, flatten_ws_args(Args)),
     ok;

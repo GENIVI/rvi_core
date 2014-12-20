@@ -299,6 +299,8 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    LocalServices = 
 		lists:foldl(fun({struct, JSONElem}, Acc) -> 
 				    [ proplists:get_value("service", JSONElem, undefined) | Acc];
+			       ({Service, _LocalAddress}, Acc) -> 
+				    [ Service | Acc ];
 			       (Elem, Acc) -> 
 				    [ Elem | Acc ]
 			    end,
