@@ -223,7 +223,6 @@ register_remote_services(Address, Services) ->
 					      ])
     end,
 
-
     {ok, [ { status, rvi_common:json_rpc_status(ok) } ]}.
 
 resolve_service(Table, RawService) ->
