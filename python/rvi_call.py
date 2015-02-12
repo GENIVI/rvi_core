@@ -40,6 +40,8 @@ rvi_node = sys.argv[1]
 service = sys.argv[2]
 args = []
 i=3
+
+# Construct a dictionary from the provided paths.
 while i < len(sys.argv):
     print sys.argv[i]
     [k, v] = sys.argv[i].split('=')
@@ -59,6 +61,9 @@ print "RVI Node:         ", rvi_node
 print "Service:          ", service
 print "args:             ", args
 
+#
+# Send the messge.
+#
 rvi.message(service, args)
 
 
