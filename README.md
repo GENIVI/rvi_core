@@ -3,7 +3,7 @@ Copyright (C) 2014, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-# REMOTE VEHICLE INTERACTION (RVI) 0.2 #
+# REMOTE VEHICLE INTERACTION (RVI) 0.3 #
 
 This document gives a brief introduction to the codebase of the RVI
 project and explains the reasoning behind some of the technical
