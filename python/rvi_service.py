@@ -49,28 +49,13 @@ def service_invoked(**args):
     sys.stdout.flush()
     return ['ok']
 
-def services_available(services):
-    print
-    print "Services available: ", services
-    sys.stdout.write("Press enter to quit: ")
-    sys.stdout.flush()
 
-    return ['ok']
-
-def services_unavailable(services):
-    print
-    print "Services not available: ", services
-
-    sys.stdout.write("Press enter to quit: ")
-    sys.stdout.flush()
-    return ['ok']
 
 if len(sys.argv) != 3:
     usage()
 
 # Grab the URL to use
 [ progname, rvi_node_url, service_name ] = sys.argv    
-
 
 # Setup a connection to the local RVI node
 rvi = RVI(rvi_node_url)
@@ -85,10 +70,6 @@ rvi.start_serve_thread()
 #
 full_service_name = rvi.register_service(service_name, service_invoked) 
 
-# Tie callbacks to be invoked as the RVI node reports to us
-# about other services being available.
-rvi.set_services_available_callback(services_available)
-rvi.set_services_unavailable_callback(services_unavailable)
 
 print "RVI General Service."
 print "RVI node URL:        ", rvi_node_url
