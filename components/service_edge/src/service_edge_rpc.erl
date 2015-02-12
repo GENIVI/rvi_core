@@ -152,7 +152,7 @@ handle_local_message(ServiceName, Timeout, Parameters, CallingService) ->
 						   ], [ network_address ]) of
 		{ ok, ok, [ NetworkAddress] } -> %% ServiceName is local. Forward message
 		    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
-		    forward_message_to_local_service(ServiceName, NetworkAddress, xParameters);
+		    forward_message_to_local_service(ServiceName, NetworkAddress, Parameters);
 		    
 		_ -> %% ServiceName is remote
 		    %% Ask Schedule the request to resolve the network address
@@ -235,6 +235,7 @@ dispatch_to_local_service(NetworkAddress, Command, Args) ->
 
 forward_message_to_local_service(ServiceName, NetworkAddress, Parameters) ->
     ?debug("service_edge:forward_to_local(): URL:         ~p", [NetworkAddress]),
+    ?debug("service_edge:forward_to_local(): Parameters:  ~p", [Parameters]),
 
     %%
     %% Strip our node prefix from service_name so that
