@@ -27,8 +27,6 @@ class RVI(SimpleJSONRPCServer):
             self.rvi_port = port
 
         self.rvi_address = address
-        print self.rvi_address
-        print self.rvi_port
         SimpleJSONRPCServer.__init__(self,addr=((self.rvi_address, self.rvi_port)), logRequests=False)
         self.rvi_client = Server(rvi_node_url)
         self.serve_thread = False
@@ -74,7 +72,6 @@ class RVI(SimpleJSONRPCServer):
         # I.e. when self.url() + service_name gets called by the RVI node, we
         # will dispatch that call to 'function'.
         #
-        print "Will register {} to function {}".format(service_name, function)
         self.register_function(function, service_name)
 
         # Register the service name with the RVI node so that we get called
@@ -84,7 +81,6 @@ class RVI(SimpleJSONRPCServer):
         
         # Check if we have a thread going
         if self.serve_thread == False:
-            print "No thread started, will do so now"
             self.start_serve_thread()
             
 
@@ -108,7 +104,6 @@ class RVI(SimpleJSONRPCServer):
     # service that registered 'service_name' in the network.
     #
     def message(self, service_name, parameters, timeout = int(time.time()) + 60 ):
-        print "message({}, {}, {})".format(service_name, parameters, timeout)
         self.rvi_client.message(calling_service= "not_used",
                                      service_name = service_name,
                                      timeout = timeout,
@@ -120,7 +115,7 @@ class RVI(SimpleJSONRPCServer):
     #
     def _dispatch(self, method, params):
         if method == 'message':
-            print "Will dispatch message to: " + params['service_name']
+            # print "Will dispatch message to: " + params['service_name']
             dict_param = {}
             # Extract the 'parameters' element from the top level JSON-RPC
             # 'param'. 
@@ -131,7 +126,7 @@ class RVI(SimpleJSONRPCServer):
             msg_params = params['parameters'] 
             for i in range(0, len(msg_params)):
                 for j in range(0, len(msg_params[i].keys())):
-                    print "params", msg_params[i].keys()[j], "=", msg_params[i].values()[j]
+                    # print "params", msg_params[i].keys()[j], "=", msg_params[i].values()[j]
                     dict_param[msg_params[i].keys()[j]] = msg_params[i].values()[j]
 
             # print "Parameter disctionary: ", dict_param
