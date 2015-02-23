@@ -3,7 +3,7 @@ Copyright (C) 2014, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-**Version 0.2**
+**Version 0.3.X**
 
 # BUILD INSTRUCTIONS FOR RVI #
 
