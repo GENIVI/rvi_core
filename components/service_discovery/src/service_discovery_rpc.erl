@@ -183,13 +183,54 @@ register_local_service(NetworkAddress, Service) ->
 
 
 resolve_local_service(RawService) ->
-    ?info("service_discovery_rpc:resolve_local_service(): RawService:  ~p", [RawService]),
-    resolve_service(?LOCAL_SERVICE_TABLE, RawService).
+    Service = rvi_common:sanitize_service_string(RawService),
+    ?info("service_discovery_rpc:resolve_local_service(): RawService:      ~p", [RawService]),
+    ?info("service_discovery_rpc:resolve_local_service(): Cleaned Service: ~p", [Service]),
+    case resolve_service(?LOCAL_SERVICE_TABLE, Service) of 
+	not_found ->
+	    { ok, [ { status, rvi_common:json_rpc_status(not_found) }]};
+	
+	{ok, NetworkAddress } ->
+	    {ok, [ { status, rvi_common:json_rpc_status(ok) },
+		   { network_address, NetworkAddress }]}
+    end.
+	
 
 
 resolve_remote_service(RawService) ->
-    ?info("service_discovery_rpc:resolve_remote_service(): RawService: ~p", [RawService]),
-    resolve_service(?REMOTE_SERVICE_TABLE, RawService).
+    Service = rvi_common:sanitize_service_string(RawService),
+    ?info("service_discovery_rpc:resolve_remote_service(): RawService:      ~p", [RawService]),
+    ?info("service_discovery_rpc:resolve_remote_service(): Cleaned Service: ~p", [Service]),
+    case resolve_service(?REMOTE_SERVICE_TABLE, Service) of
+	{ok, NetworkAddress } ->
+	    {ok, [ { status, rvi_common:json_rpc_status(ok) },
+		   { network_address, NetworkAddress }]};
+
+	not_found ->
+	    ?info("service_discovery_rpc:resolve_remote_service(~p): Service not found in ets. "
+		  "Trying static nodes",
+		  [Service]),
+
+	    
+	    %% Check if this is a service residing on the backend server
+	    case rvi_common:get_static_node(Service) of
+		not_found -> %% Not found
+		    ?info("service_discovery_rpc:resolve_remote_service(~p): Service not found in static nodes.", 
+			   [Service]),
+		    
+		    { ok, [ { status, rvi_common:json_rpc_status(not_found) }]};
+
+		NetworkAddress -> %% Found
+			    ?info("service_discovery_rpc:resolve_service(~p): Service is on static node ~p", 
+				   [Service, NetworkAddress]),
+
+		    {ok, [ { status, rvi_common:json_rpc_status(ok) },
+			   { network_address, NetworkAddress }]}
+	    end
+    end.
+					  
+					  
+
 
 register_remote_services(Address, Services) ->
     %% Loop through the services and register them.
@@ -225,10 +266,9 @@ register_remote_services(Address, Services) ->
 
     {ok, [ { status, rvi_common:json_rpc_status(ok) } ]}.
 
-resolve_service(Table, RawService) ->
-    Service = rvi_common:sanitize_service_string(RawService),
+resolve_service(Table, Service) ->
 
-    ?info("service_discovery_rpc:resolve_service(): CleanedService:    ~p", [RawService]),
+    ?info("service_discovery_rpc:resolve_service(): CleanedService:    ~p", [Service]),
 
     %% For info purposes only
     Svcs = ets:foldl(fun({service_entry, ServiceName, ServiceAddr}, Acc) -> 
@@ -243,31 +283,11 @@ resolve_service(Table, RawService) ->
 	    ?info("service_discovery_rpc:resolve_service(): service: ~p -> ~p", 
 		   [ Service, NetworkAddress ]),
 
-	    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-		   { network_address, NetworkAddress }]};
+	    {ok, NetworkAddress };
 
 	%% We did not find a service entry, check statically configured nodes.
 	[] -> 
-	    ?info("service_discovery_rpc:resolve_service(~p): Service not found in ets. "
-		  "Trying static nodes",
-		     [Service]),
-
-	    
-	    %% Check if this is a service residing on the backend server
-	    case rvi_common:get_static_node(Service) of
-		not_found -> %% Not found
-		    ?info("service_discovery_rpc:resolve_service(~p): Service not found in static nodes", 
-			   [Service]),
-		    
-		    { ok, [ { status, rvi_common:json_rpc_status(not_found) }]};
-
-		NetworkAddress -> %% Found
-			    ?info("service_discovery_rpc:resolve_service(~p): Service is on static node ~p", 
-				   [Service, NetworkAddress]),
-		    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-			   { network_address, NetworkAddress }]}
-	    end
-
+	    not_found
     end.
 
 
