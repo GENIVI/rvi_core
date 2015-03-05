@@ -49,7 +49,7 @@ init_rvi_component() ->
 %% Retrieve certificate. 
 %% Certificate will be passed to exo_json:encode() in order
 %% to be translated to JSON.
-get_certificate_body(_CallingService, _ServiceName) ->
+get_certificate_body(_ServiceName) ->
     {struct, 
      [
       %% Topic tree patterns that this node is authorized to
@@ -104,15 +104,14 @@ get_certificate_body(_CallingService, _ServiceName) ->
      ]
     }.
 
-authorize_local_message(ServiceName, CallingService) ->
+authorize_local_message(ServiceName) ->
     ?debug("authorize_rpc:authorize_local_msg(): service_name:    ~p ~n", [ServiceName]),
-    ?debug("authorize_rpc:authorize_local_msg(): calling_service: ~p ~n", [CallingService]),
     {ok, 
      [ 
        { status, rvi_common:json_rpc_status(ok)},
        { signature, "fixme_add_signature" },
-%%       { certificate, get_certificate_body(CallingService, ServiceName) }
-       { certificate, "certificate"  }
+       { certificate, get_certificate_body(ServiceName) }
+%%       { certificate, "certificate"  }
      ]}.
 
 authorize_remote_message(ServiceName, Signature, Certificate) ->
@@ -130,8 +129,7 @@ authorize_remote_message(ServiceName, Signature, Certificate) ->
 %% CAlled by local exo http server
 handle_rpc("authorize_local_message", Args) ->
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
-    {ok, CallingService} = rvi_common:get_json_element(["calling_service"], Args),
-    authorize_local_message(ServiceName, CallingService);
+    authorize_local_message(ServiceName);
 
 handle_rpc("authorize_remote_message", Args) ->
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
@@ -150,11 +148,9 @@ handle_rpc(Other, _Args) ->
 %%
 handle_call({rvi_call, authorize_local_message, Args}, _From, State) ->
     {_, ServiceName} = lists:keyfind(service_name, 1, Args),
-    {_, CallingService} = lists:keyfind(calling_service, 1, Args),
     ?info("authorize_rpc:authorize_local_message(gen_server):  args:            ~p", [ Args]),
     ?info("authorize_rpc:authorize_local_message(gen_server):  service name:    ~p", [ ServiceName]),
-    ?info("authorize_rpc:authorize_local_message(gen_server):  calling service: ~p", [ CallingService]),
-    {reply, authorize_local_message(ServiceName, CallingService), State};
+    {reply, authorize_local_message(ServiceName), State};
 
 handle_call({rvi_call, authorize_remote_message, Args}, _From, State) ->
     {_, ServiceName} = lists:keyfind(service_name, 1, Args),
