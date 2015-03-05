@@ -49,6 +49,23 @@ def service_invoked(**args):
     sys.stdout.flush()
     return ['ok']
 
+def services_available(**args):
+    print
+    print "Services available!"
+    print "args:", args 
+    print
+    sys.stdout.write("Press enter to quit: ")
+    sys.stdout.flush()
+    return ['ok']
+
+def services_unavailable(**args):
+    print
+    print "Services unavailable!"
+    print "args:", args 
+    print
+    sys.stdout.write("Press enter to quit: ")
+    sys.stdout.flush()
+    return ['ok']
 
 
 if len(sys.argv) != 3:
@@ -65,6 +82,9 @@ rvi = RVI(rvi_node_url)
 
 rvi.start_serve_thread() 
 
+rvi.set_services_available_callback(services_available) 
+rvi.set_services_unavailable_callback(services_unavailable) 
+
 # Register our service  and invoke 'service_invoked' if we 
 # get an incoming JSON-RPC call to it from the RVI node
 #
@@ -76,5 +96,6 @@ print "RVI node URL:        ", rvi_node_url
 print "Service:             ", full_service_name
 
 raw_input('Press enter to quit: ')
+rvi.unregister_service(service_name)
 rvi.shutdown()
 sys.exit(0)

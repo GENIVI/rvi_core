@@ -30,6 +30,7 @@ class RVI(SimpleJSONRPCServer):
         SimpleJSONRPCServer.__init__(self,addr=((self.rvi_address, self.rvi_port)), logRequests=False)
         self.rvi_client = Server(rvi_node_url)
         self.serve_thread = False
+        self.registered_services = dict()
         
     # Set the callback to invoke when RVI reports that one or more new 
     # services are available for invocation somewhere in the network.
@@ -43,7 +44,13 @@ class RVI(SimpleJSONRPCServer):
     # Arguments will be an array of fully qualified service names no longer available.
     def set_services_unavailable_callback(self, function):
         self.register_function(function, 'services_unavailable')
-        
+    
+    def get_available_services(self):
+        # We need at least one dummy argument for the RPC to go
+        # through on the RVI side.
+        res = self.rvi_client.get_available_services(1)
+        return res['services']
+
     # Register a service in this python program that should
     # be reached from the rest of the network.
     #
@@ -83,9 +90,38 @@ class RVI(SimpleJSONRPCServer):
         if self.serve_thread == False:
             self.start_serve_thread()
             
+        full_service_name = res['service']
+        self.registered_services[service_name] = full_service_name
 
         # Return the fully qualified service name
         return res['service']
+
+    # Unregister a service 
+    #  Unregisters a service previously registered with register_service
+    #  The provided 'service_name' is identical to that provided tgo
+    #  retister_service()
+    #
+    def unregister_service(self, service_name):
+
+        # Check that the service has been previously registered
+        # If not just return
+        if service_name not in self.registered_services:
+            return False
+            
+
+        # Retrieve the fully qualified service name that
+        # we need to unregister from rvi
+        full_service_name = self.registered_services[service_name]
+
+        # Delete dictionary entry
+        del self.registered_services[service_name]
+
+        #
+        # Unregister the service from RVI
+        #
+        res = self.rvi_client.unregister_service(service=full_service_name)
+        
+        return True
 
     def start_serve_thread(self):
         self.serve_thread = threading.Thread(target=self.serve_forever)
@@ -104,11 +140,20 @@ class RVI(SimpleJSONRPCServer):
     # service that registered 'service_name' in the network.
     #
     def message(self, service_name, parameters, timeout = int(time.time()) + 60 ):
-        self.rvi_client.message(calling_service= "not_used",
-                                     service_name = service_name,
-                                     timeout = timeout,
-                                     parameters = parameters)
+        self.rvi_client.message(service_name = service_name,
+                                timeout = timeout,
+                                parameters = parameters)
         
+
+    #
+    # Redefined shutdown method that first unregisters all services.
+    #
+    def shutdown(self):
+        for service in self.registered_services:
+            self.unregister_service(service)
+
+        SimpleJSONRPCServer.shutdown(self)
+
     #
     # Check if method is 'message', if so dispatch on
     # name 'service_name' instead.
