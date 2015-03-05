@@ -22,7 +22,6 @@
 -define(REMOTE_SERVICE_TABLE, rvi_remote_services).
 -define(REMOTE_ADDRESS_TABLE, rvi_address_services).
 
-
 -record(service_entry, {
 	  service = [],
 	  network_address = undefined %% Address where service can be found
@@ -40,9 +39,8 @@ init([]) ->
 
 %% Called by service_discovery_app:start_phase().
 init_rvi_component() ->
-    ets:new(?LOCAL_SERVICE_TABLE, [set,  public, named_table, { keypos, #service_entry.service }]),
-    ets:new(?REMOTE_SERVICE_TABLE, [set,  public, named_table, 
-				    {keypos, #service_entry.service}]),
+    ets:new(?LOCAL_SERVICE_TABLE,  [set,  public, named_table, { keypos, #service_entry.service }]),
+    ets:new(?REMOTE_SERVICE_TABLE, [set,  public, named_table, { keypos, #service_entry.service }]),
     ets:new(?REMOTE_ADDRESS_TABLE, [duplicate_bag,  public, named_table, 
 				    {keypos, #service_entry.network_address}]),
 
@@ -168,18 +166,27 @@ unregister_remote_services(NetworkAddress) ->
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
+unregister_local_service(Service) ->
+    ?info("service_discovery_rpc:unregister_local_service(): Service~p", 
+	  [Service]),
+
+    ets:delete(?LOCAL_SERVICE_TABLE, Service),
+    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
+
+
 register_local_service(NetworkAddress, Service) ->
     ?info("service_discovery_rpc:register_local_service(): service:         ~p", [Service]),
     ?info("service_discovery_rpc:register_local_service(): network_address: ~p", [NetworkAddress]),
 
     FullSvcName = rvi_common:local_service_to_string(Service),
+
     ets:insert(?LOCAL_SERVICE_TABLE, 
 	       #service_entry {
 		  service = FullSvcName,
 		  network_address = NetworkAddress
 		 }),
+    FullSvcName.
 
-    {ok, [ { service, FullSvcName }, { status, rvi_common:json_rpc_status(ok) }]}.
 
 
 resolve_local_service(RawService) ->
@@ -194,8 +201,6 @@ resolve_local_service(RawService) ->
 	    {ok, [ { status, rvi_common:json_rpc_status(ok) },
 		   { network_address, NetworkAddress }]}
     end.
-	
-
 
 resolve_remote_service(RawService) ->
     Service = rvi_common:sanitize_service_string(RawService),
@@ -291,6 +296,7 @@ resolve_service(Table, Service) ->
     end.
 
 
+
 get_services(Table) ->
     Services = ets:foldl(fun(#service_entry {service = ServiceName, 
 					     network_address = ServiceAddr}, Acc) -> 
@@ -298,8 +304,20 @@ get_services(Table) ->
 			 [], Table),
 
     ?info("service_discovery_rpc:get_services(): ~p", [ Services]),
-    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-	   { services, Services }]}.
+    Services.
+
+get_all_services() ->
+    RemoteSvc = ets:foldl(fun(#service_entry {service = ServiceName}, Acc) -> 
+				  [ ServiceName  | Acc ] end, 
+			  [], ?REMOTE_SERVICE_TABLE),
+
+    LocalSvc = ets:foldl(fun(#service_entry {service = ServiceName}, Acc) -> 
+				  [ ServiceName  | Acc ] end, 
+			  [], ?LOCAL_SERVICE_TABLE),
+
+    Services = RemoteSvc++LocalSvc,
+    ?info("service_discovery_rpc:get_all_services(): ~p", [ Services]),
+    Services.
 
 
 get_json_services(Table) ->
@@ -357,7 +375,13 @@ get_network_addresses(Table) ->
 handle_rpc("register_local_service", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
-    register_local_service(Address, Service);
+    FullSvcName   = register_local_service(Address, Service),
+
+    {reply, {ok, [ { service, FullSvcName }, 
+		   { status, rvi_common:json_rpc_status(ok) }
+		 ]
+	    }
+    };
 
 
 %% Register remote services
@@ -374,6 +398,11 @@ handle_rpc("unregister_remote_services", Args) ->
     %% Loop through the services and de-register them.
     unregister_remote_services(Address);
 
+handle_rpc("unregister_local_service", Args) ->
+    {ok, Service} = rvi_common:get_json_element(["service"], Args),
+    %% De-register service
+    unregister_local_service(Service);
+
 
 %%
 %% Resolve remote service
@@ -388,6 +417,14 @@ handle_rpc("resolve_remote_service", Args) ->
 %%
 handle_rpc("get_remote_services", _Args) ->
     get_json_services(?REMOTE_SERVICE_TABLE);
+
+%%
+%% Get all services
+%%
+handle_rpc("get_all_services", _Args) ->
+    Services = get_all_services(),
+    {ok, [ { status, rvi_common:json_rpc_status(ok) },
+	   { services, {array, Services }}]};
 
 
 %%
@@ -433,7 +470,13 @@ handle_rpc( Other, _Args) ->
 handle_call({rvi_call, register_local_service, Args}, _From, State) ->
     {_, Service} = lists:keyfind(service, 1, Args),
     {_, Address} = lists:keyfind(network_address, 1, Args),
-    {reply, register_local_service(Address, Service), State };
+    FullSvcName  = register_local_service(Address, Service),
+
+    {reply, {ok, [ { service, FullSvcName }, 
+		   { status, rvi_common:json_rpc_status(ok) }
+		 ]
+	    }, State  };
+
 
 handle_call({rvi_call, register_remote_services, Args}, _From, State) ->
     {_, Services} = lists:keyfind(services, 1, Args),
@@ -444,12 +487,25 @@ handle_call({rvi_call, unregister_remote_services, Args}, _From, State) ->
     {_, Address} = lists:keyfind(network_address, 1, Args),
     {reply, unregister_remote_services(Address), State };
 
+handle_call({rvi_call, unregister_local_service, Args}, _From, State) ->
+    {_, Service} = lists:keyfind(service, 1, Args),
+    {reply, unregister_local_service(Service), State };
+
 handle_call({rvi_call, resolve_remote_service, Args}, _From, State) ->
     {_, Service} = lists:keyfind(service, 1, Args),
     {reply, resolve_remote_service(Service), State };
 
 handle_call({rvi_call, get_remote_services, _Args}, _From, State) ->
-    {reply, get_services(?REMOTE_SERVICE_TABLE), State };
+    Services = get_services(?REMOTE_SERVICE_TABLE),
+    {reply,  {ok, 
+	      [ { status, rvi_common:json_rpc_status(ok) },
+		{ services, Services }]}, State };
+
+handle_call({rvi_call, get_all_services, _Args}, _From, State) ->
+    Services = get_all_services(),
+    {reply,  {ok, 
+	      [ { status, rvi_common:json_rpc_status(ok) },
+		{ services, Services }]}, State };
 
 handle_call({rvi_call, get_remote_network_addresses, _Args}, _From, State) ->
     {reply, get_network_addresses(?REMOTE_ADDRESS_TABLE), State };
@@ -459,7 +515,10 @@ handle_call({rvi_call, resolve_local_service, Args}, _From, State) ->
     {reply, resolve_local_service(Service), State };
 
 handle_call({rvi_call, get_local_services, _Args}, _From, State) ->
-    {reply, get_services(?LOCAL_SERVICE_TABLE), State };
+    Services = get_services(?LOCAL_SERVICE_TABLE),
+    {reply,  {ok, 
+	      [ { status, rvi_common:json_rpc_status(ok) },
+		{ services, Services }]}, State };
 
 handle_call({rvi_call, get_local_network_addresses, _Args}, _From, State) ->
     {reply, get_network_addresses(?LOCAL_SERVICE_TABLE), State };
