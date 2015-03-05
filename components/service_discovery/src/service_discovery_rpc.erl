@@ -377,10 +377,9 @@ handle_rpc("register_local_service", Args) ->
     {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
     FullSvcName   = register_local_service(Address, Service),
 
-    {reply, {ok, [ { service, FullSvcName }, 
-		   { status, rvi_common:json_rpc_status(ok) }
-		 ]
-	    }
+    {ok, [ { service, FullSvcName }, 
+	   { status, rvi_common:json_rpc_status(ok) }
+	 ]
     };
 
 
