@@ -110,8 +110,8 @@ authorize_local_message(ServiceName) ->
      [ 
        { status, rvi_common:json_rpc_status(ok)},
        { signature, "fixme_add_signature" },
-       { certificate, get_certificate_body(ServiceName) }
-%%       { certificate, "certificate"  }
+%%       { certificate, get_certificate_body(ServiceName) }
+       { certificate, "certificate"  }
      ]}.
 
 authorize_remote_message(ServiceName, Signature, Certificate) ->
