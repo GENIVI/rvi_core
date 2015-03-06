@@ -353,19 +353,19 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 	      { service_announce, 
 		TransactionID, 
 		unavailable,
-		Service, 
+		Services, 
 		Signature}, _ExtraArgs) ->
     ?info("data_link_bert:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
     ?info("data_link_bert:service_announce(unavailable): Remote IP:     ~p", [ RemoteIP ]),
     ?info("data_link_bert:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
     ?info("data_link_bert:service_announce(unavailable): Signature:     ~p", [ Signature ]),
-    ?info("data_link_bert:service_announce(unavailable): Service:       ~p", [ Service ]),
+    ?info("data_link_bert:service_announce(unavailable): Service:       ~p", [ Services ]),
 
     %% Register the received services with all relevant components
-    
-    rvi_common:send_component_request(service_discovery, unregister_single_remote_service, 
+
+    rvi_common:send_component_request(service_discovery, unregister_remote_services_by_name, 
 				      [
-				       {service, Service}
+				       {services, Services}
 				      ]),
     ok;
 
