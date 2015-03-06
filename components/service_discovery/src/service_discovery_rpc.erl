@@ -116,14 +116,14 @@ register_remote_service(Service, NetworkAddress) ->
     {ok, [ {service, FullSvcName}, { status, rvi_common:json_rpc_status(ok)}]}.
 
 
-unregister_remote_services(NetworkAddress) ->
-    ?info("service_discovery_rpc:unregister_remote_services(): network_address: ~p", 
+unregister_remote_services_by_address(NetworkAddress) ->
+    ?info("service_discovery_rpc:unregister_remote_services_by_address(): network_address: ~p", 
 	  [NetworkAddress]),
 
     %% Delete all services registered under the given address.
     Svcs = ets:lookup(?REMOTE_ADDRESS_TABLE, NetworkAddress),
 
-    ?info("service_discovery_rpc:unregister_remote_services(): ~p -> ~p", 
+    ?info("service_discovery_rpc:unregister_remote_services_by_address(): ~p -> ~p", 
 	  [NetworkAddress, Svcs]),
     
 
@@ -132,6 +132,15 @@ unregister_remote_services(NetworkAddress) ->
     SvcNames = lists:foldr(fun(#service_entry {  service = SvcName }, Acc) -> 
 				       [SvcName | Acc]
 			       end, [], Svcs),
+
+    %% Delete any addresses stored with an empty service name,
+    %% installed with register_remote_service/1, since we now have at
+    %% least one service name.
+    ets:match_delete(?REMOTE_ADDRESS_TABLE, 
+		     #service_entry { 
+			service = [], 
+			network_address = NetworkAddress 
+		      }),
 
     ets:delete(?REMOTE_ADDRESS_TABLE, NetworkAddress),
     case Svcs of 
@@ -162,6 +171,40 @@ unregister_remote_services(NetworkAddress) ->
 					       { services, SvcNames}				       
 					      ])
     end,
+
+    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
+
+
+unregister_single_remote_service(Service) ->
+    ?info("service_discovery_rpc:unregister_single_remote_service(): ~p", 
+	  [Service]),
+
+
+    %% Delete any remote address table entries with a matching Service.
+    ets:match_delete(?REMOTE_ADDRESS_TABLE, 
+		     #service_entry { 
+			service = Service,
+			network_address = '_'
+		      }),
+
+    ets:delete(?REMOTE_SERVICE_TABLE, Service),
+
+    %% Forward to service edge so that it can inform its locally
+    %% connected services.
+    %% Build a list of all our local services' addresses to provide
+    %% to service edge so that it knows where to send the,
+    LocalSvcAddresses = 
+	ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
+			  [ LocalAddress | Acc ] end, 
+		  [], ?LOCAL_SERVICE_TABLE),
+    
+    %% Call service edge with local addresses (sorted and de-duped) and
+    %% the services to register.
+    rvi_common:send_component_request(service_edge, unregister_remote_services, 
+				      [
+				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+				       { services, [Service]}				       
+				      ]),
 
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
@@ -391,11 +434,17 @@ handle_rpc("register_remote_services", Args) ->
     register_remote_services(Address, Services);
 
 
-handle_rpc("unregister_remote_services", Args) ->
+handle_rpc("unregister_remote_services_by_address", Args) ->
     {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
 
     %% Loop through the services and de-register them.
-    unregister_remote_services(Address);
+    unregister_remote_services_by_address(Address);
+
+handle_rpc("unregister_single_remote_service", Args) ->
+    {ok, Service} = rvi_common:get_json_element(["service"], Args),
+
+    %% Loop through the services and de-register them.
+    unregister_single_remote_service(Service);
 
 handle_rpc("unregister_local_service", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
@@ -482,9 +531,13 @@ handle_call({rvi_call, register_remote_services, Args}, _From, State) ->
     {_, Address} = lists:keyfind(network_address, 1, Args),
     {reply, register_remote_services(Address, Services), State };
 
-handle_call({rvi_call, unregister_remote_services, Args}, _From, State) ->
+handle_call({rvi_call, unregister_remote_services_by_address, Args}, _From, State) ->
     {_, Address} = lists:keyfind(network_address, 1, Args),
-    {reply, unregister_remote_services(Address), State };
+    {reply, unregister_remote_services_by_address(Address), State };
+
+handle_call({rvi_call, unregister_single_remote_service, Args}, _From, State) ->
+    {_, Service} = lists:keyfind(service, 1, Args),
+    {reply, unregister_single_remote_service(Service), State };
 
 handle_call({rvi_call, unregister_local_service, Args}, _From, State) ->
     {_, Service} = lists:keyfind(service, 1, Args),

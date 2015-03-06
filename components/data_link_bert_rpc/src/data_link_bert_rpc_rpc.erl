@@ -181,9 +181,8 @@ send_data(RemoteAddress, RemotePort, Data) ->
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 
-    
-announce_new_local_service(Service) ->
-    ?info("data_link_bert:announce_new_local_service(): Service      ~p",  [Service]),
+announce_local_service(Service, Availability) ->
+    ?info("data_link_bert:announce_local_service(~p): Service      ~p",  [Availability, Service]),
     %% Grab our local address.
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
@@ -193,8 +192,8 @@ announce_new_local_service(Service) ->
     case rvi_common:send_component_request(service_discovery, get_remote_network_addresses, [], 
 					   [ addresses ]) of
 	{ ok, _, [ Addresses ] } -> 
-	    ?info("data_link_bert:announce_new_local_service(): Addresses      ~p", 
-		   [ Addresses]),
+	    ?info("data_link_bert:announce_local_service(~p): Addresses      ~p", 
+		   [ Availability, Addresses]),
 
 	    %% Grab our local address.
 	    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
@@ -202,8 +201,8 @@ announce_new_local_service(Service) ->
 	    %% Loop over all returned addresses
 	    lists:map(
 	      fun(Address) ->
-		      ?info("data_link_bert:announce_new_local_service(): Sending to      ~p", 
-			    [ Address]),
+		      ?debug("data_link_bert:announce_local_service(~p): Sending to      ~p", 
+			    [ Availability, Address]),
 		      
 		      %% Split the address into host and port
 		      [ RemoteAddress, RemotePort] =  string:tokens(Address, ":"),
@@ -211,10 +210,10 @@ announce_new_local_service(Service) ->
 		      %% Announce the new service to the remote 
 		      %% RVI node
 		      Res = connection:send(RemoteAddress, list_to_integer(RemotePort), 
-				      {service_announce, 3,  
+				      {service_announce, 3, Availability, 
 				       [Service], { signature, {}}}),
-		      ?info("data_link_bert:announce_new_local_service(): Res      ~p", 
-			    [ Res]),
+		      ?debug("data_link_bert:announce_local_service(~p): Res      ~p", 
+			    [ Availability, Res]),
 		      ok
 
 	      end,
@@ -223,9 +222,8 @@ announce_new_local_service(Service) ->
 	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
 
 	Err -> 
-	    ?warning("data_link_bert:announce_new_local_service() Failed to grab addresses: ~p", 
-	
-		     [ Err ]),
+	    ?warning("data_link_bert:announce_local_service(~p) Failed to grab addresses: ~p", 
+		     [ Availability, Err ]),
 	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}
 
     end.
@@ -317,7 +315,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    ?info("data_link_bert:authorize(): Sending announce()"),
 	    ?info("data_link_bert:authorize(): -------------------"),
 	    connection:send(FromPid, 
-			    { service_announce, 2,
+			    { service_announce, 2, available,
 			      LocalServices, { signature, {}}});
 
 	Err -> 
@@ -331,13 +329,14 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 handle_socket(_FromPid, RemoteIP, RemotePort, data, 
 	      { service_announce, 
 		TransactionID, 
+		available,
 		Services, 
 		Signature}, _ExtraArgs) ->
-    ?info("data_link_bert:service_announce(): TransactionID: ~p", [ TransactionID ]),
-    ?info("data_link_bert:service_announce(): Remote IP:     ~p", [ RemoteIP ]),
-    ?info("data_link_bert:service_announce(): Remote Port:   ~p", [ RemotePort ]),
-    ?info("data_link_bert:service_announce(): Signature:     ~p", [ Signature ]),
-    ?info("data_link_bert:service_announce(): Services:      ~p", [ Services ]),
+    ?info("data_link_bert:service_announce(available): TransactionID: ~p", [ TransactionID ]),
+    ?info("data_link_bert:service_announce(available): Remote IP:     ~p", [ RemoteIP ]),
+    ?info("data_link_bert:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
+    ?info("data_link_bert:service_announce(available): Signature:     ~p", [ Signature ]),
+    ?info("data_link_bert:service_announce(available): Services:      ~p", [ Services ]),
 
     %% Register the received services with all relevant components
     
@@ -350,6 +349,25 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
     ok;
 
 
+handle_socket(_FromPid, RemoteIP, RemotePort, data, 
+	      { service_announce, 
+		TransactionID, 
+		unavailable,
+		Service, 
+		Signature}, _ExtraArgs) ->
+    ?info("data_link_bert:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
+    ?info("data_link_bert:service_announce(unavailable): Remote IP:     ~p", [ RemoteIP ]),
+    ?info("data_link_bert:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
+    ?info("data_link_bert:service_announce(unavailable): Signature:     ~p", [ Signature ]),
+    ?info("data_link_bert:service_announce(unavailable): Service:       ~p", [ Service ]),
+
+    %% Register the received services with all relevant components
+    
+    rvi_common:send_component_request(service_discovery, unregister_single_remote_service, 
+				      [
+				       {service, Service}
+				      ]),
+    ok;
 
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
@@ -374,10 +392,12 @@ handle_socket(_FromPid, SetupIP, SetupPort, data, Data, _ExtraArgs) ->
     ?warning("data_link_bert:unknown_data(): Unknown data:  ~p",  [ Data]),
     ok.
 
+%% We lost the socket connection.
+%% Unregister all services that were routed to the remote end that just died.
 handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
     ?info("data_link_bert:socket_closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     RemoteNetworkAddress = SetupIP  ++ ":" ++ integer_to_list(SetupPort),
-    rvi_common:send_component_request(service_discovery, unregister_remote_services, 
+    rvi_common:send_component_request(service_discovery, unregister_remote_services_by_address, 
 				      [
 				       {network_address, RemoteNetworkAddress}
 				      ]),
@@ -404,9 +424,13 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
-handle_rpc("announce_new_local_service", Args) ->
+handle_rpc("announce_available_local_service", Args) ->
     { ok,  Service } = rvi_common:get_json_element(["service"], Args),
-    announce_new_local_service(Service);
+    announce_local_service(Service, available);
+
+handle_rpc("announce_unavailable_local_service", Args) ->
+    { ok,  Service } = rvi_common:get_json_element(["service"], Args),
+    announce_local_service(Service, unavailable);
 
 handle_rpc("setup_data_link", Args) ->
     { ok, NetworkAddress } = rvi_common:get_json_element(["network_address"], Args),
@@ -434,9 +458,13 @@ handle_rpc(Other, _Args) ->
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
-handle_call({rvi_call, announce_new_local_service, Args}, _From, State) ->
+handle_call({rvi_call, announce_available_local_service, Args}, _From, State) ->
     {_, Service} = lists:keyfind(service, 1, Args),
-    {reply, announce_new_local_service(Service), State};
+    {reply, announce_local_service(Service, available), State};
+
+handle_call({rvi_call, announce_unavailable_local_service, Args}, _From, State) ->
+    {_, Service} = lists:keyfind(service, 1, Args),
+    {reply, announce_local_service(Service, unavailable), State};
 
 handle_call({rvi_call, setup_data_link, Args}, _From, State) ->
     {_, NetworkAddress} = lists:keyfind(network_address, 1, Args),

@@ -85,7 +85,7 @@ register_local_service(Service, ServiceAddress) ->
 	{ ok, JSONStatus, [ FullSvcName ]} -> 
 	    
 	    %% Announce the new service to all connected nodes.
-	    rvi_common:send_component_request(data_link, announce_new_local_service,
+	    rvi_common:send_component_request(data_link, announce_available_local_service,
 					      [
 					       %% Convert /some/svc to jlr.com/some/svc
 					       {service, rvi_common:local_service_to_string(Service)}
@@ -121,7 +121,13 @@ unregister_local_service(Service) ->
 					   {service, Service}
 					  ]) of
 	{ ok, ok } -> 
-	    %% Retrieve addresses of all locally registered services.
+	    %% Announce the new service to all connected nodes.
+	    rvi_common:send_component_request(data_link, announce_unavailable_local_service,
+					      [
+					       %% Convert /some/svc to jlr.com/some/svc
+					       {service, rvi_common:local_service_to_string(Service)}
+					      ], [service]),	
+
 	    {ok, ok, [ AnnounceAddresses ]} =
 		rvi_common:send_component_request(service_discovery, 
 						  get_local_network_addresses,
