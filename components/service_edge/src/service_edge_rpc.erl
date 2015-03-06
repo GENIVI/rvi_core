@@ -98,7 +98,7 @@ register_local_service(Service, ServiceAddress) ->
 	    %% Send out an announcement to all locally connected services, but skip
 	    %% the one that made the registration call
 	    announce_service_availability(services_available, AnnounceAddresses, 
-					  [Service], ServiceAddress),
+					  [FullSvcName], ServiceAddress),
 	    
 
 	    %% Return ok.
