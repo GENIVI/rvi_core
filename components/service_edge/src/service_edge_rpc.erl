@@ -462,6 +462,12 @@ handle_rpc("register_remote_services", Args) ->
     announce_service_availability(services_available, LocalServiceAddresses, Services),
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
 
+handle_rpc("unregister_remote_services", Args) ->
+    {ok, Services} = rvi_common:get_json_element(["services"], Args),
+    {ok, LocalServiceAddresses} = rvi_common:get_json_element(["local_service_addresses"], Args),
+    announce_service_availability(services_unavailable, LocalServiceAddresses, Services),
+    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] };
+
 handle_rpc("message", Args) ->
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
