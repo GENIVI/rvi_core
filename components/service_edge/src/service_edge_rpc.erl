@@ -125,7 +125,7 @@ unregister_local_service(Service) ->
 	    rvi_common:send_component_request(data_link, announce_unavailable_local_service,
 					      [
 					       %% Convert /some/svc to jlr.com/some/svc
-					       {service, rvi_common:local_service_to_string(Service)}
+					       {service, Service}
 					      ], [service]),	
 
 	    {ok, ok, [ AnnounceAddresses ]} =
