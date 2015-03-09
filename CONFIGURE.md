@@ -1,9 +1,9 @@
-Copyright (C) 2014, Jaguar Land Rover
+Copyright (C) 2014-2015, Jaguar Land Rover
 
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-**Version 0.2**
+**Version 0.3.x**
 
 # CONFIGURING AN RVI NODE 
 
@@ -269,7 +269,7 @@ The URL of Service Edge is specified through the ```service_edge```
 tuple's ```url``` entry, read by the other components in the node to
 locate it.  When a URL is specified for Service Edge, the port that it
 is to listen to must be synchronzied as well, using the
-```exo_http_opts``` tuple. 
+```exo\_http\_opts``` tuple. 
 
 An example entry is gven below:
 
@@ -380,7 +380,7 @@ using the address/port specified by ```bert_rpc_server```).
 Below is an example of where gen_server is used where approrpiate.
 
 Please note that ```service_edge always``` need to have its ```url```
-and ```exo_http_pts``` options specified since local services need an
+and ```exo_http_opts``` options specified since local services need an
 HTTP port to send JSON-RPC to. However, gen_server can still be
 specified in parallel, allowing for gen_server calls to be made
 between Servie Edge and other RVI components.
@@ -441,7 +441,7 @@ of ```servide_edge```. Below is the previous configuration example with such a s
           { websocket, [ { port, 8818}]},
           { url, "http://127.0.0.1:8811" },
           { exo_http_opts, [ { port, 8811 } ]}
-        ]},
+        ]},</b>
 ...
 </pre>
 
@@ -454,7 +454,7 @@ host).
 # COMPILING THE RVI SOURCE CODE
 
 Before a development release can be built, the source code needs to be compiled.
-Please see BUILDING.md for details on this process.
+Please see BUILD.md for details on this process.
 
 
 # CREATING A DEVELOPMENT RELEASE
@@ -584,4 +584,3 @@ Additional handlers can also be added for different log destinations.
 See Basho's lager documentation at [github](https://github.com/basho/lager) for details
 on logging.
 
-## MORE
