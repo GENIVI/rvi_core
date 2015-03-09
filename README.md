@@ -12,15 +12,15 @@ choices.
 # ADDITIONAL DOCUMENTATION AND RESOURCES#
 For a high level description, with an exhaustive master usecase
 walkthrough, please see the High Level Design document 
-[here](https://wiki2.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf)
+[here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf)
 
 For build instructions, please check the build instructions:
 [Markdown](BUILD.md) | 
-[PDF](https://wiki2.automotivelinux.org/_media/wiki/wiki/rvi-eg/build.pdf)
+[PDF](https://wiki.automotivelinux.org/_media/eg-rvi/rvi-build.pdf)
 
 For configuration and launch instructions, please check the configuration documentation:
 [Markdown](CONFIGURE.md) | 
-[PDF](https://wiki2.automotivelinux.org/_media/wiki/wiki/rvi-eg/configure.pdf)
+[PDF](https://wiki.automotivelinux.org/_media/eg-rvi/rvi-configure.pdf)
 
 The RVI mailing list is available at:  
 [AGL](http://lists.linuxfoundation.org/mailman/listinfo/automotive-eg-rvi)
@@ -124,9 +124,9 @@ own Data Link and Protocol components to handle communication link
 management and data encoding / decoding over any media (IP or non-IP).
 
 ## ERLANG ##
-[Erlang](www.erlang.org) was chosen to implementation the core
+[Erlang](http://www.erlang.org) was chosen to implementation the core
 components of the RVI system. Each component (see the
-[HLD](https://wiki2.automotivelinux.org/_media/15-456-poc-rvi-hld_reva.pdf)
+[HLD](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf)
 for details) run as an erlang application inside a single erlang node.
 
 Several reasons exist for this somewhat unorthodox choice of
