@@ -45,7 +45,9 @@ Various improvements
   allows for the implementation of "vehicle online" indicators and other
   real-time sensitive behavior.
 
-* Big data demo moved to its own repo at https://github.com/PDXostc/rvi_bigdata
+* <b>Big data demo moved</b><br>
+Big data demo moved to its own repo at https://github.com/PDXostc/rvi_bigdata
 
-* SOTA demo moved to its own repo at https://github.com/PDXostc/rvi_sota_demo
+* <b>SOTA demo moved</b><br>
+  SOTA demo moved to its own repo at https://github.com/PDXostc/rvi_sota_demo
 
