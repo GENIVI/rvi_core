@@ -10,6 +10,7 @@
 
 
 -behaviour(gen_server).
+-behaviour(rvi_schedule).
 -include_lib("lager/include/log.hrl").
 
 %% API
@@ -92,6 +93,7 @@ init([]) ->
     {ok, #st{ services_tid = ets:new(rvi_schedule_services, 
 				     [  set, private, 
 					{ keypos, #service.name } ])}}.
+
 
 schedule_message(SvcName, 
 		 Timeout, 
