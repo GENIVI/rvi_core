@@ -51,3 +51,7 @@ Big data demo moved to its own repo at https://github.com/PDXostc/rvi_bigdata
 * <b>SOTA demo moved</b><br>
   SOTA demo moved to its own repo at https://github.com/PDXostc/rvi_sota_demo
 
+# v0.3.1 #
+
+* <b>Don't send service availablity notifications over websockets</b><br>
+  For unknown reasons this crashes the RVI node intermittently

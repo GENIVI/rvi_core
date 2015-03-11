@@ -1,10 +1,10 @@
 Summary:    Remote Vehicle Interaction Node, running on top of Erlang,
 Name:       rvi
-Version:    0.3.0
+Version:    0.3.1
 Release:    1
 Group:      App Framework/Application Communication
 License:    Mozilla Public License 2.0
-Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.3.0.tgz
+Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.3.1.tgz
 
 BuildRequires:  make
 BuildRequires:  glib2-devel
@@ -50,5 +50,4 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 /usr/lib/systemd/system/rvi.service 
 /etc/systemd/system/multi-user.target.wants/rvi.service
-/opt/rvi-0.3.0
-
+/opt/rvi-0.3.1
