@@ -13,12 +13,12 @@
 			   Callback :: mfa(), 
 			   Parameters :: any(), 
 			   Signature :: string(),
-			   Certificate :: string()).
+			   Certificate :: string()) -> Result::tuple().
 
 
 -callback register_remote_service(NetworkAddress :: string(), 
-				  AvailableServices :: string()).
+				  AvailableServices :: string()) -> Result::tuple().
 
--callback unregister_remote_service(ServiceNames :: string()).
+-callback unregister_remote_service(ServiceNames :: string()) -> Result::tuple().
 
 
