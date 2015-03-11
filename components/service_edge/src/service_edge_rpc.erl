@@ -307,20 +307,20 @@ flatten_ws_args(Args) ->
     
 
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_available, 
+dispatch_to_local_service([ $w, $s, $: | _WSPidStr], services_available, 
 			  [{ services, Services}] ) ->
     ?info("service_edge:dispatch_to_local_service(service_available): Websocket!: ~p", [ Services]),
-    wse:call(list_to_pid(WSPidStr), wse:window(),
-	     "services_available", 
-	     [ "services", Services ]),
+    %% wse:call(list_to_pid(WSPidStr), wse:window(),
+    %% 	     "services_available", 
+    %% 	     [ "services", Services ]),
     ok;
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable, 
+dispatch_to_local_service([ $w, $s, $: | _WSPidStr], services_unavailable, 
 			  [{ services, Services}] ) ->
     ?info("service_edge:dispatch_to_local_service(service_unavailable): Websocket!: ~p", [ Services]),
-    wse:call(list_to_pid(WSPidStr), wse:window(),
-	     "services_unavailable", 
-	     [ "services", Services ]),
+    %% wse:call(list_to_pid(WSPidStr), wse:window(),
+    %% 	     "services_unavailable", 
+    %% 	     [ "services", Services ]),
     ok;
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, 
