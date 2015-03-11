@@ -30,31 +30,29 @@
 -define(SERVER, ?MODULE). 
 
 %% A record defining the modules to use 
+%% Used by rvi_common:send_component_request() to
+%% figure out how to route an intra-component call
 -record(comp_mod {
-	  service_edge::atom() = service_edge,
-	  scheduler::atom() = scheduler,
-	  service_edge::atom() = authorize,
-	  authorize::atom() = authorize,
-	  data_links::[atom()] = [],
-	  protocols::[atom()] = []
+	  service_edge::      { gen_server | json_rpc, module() } = { gen_server, service_edge },
+	  scheduler::         { gen_server | json_rpc, module() } = { gen_server, scheduler },
+	  service_discovery:: { gen_server | json_rpc, module() } = { gen_server, service_discovery },
+	  authorize::         { gen_server | json_rpc, module() } = { authorize, authorize },
+	  data_link::         { gen_server | json_rpc, [module()] } = { data_link, [data_link_bert_rpc] },
+	  protocol::          { gen_server | json_rpc, [module()] } = { data_link, [protocol] }
 	 })
 
-	  
 
 -record(st, { 
+	  components = #comp_mod{}
 	 }).
 
 
 start_link() ->
-    
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-init([]) ->
-    ?debug("service_edge_rpc:init(): called."),
-    {ok, #st {}}.
 
 %% Called by service_edge_app:start_phase().
-init_rvi_component() ->
+init([]) ->
     ?notice("---- Service Edge URL:          ~s", [ rvi_common:get_component_url(service_edge)]),
     ?notice("---- Node Service Prefix:       ~s", [ rvi_common:local_service_prefix()]),
     case rvi_common:get_component_config(service_edge, exo_http_opts) of
@@ -84,172 +82,76 @@ init_rvi_component() ->
 		    ok
 	    end
 
-    end.
+    end,
+    {ok, #st {
+	    components = rvi_common:get_components()
+	   }}.
+
 
 register_local_service(Service, ServiceAddress) ->
-    ?debug("service_edge_rpc:register_local_service(): service: ~p ", [Service]),
-    ?debug("service_edge_rpc:register_local_service(): address: ~p ", [ServiceAddress]),
-
-    case 
-	%% Register the service at service discovery
-	rvi_common:send_component_request(service_discovery, register_local_service,
-					  [
-					   {service, Service}, 
-					   {network_address, ServiceAddress}
-					  ], [service]) of
-	{ ok, JSONStatus, [ FullSvcName ]} -> 
-	    
-	    %% Announce the new service to all connected nodes.
-	    rvi_common:send_component_request(data_link, announce_available_local_service,
-					      [
-					       %% Convert /some/svc to jlr.com/some/svc
-					       {service, rvi_common:local_service_to_string(Service)}
-					      ], [service]),	
-
-	    %% Retrieve addresses of all locally registered services.
-	    {ok, _JSONStatus, [ AnnounceAddresses ]} =
-		rvi_common:send_component_request(service_discovery, get_local_network_addresses,
-						    [], [addresses]),	
-	    %% Send out an announcement to all locally connected services, but skip
-	    %% the one that made the registration call
-	    announce_service_availability(services_available, AnnounceAddresses, 
-					  [FullSvcName], ServiceAddress),
-	    
-
-	    %% Return ok.
-	    { ok, [ {service, FullSvcName}, 
-		    {status, rvi_common:json_rpc_status(JSONStatus)} ] };
-	
-	Err -> 
-	    ?debug("service_edge_rpc:register_local_service() Failed at service_discovery(): ~p", 
-		      [ Err ]),
-	    Err
-    end.
+    gen_server:call(?SERVER, { rvi_call, register_local_service, Service, ServiceAddress }).
 
 unregister_local_service(Service) ->
-    ?debug("service_edge_rpc:unregister_local_service(): service: ~p ", [Service]),
-
-    case 
-	%% Register the service at service discovery
-	rvi_common:send_component_request(service_discovery, unregister_local_service,
-					  [
-					   {service, Service}
-					  ]) of
-	{ ok, ok } -> 
-	    %% Announce the new service to all connected nodes.
-	    rvi_common:send_component_request(data_link, announce_unavailable_local_service,
-					      [
-					       %% Convert /some/svc to jlr.com/some/svc
-					       {service, Service}
-					      ], [service]),	
-
-	    {ok, ok, [ AnnounceAddresses ]} =
-		rvi_common:send_component_request(service_discovery, 
-						  get_local_network_addresses,
-						  [], [addresses]),	
-	    %% Send out an announcement to all locally connected services, but skip
-	    %% the one that made the registration call
-	    announce_service_availability(services_unavailable, AnnounceAddresses, Service),
-
-	    %% Return ok.
-	    { ok, [ {status, rvi_common:json_rpc_status(ok)} ] };
-	
-	Err -> 
-	    ?debug("service_edge_rpc:unregister_local_service() Failed at service_discovery(): ~p", 
-		      [ Err ]),
-	    Err
-    end.
-
+    gen_server:call(?SERVER, { rvi_call,unregister_local_service, Service }).
 
 get_available_services() ->
-    ?debug("service_edge_rpc:get_available_services()"),
+    gen_server:call(?SERVER, { rvi_call, get_available_services }).
 
-    case 
-	%% Register the service at service discovery
-	rvi_common:send_component_request(service_discovery, get_all_services,
-					  [], [services]) of
-	{ ok, _JSONStatus, [ Services ]} -> 
-	    { ok, Services};
-
-	Err -> 
-	    ?debug("service_edge_rpc:get_all_services() Failed at service_discovery(): ~p", 
-		      [ Err ]),
-	    Err
-    end.
-
-
-
-
-announce_service_availability(Cmd, LocalServiceAddresses, Services) ->
-    announce_service_availability(Cmd, LocalServiceAddresses, Services, undefined).
-
-
-%% Announces the services listed in Services with all 
-%% local services listed under LocalServices
-%% SkipAddress is a single address that, if found in LocalServiceAddresses,
-%% will not receive an announcement.
-%% This is to avoid that a local service registering itself will get a callback
-%% about its own availability.
-announce_service_availability(Cmd, LocalServiceAddresses, Services, SkipAddress) ->
-    ?info("service_edge_rpc:announce_service_availability(~p, ~p, ~p): Called.", 
-		  [ Cmd, LocalServiceAddresses, Services ]),
-    
-    lists:map(fun(LocalServiceAddress) when LocalServiceAddress =:= SkipAddress ->
-		      ok;
-
-		 (LocalServiceAddress) ->
-		      dispatch_to_local_service(LocalServiceAddress, Cmd, 
-						[ { services, Services }])
-	      end, LocalServiceAddresses),
-    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] }.
-    
     
 
 %%
 %% Handle a message, delivered from a locally connected service, that is
 %% to be forwarded to a remote service.
 %%
+
 handle_local_message(ServiceName, Timeout, Parameters) ->
+    gen_server:call(?SERVER, { rvi_call, get_available_services, ServiceName, Timeout, Parameters }).
+
+
+handle_call({ rvi_call, handle_local_message, ServiceName, Timeout, Paramters }, _From, St) ->
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [ServiceName]),
     ?debug("service_edge_rpc:local_msg: timeout:         ~p", [Timeout]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
 
-    case 
-	%%
-	%% Authorize local message and retrieve a certificate / signature
-	%% that will be accepted by the receiving node that will deliver
-	%% the messaage to its locally connected service_name service.
-	%%
-	rvi_common:send_component_request(authorize, authorize_local_message,
-					  [
-					   {service_name, ServiceName}
-					  ],
-					  [ certificate, signature ]) of
-	{ ok, ok, [Certificate, Signature] } -> 
-
+    Res = 
 	    %%
-	    %% Check if this is a local service by trying to resolve its service name. 
-	    %% If successful, just forward it to its service_name.
-	    %% 
-	    case rvi_common:send_component_request(service_discovery, resolve_local_service,
-						   [
-						    {service, ServiceName}
-						   ], [ network_address ]) of
-		{ ok, ok, [ NetworkAddress] } -> %% ServiceName is local. Forward message
-		    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
-		    forward_message_to_local_service(ServiceName, NetworkAddress, Parameters);
-		    
-		_ -> %% ServiceName is remote
-		    %% Ask Schedule the request to resolve the network address
-		    ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
-		    forward_message_to_scheduler(ServiceName, Timeout, Parameters, Certificate, Signature)
-	    end;
+	    %% Authorize local message and retrieve a certificate / signature
+	    %% that will be accepted by the receiving node that will deliver
+	    %% the messaage to its locally connected service_name service.
+	    %%
+	case rvi_common:request(St#components, authorize, authorize_local_message,
+			       [
+				{service_name, ServiceName}
+			       ],
+			       [ certificate, signature ]) of
+	    { ok, ok, [Certificate, Signature] } -> 
 
-	Err -> 
-	    ?warning("    service_edge_rpc:local_msg() Failed at authorize: ~p", 
-		      [ Err ]),
-	    Err
-    end.
+		%%
+		%% Check if this is a local service by trying to resolve its service name. 
+		%% If successful, just forward it to its service_name.
+		%% 
+		case rvi_common:request(St#components, service_discovery, resolve_local_service,
+					[
+					 {service, ServiceName}
+					], [ network_address ]) of
+		    { ok, ok, [ NetworkAddress] } -> %% ServiceName is local. Forward message
+			?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
+			forward_message_to_local_service(ServiceName, NetworkAddress, Parameters);
+
+		    _ -> %% ServiceName is remote
+			%% Ask Schedule the request to resolve the network address
+			?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
+			forward_message_to_scheduler(ServiceName, Timeout, Parameters, Certificate, Signature)
+		end;
+
+	    Err -> 
+		?warning("    service_edge_rpc:local_msg() Failed at authorize: ~p", 
+			 [ Err ]),
+		Err
+		
+	end,
+    { reply, Res, St};
+
 
 
 %%
@@ -282,6 +184,33 @@ handle_remote_message(ServiceName, Timeout, Parameters, Signature, Certificate) 
 	    ?warning("    service_edge:remote_msg(): Authorization failed:     ~p", [Err]),
 	    Err
     end.
+
+
+
+%% Announces the services listed in Services with all 
+%% local services listed under LocalServices
+%% SkipAddress is a single address that, if found in LocalServiceAddresses,
+%% will not receive an announcement.
+%% This is to avoid that a local service registering itself will get a callback
+%% about its own availability.
+
+announce_service_availability(Cmd, LocalServiceAddresses, Services) ->
+    announce_service_availability(Cmd, LocalServiceAddresses, Services, undefined).
+
+announce_service_availability(Cmd, LocalServiceAddresses, Services, SkipAddress) ->
+    ?info("service_edge_rpc:announce_service_availability(~p, ~p, ~p): Called.", 
+		  [ Cmd, LocalServiceAddresses, Services ]),
+    
+    lists:map(fun(LocalServiceAddress) when LocalServiceAddress =:= SkipAddress ->
+		      ok;
+
+		 (LocalServiceAddress) ->
+		      dispatch_to_local_service(LocalServiceAddress, Cmd, 
+						[ { services, Services }])
+	      end, LocalServiceAddresses),
+    { ok, [ { status, rvi_common:json_rpc_status(ok)} ] }.
+    
+
 
 %%
 %% Depending on the format of NetworkAddress
@@ -538,6 +467,97 @@ wse_message(Ws, ServiceName, Timeout, JSONParameters, _CallingService) ->
 %% Since they are the only calls invoked by other components, and not the
 %% locally connected services that uses the same HTTP port to transmit
 %% their register_service, and message calls.
+handle_call({ rvi_call, register_local_service, Service, ServiceAddress }, _From, St) ->
+    ?debug("service_edge_rpc:register_local_service(): service: ~p ", [Service]),
+    ?debug("service_edge_rpc:register_local_service(): address: ~p ", [ServiceAddress]),
+
+    case 
+	%% Register the service at service discovery
+	rvi_common:request(St#st.components, service_discovery, register_local_service,
+			   [
+			    {service, Service}, 
+			    {network_address, ServiceAddress}
+			   ], [service]) of
+	{ ok, JSONStatus, [ FullSvcName ]} -> 
+	    
+	    %% Announce the new service to all connected nodes.
+	    rvi_common:request(St#st.components, data_link, announce_available_local_service,
+			       [
+				%% Convert /some/svc to jlr.com/some/svc
+				{service, rvi_common:local_service_to_string(Service)}
+			       ]),	
+
+	    %% Retrieve addresses of all locally registered services.
+	    {ok, _JSONStatus, [ AnnounceAddresses ]} =
+		rvi_common:request(St#st.components, service_discovery, get_local_network_addresses,
+				   [], [addresses]),	
+	    %% Send out an announcement to all locally connected services, but skip
+	    %% the one that made the registration call
+	    announce_service_availability(services_available, AnnounceAddresses, 
+					  [FullSvcName], ServiceAddress),
+
+
+	    %% Return ok.
+	    { reply, [ {service, FullSvcName}, 
+		       {status, rvi_common:json_rpc_status(JSONStatus)} ], St };
+
+	Err -> 
+	    ?debug("service_edge_rpc:register_local_service() Failed at service_discovery(): ~p", 
+		   [ Err ]),
+	    {reply, Err, St}
+    end.
+
+handle_call({ rvi_call, unregister_local_service, Service }, _From, St) ->
+    ?debug("service_edge_rpc:unregister_local_service(): service: ~p ", [Service]),
+
+    case 
+	%% Register the service at service discovery
+	rvi_common:request(St3st.components, service_discovery, unregister_local_service,
+			   [
+			    {service, Service}
+			   ]) of
+	{ ok, ok } -> 
+	    %% Announce the new service to all connected nodes.
+	    rvi_common:request(St#st.components, data_link, announce_unavailable_local_service,
+			       [
+				%% Convert /some/svc to jlr.com/some/svc
+				{service, Service}
+			       ], [service]),	
+
+	    {ok, ok, [ AnnounceAddresses ]} = rvi_common:request(St#st.components, service_discovery, 
+								 get_local_network_addresses,
+								 [], [addresses]),	
+	    %% Send out an announcement to all locally connected services, but skip
+	    %% the one that made the registration call
+	    announce_service_availability(services_unavailable, AnnounceAddresses, Service),
+
+	    %% Return ok.
+	    { reply, [ { status, rvi_common:json_rpc_status(ok) } ], St };
+	
+	Err -> 
+	    ?debug("service_edge_rpc:unregister_local_service() Failed at service_discovery(): ~p", 
+		      [ Err ]),
+	    { reply, Err, St }
+    end.
+
+
+
+handle_call({rvi_call, get_available_services}, _From, St) ->
+    ?debug("service_edge_rpc:get_available_services()"),
+
+
+    case 
+	%% Register the service at service discovery
+	rvi_common:send_component_request(St#st.components, service_discovery, get_all_services,
+					  [], [services]) of
+	{ ok, _JSONStatus, [ Services ]} -> 
+	    { reply, Services, St};
+
+	Err -> 
+	    ?debug("service_edge_rpc:get_all_services() Failed at service_discovery(): ~p", 
+		      [ Err ]),
+	    {reply, Err, St}
+    end.
 
 handle_call({rvi_call, register_remote_services, Args}, _From, State) ->
     {_, Services} = lists:keyfind(services, 1, Args),
