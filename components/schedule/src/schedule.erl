@@ -101,6 +101,7 @@ schedule_message(SvcName,
 		 Parameters,
 		 Signature,
 		 Certificate) ->
+    
     gen_server:call(?SERVER, { 
 		       schedule_message,
 		       SvcName, 

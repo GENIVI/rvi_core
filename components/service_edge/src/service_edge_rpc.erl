@@ -28,10 +28,25 @@
 -include_lib("lager/include/log.hrl").
 
 -define(SERVER, ?MODULE). 
--record(st, { }).
+
+%% A record defining the modules to use 
+-record(comp_mod {
+	  service_edge::atom() = service_edge,
+	  scheduler::atom() = scheduler,
+	  service_edge::atom() = authorize,
+	  authorize::atom() = authorize,
+	  data_links::[atom()] = [],
+	  protocols::[atom()] = []
+	 })
+
+	  
+
+-record(st, { 
+	 }).
 
 
 start_link() ->
+    
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
@@ -515,8 +530,6 @@ wse_message(Ws, ServiceName, Timeout, JSONParameters) ->
 %% Deprecated
 wse_message(Ws, ServiceName, Timeout, JSONParameters, _CallingService) ->
     wse_message(Ws, ServiceName, Timeout, JSONParameters).
-
-    
 
 
 %% Handle calls received through regular gen_server calls, routed byh
