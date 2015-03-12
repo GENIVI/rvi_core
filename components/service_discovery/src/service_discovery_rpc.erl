@@ -161,15 +161,15 @@ unregister_remote_services_by_address(NetworkAddress) ->
 	    LocalSvcAddresses = 
 		ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
 				  [ LocalAddress | Acc ] end, 
-			  [], ?LOCAL_SERVICE_TABLE),
+			  [], ?LOCAL_SERVICE_TABLE)
 
 	    %% Call service edge with local addresses (sorted and de-duped) and
 	    %% the services to register.
-	    rvi_common:send_component_request(service_edge, unregister_remote_services, 
-					      [
-					       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-					       { services, SvcNames}				       
-					      ])
+	    %% rvi_common:send_component_request(service_edge, unregister_remote_services, 
+	    %% 				      [
+	    %% 				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+	    %% 				       { services, SvcNames}				       
+	    %% 				      ])
     end,
 
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
@@ -210,11 +210,11 @@ unregister_single_remote_service_by_name_(Service) ->
     
     %% Call service edge with local addresses (sorted and de-duped) and
     %% the services to register.
-    rvi_common:send_component_request(service_edge, unregister_remote_services, 
-				      [
-				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-				       { services, [Service]}				       
-				      ]),
+    %% rvi_common:send_component_request(service_edge, unregister_remote_services, 
+    %% 				      [
+    %% 				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+    %% 				       { services, [Service]}				       
+    %% 				      ]),
 
     ok.
 
@@ -315,15 +315,15 @@ register_remote_services(Address, Services) ->
 	    LocalSvcAddresses = 
 		ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
 				  [ LocalAddress | Acc ] end, 
-			  [], ?LOCAL_SERVICE_TABLE),
+			  [], ?LOCAL_SERVICE_TABLE)
 
 	    %% Call service edge with local addresses (sorted and de-duped) and
 	    %% the services to register.
-	    rvi_common:send_component_request(service_edge, register_remote_services, 
-					      [
-					       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-					       { services, Services}				       
-					      ])
+	    %% rvi_common:send_component_request(service_edge, register_remote_services, 
+	    %% 				      [
+	    %% 				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+	    %% 				       { services, Services}				       
+	    %% 				      ])
     end,
 
     {ok, [ { status, rvi_common:json_rpc_status(ok) } ]}.
