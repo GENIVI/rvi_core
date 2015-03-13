@@ -28,6 +28,8 @@
 -export([setup/6]).
 -export([send/2]).
 -export([send/3]).
+-export([is_connection_up/1]).
+-export([is_connection_up/2]).
 -export([terminate_connection/1]).
 -export([terminate_connection/2]).
 
@@ -84,6 +86,19 @@ terminate_connection(IP, Port) ->
 	_Err -> {error, connection_not_found}
     end.
 
+
+is_connection_up(Pid) when is_pid(Pid) ->
+    is_process_alive(Pid).
+
+is_connection_up(IP, Port) ->
+    case connection_manager:find_connection_by_address(IP, Port) of
+	{ok, Pid} ->
+	    is_connection_up(Pid);
+
+	_Err -> 
+	    false
+    end.
+    
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -169,6 +184,7 @@ handle_cast({send, Data},  St) ->
 	     [ ?MODULE, Data]),
 
     gen_tcp:send(St#st.sock, term_to_binary(Data)),
+
     {noreply, St};
 
 handle_cast(_Msg, State) ->
