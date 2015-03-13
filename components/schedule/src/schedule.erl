@@ -138,8 +138,8 @@ handle_call( { schedule_message,
 	       Certificate
 	     }, _From, St) ->
 
-    ?info("schedule:sched_msg(): service_name:     ~p", [SvcName]),
-    ?info("schedule:sched_msg(): timeout:          ~p", [Timeout]),
+    ?debug("schedule:sched_msg(): service_name:     ~p", [SvcName]),
+    ?debug("schedule:sched_msg(): timeout:          ~p", [Timeout]),
     ?debug("schedule:sched_msg(): callback:         ~p", [Callback]),
     ?debug("schedule:sched_msg(): parameters:       ~p", [Parameters]),
     ?debug("schedule:sched_msg(): signature:        ~p", [Signature]),
@@ -180,8 +180,7 @@ handle_call({rvi_call, schedule_message, Args}, From, St) ->
 
 
 handle_call( {register_remote_services, NetworkAddress, AvailableServices}, _From, St) ->
-    ?info("schedule:register_remote_services(): NetworkAddress:    ~p", [NetworkAddress]),
-    ?info("schedule:register_remote_services(): AvailableService:  ~p", [AvailableServices]),
+    ?info("schedule:register_remote_services(): services(~p) -> ~p", [AvailableServices, NetworkAddress]),
     {ok, NSt} =  multiple_services_available(AvailableServices, NetworkAddress, St),
     {reply, ok, NSt};
 
@@ -196,7 +195,7 @@ handle_call({rvi_call, register_remote_services, Args}, From, St) ->
     { reply, { ok, [{ status, rvi_common:json_rpc_status(ok) }] } , NSt}; 
 
 handle_call( {unregister_remote_services, ServiceNames}, _From, St) ->
-    ?info("schedule:unregister_remote_services(): Services:    ~p", [ServiceNames]),
+    ?info("schedule:unregister_remote_services(): Services(~p)", [ServiceNames]),
     {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
     {reply, ok, NSt };
 
@@ -240,18 +239,17 @@ handle_cast(_Msg, St) ->
 
 %% Handle timeouts
 handle_info({ rvi_message_timeout, SvcName, TransID}, #st { services_tid = SvcTid } = St) ->
-    ?info("schedule:timeout(): service:          ~p", [ SvcName]),
-    ?info("schedule:timeout(): trans_id:         ~p", [ TransID]),
 
     case  ets:lookup(SvcTid, SvcName) of
 	[ Svc ] ->
 	    %% Delete from ets.
 	    case ets:lookup(Svc#service.messages_tid, TransID) of
 		[ Msg ] ->
+		    ?info("schedule:timeout(): trans_id(~p) service(~p)", [ TransID, SvcName]),
 		    do_timeout_callback(Svc, Msg),
 		    ets:delete(Svc#service.messages_tid, TransID);
 		_ -> 
-		    ?info("schedule:timeout(): Message yanked while processing timeout: ~p", [ TransID]),
+		    ?info("schedule:timeout(): trans_id(~p) service(~p): Yanked while processing", [ TransID, SvcName]),
 		    ok
 	    end;
 	_-> ok
@@ -304,12 +302,11 @@ queue_message(SvcName,
 	      Parameters, 
 	      Signature,
 	      Certificate, St) ->
-    ?info("schedule:sched_msg(): service:      ~p", [SvcName]),
-    ?info("schedule:sched_msg(): timeout:      ~p", [Timeout]),
-    ?info("schedule:sched_msg(): callback:     ~p", [Callback]),
+%%    ?info("schedule:sched_msg(): service(~p)    timeout(~p)", [SvcName, Timeout]),
+%%    ?info("schedule:sched_msg(): timeout (~p)", [Timeout]),
 %%    ?info("schedule:sched_msg(): parameters:   ~p", [Parameters]),
-    ?info("schedule:sched_msg(): signature:    ~p", [Signature]),
-    ?info("schedule:sched_msg(): certificate:  ~p", [Certificate]),
+%%    ?info("schedule:sched_msg(): signature:    ~p", [Signature]),
+%%    ?info("schedule:sched_msg(): certificate:  ~p", [Certificate]),
 
     %% Create a new transaction ID.
     {NewTransID, NSt1} = create_transaction_id(St),
@@ -353,8 +350,8 @@ queue_message(SvcName,
     ets:insert(Service#service.messages_tid, Msg),
 
     %% Attempt to send the message
-    {_, NSt3 } = try_sending_messages(Service, NSt2),
-
+    {SendResRes, NSt3 } = try_sending_messages(Service, NSt2),
+	    
     %% Return
     { ok, NewTransID, NSt3}.
 
@@ -405,12 +402,14 @@ try_sending_messages(#service {
 			    try_sending_messages(Service, St);
 
 			Err ->
+			    ?info("schedule:try_send(): No send: ~p -> ~p : ~p", [SvcName, NetworkAddress, Err]),
 			    %% Failed to send message, leave in queue and err out.
 			    { {send_failed, Err}, St}
 		    end;
 		_ -> 
 		    ?info("schedule:try_send(): Message was yanked while trying to send: ~p", [Key]),
-		    ok
+		    { ok, St}
+
 	    end
     end.
 
@@ -426,8 +425,7 @@ try_sending_messages(#service {
 %%  to send any messages queued inside it.
 %%
 service_available(SvcName, NetworkAddress, St) ->
-    ?info("schedule:service_available(): service:         ~p", [ SvcName ]),
-    ?info("schedule:service_available(): network_address: ~p", [ NetworkAddress ]),
+    ?info("schedule:service_available(): service(~p) -> NetworkAddress(~p)", [ SvcName, NetworkAddress ]),
 
     %% Find or create the service.
     {ok, Svc, _, NSt1} = find_or_create_service(SvcName, NetworkAddress, St),
@@ -435,7 +433,7 @@ service_available(SvcName, NetworkAddress, St) ->
     try_sending_messages(Svc, NSt1).
 
 service_unavailable(SvcName,  #st { services_tid = SvcTid } = St) ->
-    ?info("schedule:service_unavailable(): Service:  ~p", [ SvcName ]),
+    ?info("schedule:service_unavailable(): Service(~p)", [ SvcName ]),
     ets:delete(SvcTid, SvcName),
     { ok, St }.
 
@@ -477,12 +475,12 @@ bring_up_data_link(SvcName) ->
 send_message(NetworkAddress, SvcName, Timeout, 
 	     Parameters, Signature, Certificate) ->
 
-    ?info("schedule:send_message(): network_address: ~p", [NetworkAddress]),
-    ?info("schedule:send_message(): service:         ~p", [SvcName]),
-    ?info("schedule:send_message(): timeout:         ~p", [Timeout]),
+    ?info("schedule:send_message(): service(~p) -> addr(~p) ", [SvcName, NetworkAddress]),
+%%    ?info("schedule:send_message(): network_address: ~p", [NetworkAddress]),
+%%    ?info("schedule:send_message(): timeout:         ~p", [Timeout]),
 %%    ?info("schedule:send_message(): parameters:      ~p", [Parameters]),
-    ?info("schedule:send_message(): signature:       ~p", [Signature]),
-    ?info("schedule:send_message(): certificate:     ~p", [Certificate]),
+%%    ?info("schedule:send_message(): signature:       ~p", [Signature]),
+%%    ?info("schedule:send_message(): certificate:     ~p", [Certificate]),
 
     case rvi_common:send_component_request(
 	   protocol, send_message, 
@@ -593,16 +591,14 @@ create_service(ServiceName, NetworkAddress, #st { services_tid = SvcsTid } = St)
     ets:insert(SvcsTid, Svc),
     
     %% Return new service and existing state.
-    ?info("schedule:create_service():  SvcName:    ~p", [ ServiceName]),
-    ?info("schedule:create_service():  MessageTID: ~p", [ Svc#service.messages_tid]),
-    Svcs = ets:foldr(fun(SvcElem, Acc) -> [ SvcElem | Acc ] end, [], SvcsTid),
-    ?debug("schedule:create_service(): Services: ~p", [ Svcs]),
+    ?debug("schedule:create_service():  service(~p) -> NetworkAddress(~p)", [ ServiceName, NetworkAddress]),
+    ?debug("schedule:create_service():  MessageTID: ~p", [ Svc#service.messages_tid]),
     { ok, Svc, true, St}.  %% True indicates that the service is newly created.
 
 
 %% Create a new and unique transaction id
 create_transaction_id(St) ->
-    ?info("schedule:create_transaction_id(): St:     ~p", [  St ]),
+    ?debug("schedule:create_transaction_id(): St:     ~p", [  St ]),
     ID = St#st.next_transaction_id,
 
     %% FIXME: Maybe interate pid into transaction to handle multiple
