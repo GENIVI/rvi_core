@@ -153,8 +153,6 @@ setup_data_link(RemoteAddress, RemotePort, Service) ->
 				   1, LocalAddress, LocalPort, rvi_binary, 
 				   {certificate, {}}, { signature, {}} }),
 
-	    gen_server:call(?SERVER, { setup_initial_ping, RemoteAddress, RemotePort, Pid }),
-
 	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
 
 	{ error, _ } ->
@@ -259,7 +257,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	case { RemoteAddress, RemotePort } of
 	    { "0.0.0.0", 0 } ->
 		
-		?info("data_link_sms:authorize(): Remote is behind firewall. Will use ~p:~p", 
+		?info("data_link_bert:authorize(): Remote is behind firewall. Will use ~p:~p", 
 		      [ PeerIP, PeerPort]),
 		{ PeerIP, PeerPort };
 
@@ -308,7 +306,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
 	    %% Send an authorize back to the remote node
-	    ?info("data_link_sms:authorize(): Announcing local services: ~p to remote ~p:~p",
+	    ?info("data_link_bert:authorize(): Announcing local services: ~p to remote ~p:~p",
 		  [LocalServices, NRemoteAddress, NRemotePort]),
 
 	    connection:send(FromPid, 
