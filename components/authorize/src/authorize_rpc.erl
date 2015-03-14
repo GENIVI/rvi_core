@@ -148,8 +148,8 @@ handle_rpc(Other, _Args) ->
 %%
 handle_call({rvi_call, authorize_local_message, Args}, _From, State) ->
     {_, ServiceName} = lists:keyfind(service_name, 1, Args),
-    ?info("authorize_rpc:authorize_local_message(gen_server):  args:            ~p", [ Args]),
-    ?info("authorize_rpc:authorize_local_message(gen_server):  service name:    ~p", [ ServiceName]),
+    ?debug("authorize_rpc:authorize_local_message(gen_server):  args:            ~p", [ Args]),
+    ?debug("authorize_rpc:authorize_local_message(gen_server):  service name:    ~p", [ ServiceName]),
     {reply, authorize_local_message(ServiceName), State};
 
 handle_call({rvi_call, authorize_remote_message, Args}, _From, State) ->

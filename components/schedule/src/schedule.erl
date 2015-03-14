@@ -456,13 +456,13 @@ bring_up_data_link(SvcName) ->
 		{ok, already_connected } ->
 		    already_connected;
 		Que -> 
-		    ?info("schedule:bring_up_data_link() Que:~p.", [Que]),
+		    ?info("schedule:bring_up_data_link() Failed:~p.", [Que]),
 		    ok
 	    end;
 
 	{ok, not_found, _ } ->
 	    ?info("schedule:bring_up_data_link() Failed to resolve remote Service: ~p."
-		  "Service not found.", 
+		  " Service not found.", 
 		  [ SvcName ]),
 	    not_found;
 
