@@ -65,8 +65,7 @@ dump_table(Table) ->
     dump_table(Table, ets:first(Table)).
 
 register_remote_service(NetworkAddress) ->
-    ?info("service_discovery_rpc:register_remote_service(): service:         empty"),
-    ?info("service_discovery_rpc:register_remote_service(): network_address: ~p", [NetworkAddress]),
+    ?info("service_discovery_rpc:register_remote_service(): service(n/a) -> ~p", [NetworkAddress]),
 
     ets:insert(?REMOTE_ADDRESS_TABLE, 
 	       #service_entry {
@@ -79,8 +78,7 @@ register_remote_service(NetworkAddress) ->
 
 
 register_remote_service(Service, NetworkAddress) ->
-    ?info("service_discovery_rpc:register_remote_service(): service:         ~p", [Service]),
-    ?info("service_discovery_rpc:register_remote_service(): network_address: ~p", [NetworkAddress]),
+    ?info("service_discovery_rpc:register_remote_service(): service(~p) -> ~p", [Service, NetworkAddress]),
 
     FullSvcName = rvi_common:remote_service_to_string(Service),
 
@@ -117,21 +115,63 @@ register_remote_service(Service, NetworkAddress) ->
 
 
 unregister_remote_services_by_address(NetworkAddress) ->
-    ?info("service_discovery_rpc:unregister_remote_services_by_address(): network_address: ~p", 
-	  [NetworkAddress]),
 
     %% Delete all services registered under the given address.
     Svcs = ets:lookup(?REMOTE_ADDRESS_TABLE, NetworkAddress),
 
-    ?info("service_discovery_rpc:unregister_remote_services_by_address(): ~p -> ~p", 
-	  [NetworkAddress, Svcs]),
-    
-
     %% We now have a bunch of service records, convert them to a list of service
     %% names and send them of to schedule for deregistration
-    SvcNames = lists:foldr(fun(#service_entry {  service = SvcName }, Acc) -> 
-				       [SvcName | Acc]
-			       end, [], Svcs),
+    AllSvcNames = lists:foldr(fun(#service_entry {  service = SvcName }, Acc) -> 
+				      [SvcName | Acc]
+			      end, [], Svcs),
+
+    ?info("service_discovery_rpc:unregister_remote_services_by_address(): ~p -> ~p", 
+	  [NetworkAddress, AllSvcNames]),
+
+    %% We need to filter AllSvcNames to remove all service entries that have
+    %% been registered under another name. 
+    %% We do this by creating a list of all matching entries associated
+    %% with a network address not matching the disconnected NetworkAddress
+    %%
+    %% See issue https://github.com/PDXostc/rvi/issues/14 for details
+    FilterSvc =
+	lists:foldr(
+	  fun(Service, Acc) -> 
+
+		  %% Lookup the service in the service table.
+		  case ets:lookup(?REMOTE_SERVICE_TABLE, Service) of
+
+		      %% Not found. Do not filter out.
+		      [] ->
+			  Acc;
+
+		      %% We found or own entry, tiet to the disconnected address.
+		      %% Do not add to addresses to be removed.
+		      [ #service_entry { network_address = NetworkAddress } ] ->
+			  Acc;
+
+		      %% We found an entry that does not the disconnected
+		      %% network address. This one should be filtered out
+		      [ _ ] ->
+			  [ Service | Acc ]
+
+		  end 
+	  end, [], AllSvcNames),
+    
+    SvcNames = AllSvcNames -- FilterSvc,
+
+
+    case FilterSvc of
+	[] -> ok;
+
+	_ ->
+	    ?info("service_discovery_rpc:unregister_remote_services_by_address(): Resurrected services: ~p", 
+		  [FilterSvc]),
+
+	    ?info("service_discovery_rpc:unregister_remote_services_by_address(): Filtered services to be deleted: ~p", 
+		  [SvcNames])
+    end,
+    
 
     %% Delete any addresses stored with an empty service name,
     %% installed with register_remote_service/1, since we now have at
@@ -143,10 +183,11 @@ unregister_remote_services_by_address(NetworkAddress) ->
 		      }),
 
     ets:delete(?REMOTE_ADDRESS_TABLE, NetworkAddress),
-    case Svcs of 
+    case SvcNames of 
 	[] ->
 	    true;
 	_ ->
+
 	    rvi_common:send_component_request(schedule, unregister_remote_services, 
 				      [
 				       { services, SvcNames }
@@ -161,15 +202,15 @@ unregister_remote_services_by_address(NetworkAddress) ->
 	    LocalSvcAddresses = 
 		ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
 				  [ LocalAddress | Acc ] end, 
-			  [], ?LOCAL_SERVICE_TABLE)
+			  [], ?LOCAL_SERVICE_TABLE),
 
 	    %% Call service edge with local addresses (sorted and de-duped) and
 	    %% the services to register.
-	    %% rvi_common:send_component_request(service_edge, unregister_remote_services, 
-	    %% 				      [
-	    %% 				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-	    %% 				       { services, SvcNames}				       
-	    %% 				      ])
+	    rvi_common:send_component_request(service_edge, unregister_remote_services, 
+	    				      [
+	     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+	     				       { services, SvcNames}				       
+	     				      ])
     end,
 
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
@@ -187,11 +228,6 @@ unregister_single_remote_service_by_name_(Service) ->
 			network_address = '_'
 		      }),
 
-    Prior = ets:foldl(fun(#service_entry { service = Svc }, Acc) -> 
-			      [ Svc | Acc ] end, 
-		      [], ?REMOTE_SERVICE_TABLE),
-
-    ?debug("Before removing ~p: ~p", [ Service, Prior ]),
     ets:delete(?REMOTE_SERVICE_TABLE, Service),
     After = ets:foldl(fun(#service_entry { service = Svc }, Acc) -> 
 			      [ Svc | Acc ] end, 
@@ -210,11 +246,11 @@ unregister_single_remote_service_by_name_(Service) ->
     
     %% Call service edge with local addresses (sorted and de-duped) and
     %% the services to register.
-    %% rvi_common:send_component_request(service_edge, unregister_remote_services, 
-    %% 				      [
-    %% 				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-    %% 				       { services, [Service]}				       
-    %% 				      ]),
+    rvi_common:send_component_request(service_edge, unregister_remote_services, 
+    				      [
+     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+     				       { services, [Service]}				       
+     				      ]),
 
     ok.
 
@@ -224,7 +260,7 @@ unregister_remote_services_by_name(Services) ->
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
 
 unregister_local_service(Service) ->
-    ?info("service_discovery_rpc:unregister_local_service(): Service~p", 
+    ?info("service_discovery_rpc:unregister_local_service(): ~p", 
 	  [Service]),
 
     ets:delete(?LOCAL_SERVICE_TABLE, Service),
@@ -232,8 +268,7 @@ unregister_local_service(Service) ->
 
 
 register_local_service(NetworkAddress, Service) ->
-    ?info("service_discovery_rpc:register_local_service(): service:         ~p", [Service]),
-    ?info("service_discovery_rpc:register_local_service(): network_address: ~p", [NetworkAddress]),
+    ?info("service_discovery_rpc:register_local_service(): ~p ->  ~p", [Service, NetworkAddress]),
 
     FullSvcName = rvi_common:local_service_to_string(Service),
 
@@ -248,8 +283,8 @@ register_local_service(NetworkAddress, Service) ->
 
 resolve_local_service(RawService) ->
     Service = rvi_common:sanitize_service_string(RawService),
-    ?info("service_discovery_rpc:resolve_local_service(): RawService:      ~p", [RawService]),
-    ?info("service_discovery_rpc:resolve_local_service(): Cleaned Service: ~p", [Service]),
+    ?debug("service_discovery_rpc:resolve_local_service(): RawService:      ~p", [RawService]),
+    ?debug("service_discovery_rpc:resolve_local_service(): Cleaned Service: ~p", [Service]),
     case resolve_service(?LOCAL_SERVICE_TABLE, Service) of 
 	not_found ->
 	    { ok, [ { status, rvi_common:json_rpc_status(not_found) }]};
@@ -261,15 +296,15 @@ resolve_local_service(RawService) ->
 
 resolve_remote_service(RawService) ->
     Service = rvi_common:sanitize_service_string(RawService),
-    ?info("service_discovery_rpc:resolve_remote_service(): RawService:      ~p", [RawService]),
-    ?info("service_discovery_rpc:resolve_remote_service(): Cleaned Service: ~p", [Service]),
+    ?debug("service_discovery_rpc:resolve_remote_service(): RawService:      ~p", [RawService]),
+    ?debug("service_discovery_rpc:resolve_remote_service(): Cleaned Service: ~p", [Service]),
     case resolve_service(?REMOTE_SERVICE_TABLE, Service) of
 	{ok, NetworkAddress } ->
 	    {ok, [ { status, rvi_common:json_rpc_status(ok) },
 		   { network_address, NetworkAddress }]};
 
 	not_found ->
-	    ?info("service_discovery_rpc:resolve_remote_service(~p): Service not found in ets. "
+	    ?debug("service_discovery_rpc:resolve_remote_service(~p): Service not found in ets. "
 		  "Trying static nodes",
 		  [Service]),
 
@@ -277,13 +312,13 @@ resolve_remote_service(RawService) ->
 	    %% Check if this is a service residing on the backend server
 	    case rvi_common:get_static_node(Service) of
 		not_found -> %% Not found
-		    ?info("service_discovery_rpc:resolve_remote_service(~p): Service not found in static nodes.", 
+		    ?info("service_discovery_rpc:resolve_remote_service(~p): Service not found.", 
 			   [Service]),
 		    
 		    { ok, [ { status, rvi_common:json_rpc_status(not_found) }]};
 
 		NetworkAddress -> %% Found
-			    ?info("service_discovery_rpc:resolve_service(~p): Service is on static node ~p", 
+			    ?debug("service_discovery_rpc:resolve_service(~p): Service is on static node ~p", 
 				   [Service, NetworkAddress]),
 
 		    {ok, [ { status, rvi_common:json_rpc_status(ok) },
@@ -315,40 +350,32 @@ register_remote_services(Address, Services) ->
 	    LocalSvcAddresses = 
 		ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
 				  [ LocalAddress | Acc ] end, 
-			  [], ?LOCAL_SERVICE_TABLE)
+			  [], ?LOCAL_SERVICE_TABLE),
 
 	    %% Call service edge with local addresses (sorted and de-duped) and
 	    %% the services to register.
-	    %% rvi_common:send_component_request(service_edge, register_remote_services, 
-	    %% 				      [
-	    %% 				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-	    %% 				       { services, Services}				       
-	    %% 				      ])
+	    rvi_common:send_component_request(service_edge, register_remote_services, 
+	    				      [
+	     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
+	     				       { services, Services}				       
+	     				      ])
     end,
 
     {ok, [ { status, rvi_common:json_rpc_status(ok) } ]}.
 
 resolve_service(Table, Service) ->
-
-    ?info("service_discovery_rpc:resolve_service(): CleanedService:    ~p", [Service]),
-
-    %% For info purposes only
-    Svcs = ets:foldl(fun({service_entry, ServiceName, ServiceAddr}, Acc) -> 
-			     [  {ServiceName, ServiceAddr}  | Acc ] end, 
-			 [], Table),
-    ?info("service_discovery_rpc:resolve_service(): Services:          ~p", [Svcs]),
-
-    
     case ets:lookup(Table, Service) of
 	%% We found a service entry, report it back
 	[#service_entry { network_address = NetworkAddress }] ->
-	    ?info("service_discovery_rpc:resolve_service(): service: ~p -> ~p", 
-		   [ Service, NetworkAddress ]),
+	    ?debug("service_discovery_rpc:resolve_service(~p): service: ~p -> ~p", 
+		   [ Table, Service, NetworkAddress ]),
 
 	    {ok, NetworkAddress };
 
 	%% We did not find a service entry, check statically configured nodes.
 	[] -> 
+	    ?debug("service_discovery_rpc:resolve_service(~p): service: ~p -> Not Found", 
+		   [ Table, Service ]),
 	    not_found
     end.
 
@@ -360,7 +387,7 @@ get_services(Table) ->
 				 [ {ServiceName, ServiceAddr } | Acc ] end, 
 			 [], Table),
 
-    ?info("service_discovery_rpc:get_services(): ~p", [ Services]),
+    ?debug("service_discovery_rpc:get_services(): ~p", [ Services ]),
     Services.
 
 get_all_services() ->
@@ -373,7 +400,7 @@ get_all_services() ->
 			  [], ?LOCAL_SERVICE_TABLE),
 
     Services = RemoteSvc++LocalSvc,
-    ?info("service_discovery_rpc:get_all_services(): ~p", [ Services]),
+    ?debug("service_discovery_rpc:get_all_services(): ~p", [ Services]),
     Services.
 
 
@@ -387,7 +414,7 @@ get_json_services(Table) ->
 				    ]
 				   } | Acc ] end, 
 			 [], Table),
-    ?info("service_discovery_rpc:get_services(): ~p", [ Services]),
+    ?debug("service_discovery_rpc:get_services(): ~p", [ Services]),
     {ok, [ { status, rvi_common:json_rpc_status(ok) },
 	   { services, {array, Services }}]}.
 
@@ -409,7 +436,7 @@ get_network_addresses_(Table) ->
 
     %% Return a dup-scrubbed list.
     Addresses = sets:to_list(sets:from_list(AddrList)),
-    ?info("service_discovery_rpc:get_network_addresses(~p): ~p", [ Table, Addresses ]),
+    ?debug("service_discovery_rpc:get_network_addresses(~p): ~p", [ Table, Addresses ]),
     Addresses.
 
 
@@ -522,7 +549,7 @@ handle_rpc("get_local_network_addresses", _Args) ->
 %% Handle the rest.
 %%
 handle_rpc( Other, _Args) ->
-    ?info("service_discovery_rpc:handle_rpc(~p)", [ Other ]),
+    ?info("service_discovery_rpc:handle_rpc(~p): unknown", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 

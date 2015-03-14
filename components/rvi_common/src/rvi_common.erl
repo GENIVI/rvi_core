@@ -174,7 +174,7 @@ send_component_request(Component, Service, ArgList, ReturnParams) ->
 	    end;
 
 	{ Proc, _ } ->
-	    ?info("Sending ~p:~p to ~p", [Component, Service, Proc]),
+	    ?debug("Sending ~p:~p to ~p", [Component, Service, Proc]),
 	    { Reply, ReplyArg} = gen_server:call(Proc, { rvi_call, Service, ArgList }),
 	    %% Retrieve the status from the reply
 	    [ Status | ReturnValues ] = retrieve_reply_elements([ status | ReturnParams], ReplyArg),
