@@ -350,7 +350,7 @@ queue_message(SvcName,
     ets:insert(Service#service.messages_tid, Msg),
 
     %% Attempt to send the message
-    {SendResRes, NSt3 } = try_sending_messages(Service, NSt2),
+    {_, NSt3 } = try_sending_messages(Service, NSt2),
 	    
     %% Return
     { ok, NewTransID, NSt3}.
