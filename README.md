@@ -14,6 +14,9 @@ For a high level description, with an exhaustive master usecase
 walkthrough, please see the High Level Design document 
 [here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf)
 
+Git branch management is described by Vincent Driessen's document:
+[Git strategy](http://nvie.com/posts/a-successful-git-branching-model/)
+
 For build instructions, please check the build instructions:
 [Markdown](BUILD.md) | 
 [PDF](https://wiki.automotivelinux.org/_media/eg-rvi/rvi-build.pdf)
