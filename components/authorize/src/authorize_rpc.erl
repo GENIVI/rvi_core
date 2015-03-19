@@ -15,7 +15,9 @@
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
--export([init_rvi_component/0]).
+
+-export([start_json_server/0]).
+
 -include_lib("lager/include/log.hrl").
 
 -define(SERVER, ?MODULE). 
@@ -31,19 +33,10 @@ init([]) ->
     ?debug("authorize_rpc:init(): called."),
     {ok, #st {}}.
 
-init_rvi_component() ->
-    ?debug("authorize_rpc:init_rvi_component(): called"),
-    case rvi_common:get_component_config(authorize, exo_http_opts) of
-	{ ok, ExoHttpOpts } ->
-	    exoport_exo_http:instance(authorize_sup, 
-				      authorize_rpc,
-				      ExoHttpOpts),
-	    ok;
-	
-	_ -> 	
-	    ?info("authorize_rpc:init_rvi_component(): exo_http_opts not specified. Gen Server only"),
-	    ok
-    end.
+start_json_server() ->
+    ?debug("authorize_rpc:start_json_server(): called"),
+    rvi_common:start_json_rpc_server(authorize, ?MODULE, authorize_sup),
+    ok.
 
 
 %% Retrieve certificate. 

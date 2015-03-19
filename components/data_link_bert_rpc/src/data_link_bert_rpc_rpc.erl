@@ -8,41 +8,58 @@
 
 
 -module(data_link_bert_rpc_rpc).
+-behavior(gen_server).
 
 -export([handle_rpc/2]).
 -export([handle_socket/6]).
 -export([handle_socket/5]).
 -export([setup_static_node_data_link/2]).
--export([init_rvi_component/0]).
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+
+-export([start_json_server/0]).
+-export([start_connection_manager/0]).
+
+
 -include_lib("lager/include/log.hrl").
--behavior(gen_server).
+-include_lib("rvi_common/include/rvi_common.hrl").
 
 -define(DEFAULT_BERT_RPC_PORT, 9999).
 -define(DEFAULT_RECONNECT_INTERVAL, 5000).
 -define(DEFAULT_BERT_RPC_ADDRESS, "0.0.0.0").
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
 -define(SERVER, ?MODULE). 
--record(st, { }).
+-record(st, { 
+	  comp_spec = #component_spec{}
+	 }).
 
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-    ?debug("data_link_bert_rpc_rpc:init(): called."),
-    {ok, #st {}}.
-
-init_rvi_component() ->
-    ?info("data_link_bert:init_rvi_component(): Called"),
+    ?info("data_link_bert:init(): Called"),
     %% Dig out the bert rpc server setup
-    {ok, BertOpts } = rvi_common:get_component_config(data_link, bert_rpc_server, []),
+    CompSpec = rvi_common:get_component_specification(),
+    {ok, #st { comp_spec = CompSpec }}.
+
+start_json_server() ->
+    rvi_common:start_json_rpc_server(data_link, ?MODULE, data_link_bert_rpc_sup).
+
+
+start_connection_manager() ->
+    CompSpec = rvi_common:get_component_specification(),
+    {ok, BertOpts } = rvi_common:get_module_config(data_link, 
+						   ?MODULE, 
+						   bert_rpc_server, 
+						   [], 
+						   CompSpec),
     IP = proplists:get_value(ip, BertOpts, ?DEFAULT_BERT_RPC_ADDRESS),
     Port = proplists:get_value(port, BertOpts, ?DEFAULT_BERT_RPC_PORT),
+    
     ?info("data_link_bert:init_rvi_component(): Starting listener."),
 
     %% Fire up listener
@@ -54,28 +71,17 @@ init_rvi_component() ->
     case listener:add_listener(Pid, IP, Port) of
 	ok ->
 	    ?notice("---- RVI Node External Address: ~s", 
-		    [ application:get_env(rvi, node_address, undefined)]),
+		    [ application:get_env(rvi, node_address, undefined)]);
 
-	    %% Setup our http server.
-	    case rvi_common:get_component_config(data_link, exo_http_opts) of
-		{ ok, ExoHttpOpts } ->
-		    exoport_exo_http:instance(data_link_bert_rpc_sup, 
-					      data_link_bert_rpc_rpc,
-					      ExoHttpOpts),
-		    ok;
-
-		_ -> 
-		    ?info("data_link_bert_rpc_rpc:init_rvi_component(): exo_http_opts not specified. Gen Server only"),
-		    ok
-		
-	    end;
 	Err -> 	
 	    ?error("data_link_bert:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
-	    Err
+	    ok
     end,
     ?info("data_link_bert_rpc_rpc:init_rvi_component(): Setting up static nodes."),
     setup_static_node_data_links(),
     ok.
+
+
 
 %%
 %% Since we, in this demo code, haven't done pure P2P service discovery yet,

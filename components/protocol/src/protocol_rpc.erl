@@ -15,11 +15,13 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--export([init_rvi_component/0]).
 
 -include_lib("lager/include/log.hrl").
 
 -define(SERVER, ?MODULE). 
+-export([start_json_server/0]).
+
+
 -record(st, { }).
 
 start_link() ->
@@ -29,18 +31,8 @@ init([]) ->
     ?debug("protocol_rpc:init(): called."),
     {ok, #st {}}.
 
-init_rvi_component() ->
-    case rvi_common:get_component_config(protocol, exo_http_opts) of
-	{ ok, ExoHttpOpts } ->
-	    exoport_exo_http:instance(protocol_sup, 
-				      protocol_rpc,
-				      ExoHttpOpts);
-	_ ->
-	    ?info("protocol_rpc:init_rvi_component(): exo_http_opts not specified. Gen Server only"),
-	    ok
-    end,
-
-    ok.
+start_json_server() ->
+    rvi_common:start_json_rpc_server(protocol, ?MODULE, protocol_sup).
 
 
 send_message(ServiceName, Timeout, NetworkAddress, Parameters, Signature, Certificate) ->

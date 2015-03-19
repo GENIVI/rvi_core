@@ -12,11 +12,10 @@
 %%-include_lib("lhttpc/include/lhttpc.hrl").
 -include_lib("lager/include/log.hrl").
 
+-include_lib("rvi_common/include/rvi_common.hrl").
+
 -export([send_http_request/3]).
--export([send_component_request/3]).
--export([send_component_request/4]).
--export([get_component_url/1]).
--export([get_component_process/1]).
+-export([request/7]).
 -export([json_rpc_status/1]).
 -export([get_json_element/2]).
 -export([sanitize_service_string/1]).
@@ -30,10 +29,18 @@
 -export([node_address_string/0]).
 -export([node_address_tuple/0]).
 -export([get_request_result/1]).
--export([get_component_config/1]).
--export([get_component_config/2]).
--export([get_component_config/3]).
+-export([get_component_specification/0,
+	 get_component_modules/1,
+	 get_component_modules/2,
+	 get_module_specification/3,
+	 get_module_config/4,
+	 get_module_config/5,
+	 get_module_json_rpc_address/3,
+	 get_module_json_rpc_url/3,
+	 get_module_genserver_pid/3
+	]).
 
+-export([start_json_rpc_server/3]).
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
 -define(NODE_ADDRESS, node_address).
@@ -107,7 +114,7 @@ json_rpc_status(_) ->
 get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
     case get_json_element(["result", "status"], JSONBody) of 
 	{ok, Value} ->
-	    { ok, json_rpc_status(Value), JSONBody };
+	    { json_rpc_status(Value), JSONBody };
 
 	{ error, undefined} ->
 	    {ok, undefined }
@@ -124,63 +131,50 @@ get_request_result(ok)->
 
 get_request_result(Other)->
     ?error("get_request_result(): Unhandled result: ~p", [Other]),    
-    { error, format}.
+    { error, format }.
 
-			
-%% Send a request to another component (service_edge, authorize, etc).
-send_component_request(Component, Service, ArgList) ->
-    case send_component_request(Component, Service, ArgList, []) of
-	{ ok, Status, _} ->
-	    { ok, Status };
 
-	Err -> Err
-    end.
+json_argument([], [], Acc) ->
+    Acc;
 
-%% FIXME:
-%% This function shooudl clean up the values in ReturnParams
-%% so that they are regular tuples. 
-%% Today ReturnParams contains { struct, { "some_element", { array, [...]}}}.
-%% Callers to send_component_request() Need to be fixed as well.
+json_argument([Arg | AT], [Spec | ST], Acc) ->
+    json_argument(AT, ST, [ { Spec, Arg } | Acc]).
 
-send_component_request(Component, Service, ArgList, ReturnParams) ->
+%% Convert a list of unnamed arguments to a proplist
+%% understood by json encode
+json_argument(ArgList, SpecList) ->
+    { struct, json_argument(ArgList, SpecList, []) }.
 
-    %% ?debug("send_component_request(): Component:      ~p", [ Component]),
-    %% ?debug("send_component_request(): Address:        ~p", [ Address ]),
-    %% ?debug("send_component_request(): Service:        ~p", [ Service]),
-    %% ?debug("send_component_request(): ArgList:        ~p", [ ArgList]),
-    %% ?debug("send_component_request(): ReturnParams:   ~p", [ ReturnParams]),
-	    
+request(Component, 
+	Module, 
+	Function, 
+	InArg,
+	InArgSpec,
+	OutArgSpec,
+	CompSpec) ->
 
-    %%
-    %% Send to gen_server, if configured, else URL
-    %%
-    case { rvi_common:get_component_process(Component), 
-	   rvi_common:get_component_url(Component) }  of
+    %% Figure out how we are to invoke this MFA.
+    case get_module_type(Component, Module, CompSpec) of
+	%% We have a gen_server
+	{ ok, gen_server } ->
+	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),	
+	    gen_server:call(Module, { rvi_call, Module, InArg});
 
-	%% We have a gen_server process to send to. Let the gen_server take priority
-	%% over JSON-RPC URL
-	{undefined, undefined} -> 
-	    { error, {unknown_component, Component} };
-
-	{ undefined, Address } ->
+	%% We have a JSON-RPC server
+	{ ok,  json_rpc } ->
+	    URL = get_module_json_rpc_url(Component, Module, CompSpec),
+	    JSONArg = json_argument(InArg, InArgSpec),
 	    case get_request_result(
-		   send_http_request(Address, atom_to_list(Service),  ArgList)
+		   send_http_request(URL, atom_to_list(Module),  JSONArg)
 		  ) of
-		{ok, Status, JSONBody} ->
-		    ReturnVal = retrieve_json_reply_elements(ReturnParams, JSONBody),
-		    { ok, Status, ReturnVal };
+
+		{ ok, JSONBody} ->
+		    json_reply(JSONBody, OutArgSpec);
 
 		Err -> Err
 	    end;
 
-	{ Proc, _ } ->
-	    ?debug("Sending ~p:~p to ~p", [Component, Service, Proc]),
-	    { Reply, ReplyArg} = gen_server:call(Proc, { rvi_call, Service, ArgList }),
-	    %% Retrieve the status from the reply
-	    [ Status | ReturnValues ] = retrieve_reply_elements([ status | ReturnParams], ReplyArg),
-	    %% Return
-	    { Reply, json_rpc_status(Status), ReturnValues }
-	
+	Err1 -> Err1
     end.
 
 send_http_request(Url,Method, Args) ->
@@ -209,23 +203,6 @@ send_http_request(Url,Method, Args) ->
             {error, internal}
     end.
 	
-
-get_component_url(Component) when is_atom(Component) ->
-    %% Locate the correct service address for the given component
-    case get_component_config(Component, url) of
-	{ok, URL } -> URL;
-
-	_ -> undefined
-    end.
-
-
-get_component_process(Component) when is_atom(Component) ->
-    %% Locate the correct service address for the given component
-    case get_component_config(Component, gen_server) of
-	{ok, GenServer } -> GenServer;
-	_ -> undefined
-    end.
-
 
 %% If Path is just a single element, convert to list and try again.
 get_json_element(ElemPath, JSON) when is_atom(ElemPath) ->
@@ -282,24 +259,9 @@ get_json_element_(Path,JSON) ->
 	     [Path, JSON]),
     { error, undefined }.
 
-retrieve_reply_elements(ElemList, Reply) ->
-    retrieve_reply_elements(ElemList, Reply, []).
-
-retrieve_reply_elements([], _, Acc) ->
-    lists:reverse(Acc);
-
-
-retrieve_reply_elements([Elem | T], Reply, Acc) ->
-    case lists:keyfind(Elem, 1, Reply) of 
-	{ _, Value } ->
-	    retrieve_reply_elements(T, Reply, [ Value | Acc ]);
-	false ->
-	    retrieve_reply_elements(T, Reply, [ undefined | Acc ])
-    end.
     
-
-retrieve_json_reply_elements(Elem, JSON) ->
-    retrieve_json_reply_elements(Elem, JSON, []).
+json_reply(ArgList, JSON) ->
+    retrieve_json_reply_elements(ArgList, JSON, []).
 
 retrieve_json_reply_elements([], _, Acc) ->
     lists:reverse(Acc);
@@ -446,45 +408,218 @@ node_address_tuple() ->
 	    { Address, list_to_integer(Port) }
     end.
 
-get_component_config(Component) ->
+get_component_config_(Component, Default, CompList) ->
+    case proplists:get_value(Component, CompList, undefined) of
+	undefined ->
+	     Default;
+	
+	ModList ->
+	    ModList
+    end.
+
+get_component_specification() ->
     case application:get_env(rvi, components, undefined) of
 	undefined -> 
-	    {error, {missing_env, {rvi, { component, [ ]}}}};
+	    #component_spec { 
+	       service_edge = ?COMP_SPEC_SERVICE_EDGE_DEFAULT,
+	       scheduler = ?COMP_SPEC_SCHEDULER_DEFAULT,
+	       service_discovery = ?COMP_SPEC_SERVICE_DISCOVERY_DEFAULT,
+	       authorize = ?COMP_SPEC_AUTHORIZE_DEFAULT,
+	       data_link = ?COMP_SPEC_DATA_LINK_DEFAULT,
+	       protocol = ?COMP_SPEC_PROTOCOL_DEFAULT
+	      };
 
 	CompList ->
-	    case proplists:get_value(Component, CompList, undefined) of
-		undefined ->
-		    Err = {missing_env, {rvi, { component, [ { Component, {}} ]}}},
-		    ?debug("get_component_config(): Missing app environment: ~p",
-			   [Err]),
-		     {error, Err};
+	    #component_spec { 
+	       service_edge = get_component_config_(service_edge, 
+						    ?COMP_SPEC_SERVICE_EDGE_DEFAULT,
+						    CompList), 
+	       scheduler = get_component_config_(scheduler,
+						 ?COMP_SPEC_SCHEDULER_DEFAULT,
+						 CompList),
+	       service_discovery = get_component_config_(service_discovery, 
+							 ?COMP_SPEC_SERVICE_DISCOVERY_DEFAULT,
+							 CompList),
+	       authorize = get_component_config_(authorize, 
+						 ?COMP_SPEC_AUTHORIZE_DEFAULT,
+						 CompList),
+	       data_link = get_component_config_(data_link, 
+						 ?COMP_SPEC_DATA_LINK_DEFAULT,
+						 CompList),
+	       protocol =  get_component_config_(protocol, 
+						 ?COMP_SPEC_PROTOCOL_DEFAULT,
+						 CompList)
+	      }
+    end.
+
+
+get_component_modules(Component) ->
+    get_component_modules(Component, get_component_specification()).
+
+get_component_modules(service_edge, CompSpec) ->
+    CompSpec#component_spec.service_edge;
+
+get_component_modules(scheduler, CompSpec) ->
+    CompSpec#component_spec.scheduler;
+
+get_component_modules(service_discovery, CompSpec) ->
+    CompSpec#component_spec.service_discovery;
+
+get_component_modules(authorize, CompSpec) ->
+    CompSpec#component_spec.authorize;
+
+get_component_modules(data_link, CompSpec) ->
+    CompSpec#component_spec.data_link;
+
+get_component_modules(protocol, CompSpec) ->
+    CompSpec#component_spec.protocol;
+    
+get_component_modules(_, _) ->
+    undefined.
+
 	
-		CompConf ->
-		    {ok, CompConf}
+%% Get the spec for a specific module (protocol_bert_rpc) within
+%% a component (protocol).
+get_module_specification(Component, Module, CompSpec) ->
+    case get_component_modules(Component, CompSpec) of
+	undefined ->
+	    undefined;
+
+	Modules ->
+	    case lists:keyfind(Module, 1, Modules ) of
+		false ->
+		    ?debug("get_component_module_specification(): Missing component spec: "
+			   "rvi:component:~p:~p:{...}", [Component, Module]),
+		    {error, {not_found, Module}};
+
+		{ Module, Type, ModConf } -> 
+		    {ok, Module, Type, ModConf };
+
+		IllegalFormat ->
+		    ?warning("get_component_module_specification(): Illegal format: ~p: ~p", 
+			     [Module, IllegalFormat]),
+		    {error, {illegal_format,{ Module, IllegalFormat } } }
 	    end
     end.
-	
-get_component_config(Component, Key) ->
-    case get_component_config(Component) of
-	{ok, PropList } ->
-	    
-	    case proplists:get_value(Key, PropList, undefined ) of
 
+%% Get a specific option (bert_rpc_port) for a specific module
+%% (protocol_bert_rpc) within a component (protocol).
+get_module_config(Component, Module, Key, CompSpec) ->
+    case get_module_specification(Component, Module, CompSpec) of
+	{ok, _Module, _Type, ModConf } ->
+	    case proplists:get_value(Key, ModConf, undefined ) of
 		undefined ->
-		    Err = {missing_env, {rvi, { component, [ { Component, { Key, {}}} ]}}},
-		    ?debug("get_component_config(): Missing app environment: ~p", [Err]),
-		    {error, Err};
+		    ?debug("get_component_config(): Missing component spec: "
+			   "rvi:component:~p:~p:~p{...}", [Component, Module, Key]),
+		    {error, {not_found, Component, Module, Key}};
 
-		Config-> 
-		     {ok, Config }
+
+		Config -> 
+		    {ok, Config }
 	    end;
 	Err -> Err
     end.
 
-get_component_config(Component, Key, Default) ->
-    case get_component_config(Component) of
-	{ok, PropList } ->
-	    {ok, proplists:get_value(Key, PropList, Default)};
+%% Get a specific option (bert_rpc_port) for a specific module
+%% (protocol_bert_rpc) within a component (protocol), with
+%% a default value.
+get_module_config(Component, Module, Key, Default, CompSpec) ->
+    case get_module_config(Component, Module, Key, CompSpec) of
+	{ok, Config } ->
+	    {ok, Config };
+
+	_ -> {ok, Default }
+    end.
+
+
+get_module_type(Component, Module, CompSpec) ->
+    case get_module_specification(Component, Module, CompSpec) of
+	{ok, {_Module, Type, _ModConf } } ->
+	    {ok, Type} ;
 
 	Err -> Err
     end.
+
+get_module_json_rpc_address(Component, Module, CompSpec) ->
+    ?debug("get_module_json_rpc_address(~p, ~p, ~p)", [ Component, Module, CompSpec]),
+    %% Check that this is a JSON RPC module
+    case get_module_type(Component, Module, CompSpec) of
+	{ ok, json_rpc} ->
+	    ?debug("get_module_json_rpc_address(): Is json_rpc"),
+	    %% Dig out the JSON RPC address
+	    case get_module_config(Component,
+				   Module, 
+				   json_rpc_address,
+				   undefined, 
+				   CompSpec) of
+		undefined ->
+		    ?debug("get_component_config(): Missing component spec: "
+			   "rvi:component:~p:~p:json_rpc_addr, {...}", [Component, Module]),
+		    {error, {not_found, Component, Module, json_rpc_addr}};
+
+		{ok, { IP, Port }} -> 
+		    {ok,  IP, Port };
+
+		{ok, Port } -> 
+		    {ok,   "127.0.0.1", Port}
+
+	    end;
+
+	{ok, gen_server } ->
+	    ?debug("get_module_json_rpc_address(): Is gen_server"),
+	    { error, { is_gen_server, Module } };
+
+	{ok, Unknown } ->
+	    ?debug("get_module_json_rpc_address(): Is unknown: ~p", [Unknown]),
+	    { error, { unknown_type, Unknown } };
+
+	Err -> Err
+    end.
+
+
+get_module_json_rpc_url(Component, Module, CompSpec) ->
+    ?debug("get_module_json_rpc_url(~p, ~p, ~p)", [ Component, Module, CompSpec]),
+    case get_module_json_rpc_address(Component, Module, CompSpec) of 
+	{ ok, IP, Port } when is_integer(Port)->
+	    "http://" ++ IP ++ ":" ++ integer_to_list(Port);
+
+	{ ok, IP, Port } when is_list(Port)->
+	    "http://" ++ IP ++ ":" ++ Port;
+
+	Err -> Err
+    end.
+	  
+
+
+get_module_genserver_pid(Component, Module, CompSpec) ->
+    %% Check that this is a JSON RPC module
+    case get_module_type(Component, Module, CompSpec) of
+	{ ok, gen_server} ->
+	    %% For now, we'll just use Module
+	    { ok, Module };
+
+	{ok, json_rpc } ->
+	    { error, { is_json_rpc, Module } };
+
+	{ok, Unknown } ->
+	    { error, { unknown_type, Unknown } };
+
+	Err -> Err
+    end.
+
+
+start_json_rpc_server(Component, Module, Supervisor) ->
+    Addr = get_module_json_rpc_address(Component, 
+				       Module,
+				       get_component_specification()),
+
+    case Addr of 
+	{ ok, IP, Port } ->
+	    ExoHttpOpts = [ { ip, IP }, { port, Port } ],
+
+	    exoport_exo_http:instance(Supervisor, 
+				      Module,
+				      ExoHttpOpts);
+	Err -> Err
+    end.
+	    

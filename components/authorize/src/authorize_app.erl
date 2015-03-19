@@ -23,8 +23,8 @@
 start(_StartType, _StartArgs) ->
     authorize_sup:start_link().
 
-start_phase(init, _, _) ->
-    authorize_rpc:init_rvi_component(),
+start_phase(json_rpc, _, _) ->
+    authorize_rpc:start_json_server(),
     ok;
 
 start_phase(_Other, _, _) ->

@@ -16,9 +16,9 @@
 			   Certificate :: string()) -> Result::tuple().
 
 
--callback register_remote_service(NetworkAddress :: string(), 
+-callback register_remote_services(NetworkAddress :: string(), 
 				  AvailableServices :: string()) -> Result::tuple().
 
--callback unregister_remote_service(ServiceNames :: string()) -> Result::tuple().
+-callback unregister_remote_services(ServiceNames :: string()) -> Result::tuple().
 
 
