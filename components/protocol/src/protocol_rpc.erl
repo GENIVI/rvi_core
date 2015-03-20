@@ -17,78 +17,55 @@
 
 
 -include_lib("lager/include/log.hrl").
+-include_lib("rvi_common/include/rvi_common.hrl").
 
 -define(SERVER, ?MODULE). 
 -export([start_json_server/0]).
+-export([send_message/7,
+	 receive_message/2]).
 
-
--record(st, { }).
+-record(st, { 
+	  %% Component specification
+	  cs = #component_spec{}
+	  }).
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
     ?debug("protocol_rpc:init(): called."),
-    {ok, #st {}}.
+    {ok, #st { cs = rvi_common:get_component_specification() } }.
 
 start_json_server() ->
     rvi_common:start_json_rpc_server(protocol, ?MODULE, protocol_sup).
 
 
-send_message(ServiceName, Timeout, NetworkAddress, Parameters, Signature, Certificate) ->
-    ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
-    ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
-    ?debug("    protocol:send(): network_address: ~p~n", [NetworkAddress]),
-%%    ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
-    ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
-    ?debug("    protocol:send(): certificate:     ~p~n", [Certificate]),
-    Data = term_to_binary({ ServiceName, Timeout, NetworkAddress, 
-			    Parameters, Signature, Certificate }),
 
-    case rvi_common:send_component_request(data_link, send_data,  
-				      [
-				       {network_address, NetworkAddress}, 
-				       {data, Data}
-				      ]) of 
-	{ ok, _JSONStatus } -> 
-	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
-	
-	Err -> 
-	    ?debug("    protocol_rpc:send() Failed at data_link:transmit_data(): ~p~n", 
-		      [ Err ]),
-	    Err
-    end.
+send_message(CompSpec, 
+	     ServiceName, 
+	     Timeout, 
+	     NetworkAddress, 
+	     Parameters, 
+	     Signature, 
+	     Certificate) ->
+    rvi_common:request(protocol, ?MODULE, send_message,
+		       [ ServiceName,
+			 Timeout,
+			 NetworkAddress, 
+			 Parameters, 
+			 Signature,
+			 Certificate],
+		       [ service,
+			 timeout,
+			 network_address,
+			 signature,
+			 certificate],
+		       [ status ], CompSpec).
 
-receive_message(Data) when is_list(Data) ->
-    receive_message(list_to_binary(Data));
-
-receive_message(Data) when is_binary(Data) ->
-    { ServiceName, Timeout, NetworkAddress, Parameters, Signature, Certificate } = 
-	binary_to_term(Data),
-    ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
-    ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
-    ?debug("    protocol:rcv(): network_address: ~p~n", [NetworkAddress]),
-%%    ?debug("    protocol:rcv(): parameters:      ~p~n", [Parameters]),
-    ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
-    ?debug("    protocol:rcv(): certificate:     ~p~n", [Certificate]),
-    case 
-	rvi_common:send_component_request(service_edge, handle_remote_message, 
-					  [
-					   { service_name, ServiceName },
-					   { timeout, Timeout},
-					   { network_address, NetworkAddress},
-					   { parameters, Parameters},
-					   { signature, Signature},
-					   { certificate, Certificate }
-					  ]) of
-	{ ok, _JSONStatus} -> 
-	    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
-	
-	Err -> 
-	    ?debug("    protocol_rpc:rcv() service_edge:handle_remote_message() call failed with: ~p~n", 
-		      [ Err ]),
-	    Err
-    end.
+receive_message(CompSpec, Data) ->
+    rvi_common:request(protocol, ?MODULE, receive_message, 
+		       [ Data ], [ data ], 
+		       [status], CompSpec).
 
 %% JSON-RPC entry point
 
@@ -100,39 +77,88 @@ handle_rpc("send_message", Args) ->
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
-    send_message(ServiceName,
-		 Timeout,
-		 NetworkAddress,
-		 Parameters,
-		 Signature, 
-		 Certificate);
+    [ ok ] = gen_server:call(?SERVER, { rvi_call, send_message, 
+					[ServiceName,
+					 Timeout,
+					 NetworkAddress,
+					 Parameters,
+					 Signature, 
+					 Certificate]}),
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
+				 
 
 handle_rpc("receive_message", Args) ->
     {ok, Data} = rvi_common:get_json_element(["data"], Args),
-    receive_message(Data);
+
+    [ ok ] = gen_server:call(?SERVER, { rvi_call, receive_message, [Data]}),
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
+
 
 handle_rpc(Other, _Args) ->
     ?debug("    protocol_rpc:handle_rpc(~p): Unknown~n", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
-handle_call({rvi_call, send_message, Args}, _From, State) ->
-    {_, ServiceName} = lists:keyfind(service_name, 1, Args),
-    {_, Timeout} = lists:keyfind(timeout, 1, Args),
-    {_, NetworkAddress} = lists:keyfind(network_address, 1, Args),
-    {_, Parameters} = lists:keyfind(parameters, 1, Args),
-    {_, Signature} = lists:keyfind(signature, 1, Args),
-    {_, Certificate} = lists:keyfind(certificate, 1, Args),
-    { reply, send_message(ServiceName,
-			  Timeout,
-			  NetworkAddress,
-			  Parameters,
-			  Signature, 
-			  Certificate), State };
+handle_call({rvi_call, send_message, 
+	     [ServiceName,
+	      Timeout,
+	      NetworkAddress,
+	      Parameters,
+	      Signature,
+	      Certificate]}, _From, State) ->
+    ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
+    ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
+    ?debug("    protocol:send(): network_address: ~p~n", [NetworkAddress]),
+%%    ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
+    ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
+    ?debug("    protocol:send(): certificate:     ~p~n", [Certificate]),
+
+    
+    Data = term_to_binary({ ServiceName, Timeout, NetworkAddress, 
+			    Parameters, Signature, Certificate }),
+
+    Res = rvi_common:request(data_link, data_link_bert_rpc, send_data,
+			     [ NetworkAddress, Data ],
+			     [ network_address, data ],
+			     [ status], 
+			     State#st.cs),
+    { reply, Res, State };
 
 
-handle_call({rvi_call, receive_message, Args}, _From, State) ->
-    {_, Data} = lists:keyfind(data, 1, Args),
-    {reply, receive_message(Data), State};
+%% Convert list-based data to binary.
+handle_call({rvi_call, receive_message, [Data]}, From, State) when is_list(Data)->
+    handle_call({ rvi_call, receive_message, 
+		  [ list_to_binary(Data) ] }, From, State);
+
+handle_call({rvi_call, receive_message, [Data]}, _From, State) ->
+    { ServiceName, 
+      Timeout, 
+      NetworkAddress, 
+      Parameters, 
+      Signature, 
+      Certificate } = binary_to_term(Data),
+    ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
+    ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
+    ?debug("    protocol:rcv(): network_address: ~p~n", [NetworkAddress]),
+%%    ?debug("    protocol:rcv(): parameters:      ~p~n", [Parameters]),
+    ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
+    ?debug("    protocol:rcv(): certificate:     ~p~n", [Certificate]),
+    Res = rvi_common:request(service_edge, service_edge_rpc, 
+			     handle_remote_message, 
+			     [ ServiceName,
+			       Timeout,
+			       NetworkAddress,
+			       Parameters,
+			       Signature,
+			       Certificate ],
+			     [ service_name,
+			       timeout,
+			       network_address,
+			       parameters,
+			       signature,
+			       certificate ],
+			     [ status ],
+			    State#st.cs),
+    {reply, Res , State};
 
 handle_call(Other, _From, State) ->
     ?warning("protocol_rpc:handle_call(~p): unknown", [ Other ]),

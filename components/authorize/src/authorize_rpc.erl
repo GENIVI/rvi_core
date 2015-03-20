@@ -21,11 +21,13 @@
 	 authorize_remote_message/4]).
 
 -include_lib("lager/include/log.hrl").
+-include_lib("rvi_common/include/rvi_common.hrl").
 
 -define(SERVER, ?MODULE). 
 -record(st, { 
 	  next_transaction_id = 1, %% Sequentially incremented transaction id.
-	  services_tid = undefined %% Known services.
+	  services_tid = undefined, %% Known services.
+	  cs = #component_spec{}
 	 }).
 
 start_link() ->
@@ -33,7 +35,7 @@ start_link() ->
 
 init([]) ->
     ?debug("authorize_rpc:init(): called."),
-    {ok, #st {}}.
+    {ok, #st { cs = rvi_common:get_component_specification() } }.
 
 start_json_server() ->
     ?debug("authorize_rpc:start_json_server(): called"),

@@ -165,6 +165,7 @@ handle_rpc("schedule_message", Args) ->
     [ok, TransID] = gen_server:call(?SERVER, { rvi_call, schedule_message, 
 					       [ SvcName,
 						 Timeout,
+						 Parameters,
 						 Signature,
 						 Certificate]}),
 

@@ -40,7 +40,10 @@
 	 }).
 
 -define(SERVER, ?MODULE). 
--record(st, { }).
+-record(st, {
+	  %% Component specification
+	  cs = #component_spec{}
+	 }).
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -51,7 +54,8 @@ init([]) ->
     ets:new(?REMOTE_SERVICE_TABLE, [set,  public, named_table, { keypos, #service_entry.service }]),
     ets:new(?REMOTE_ADDRESS_TABLE, [duplicate_bag,  public, named_table, 
 				    {keypos, #service_entry.network_address}]),
-    {ok, #st {}}.
+
+    {ok, #st { cs = rvi_common:get_component_specification() } }.
 
 
 start_json_server() ->
