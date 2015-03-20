@@ -114,6 +114,7 @@ json_rpc_status(_) ->
 get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
     case get_json_element(["result", "status"], JSONBody) of 
 	{ok, Value} ->
+	    ?debug("get_request_result(~s)", [JSONBody]),
 	    { json_rpc_status(Value), JSONBody };
 
 	{ error, undefined} ->
@@ -158,18 +159,21 @@ request(Component,
 	%% We have a gen_server
 	{ ok, gen_server } ->
 	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),	
-	    gen_server:call(Module, { rvi_call, Module, InArg});
+	    gen_server:call(Module, { rvi_call, Function, InArg});
 
 	%% We have a JSON-RPC server
 	{ ok,  json_rpc } ->
 	    URL = get_module_json_rpc_url(Component, Module, CompSpec),
+	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, URL]),	
 	    JSONArg = json_argument(InArg, InArgSpec),
+	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),	
+
 	    case get_request_result(
-		   send_http_request(URL, atom_to_list(Module),  JSONArg)
+		   send_http_request(URL, atom_to_list(Function),  JSONArg)
 		  ) of
 
 		{ ok, JSONBody} ->
-		    json_reply(JSONBody, OutArgSpec);
+		    json_reply(OutArgSpec, JSONBody);
 
 		Err -> Err
 	    end;
@@ -184,7 +188,7 @@ send_http_request(Url,Method, Args) ->
 	      exo_json:encode({struct, [{"jsonrpc", "2.0"},
 					{"id", 1},
 					{"method",  Method},
-					{"params", {struct, Args}}
+					{"params", Args}
 				       ]
 			      }))),
 
@@ -411,9 +415,13 @@ node_address_tuple() ->
 get_component_config_(Component, Default, CompList) ->
     case proplists:get_value(Component, CompList, undefined) of
 	undefined ->
+	    ?debug("get_component_config(~p): Default: ~p", 
+		   [Component, Default]),
 	     Default;
 	
 	ModList ->
+	    ?debug("get_component_config(~p) -> ~p", 
+		   [Component, ModList]),
 	    ModList
     end.
 
@@ -493,6 +501,8 @@ get_module_specification(Component, Module, CompSpec) ->
 		    {error, {not_found, Module}};
 
 		{ Module, Type, ModConf } -> 
+		    ?debug("get_component_module_specification(): ~p:~p -> ~p ",
+			   [Component, Module, { Module, Type, ModConf}]),
 		    {ok, Module, Type, ModConf };
 
 		IllegalFormat ->
@@ -515,6 +525,8 @@ get_module_config(Component, Module, Key, CompSpec) ->
 
 
 		Config -> 
+		    ?debug("get_component_config(): ~p:~p:~p -> ~p: ",
+			   [Component, Module, Key, Config]),
 		    {ok, Config }
 	    end;
 	Err -> Err
@@ -534,59 +546,51 @@ get_module_config(Component, Module, Key, Default, CompSpec) ->
 
 get_module_type(Component, Module, CompSpec) ->
     case get_module_specification(Component, Module, CompSpec) of
-	{ok, {_Module, Type, _ModConf } } ->
+	{ok, _Module, Type, _ModConf } ->
 	    {ok, Type} ;
 
 	Err -> Err
     end.
 
 get_module_json_rpc_address(Component, Module, CompSpec) ->
-    ?debug("get_module_json_rpc_address(~p, ~p, ~p)", [ Component, Module, CompSpec]),
-    %% Check that this is a JSON RPC module
-    case get_module_type(Component, Module, CompSpec) of
-	{ ok, json_rpc} ->
-	    ?debug("get_module_json_rpc_address(): Is json_rpc"),
-	    %% Dig out the JSON RPC address
-	    case get_module_config(Component,
-				   Module, 
-				   json_rpc_address,
-				   undefined, 
-				   CompSpec) of
-		undefined ->
-		    ?debug("get_component_config(): Missing component spec: "
-			   "rvi:component:~p:~p:json_rpc_addr, {...}", [Component, Module]),
-		    {error, {not_found, Component, Module, json_rpc_addr}};
+    %% Dig out the JSON RPC address
+    case get_module_config(Component,
+			   Module, 
+			   json_rpc_address,
+			   undefined, 
+			   CompSpec) of
+	undefined ->
+	    ?debug("get_component_config(): Missing component spec: "
+		   "rvi:component:~p:~p:json_rpc_addr, {...}", [Component, Module]),
+	    {error, {not_found, Component, Module, json_rpc_addr}};
 
-		{ok, { IP, Port }} -> 
-		    {ok,  IP, Port };
+	{ok, { IP, Port }} -> 
+	    ?debug("get_module_json_rpc_address(~p, ~p) -> ~p:~p", 
+		   [ Component, Module, IP, Port]),
+	    {ok,  IP, Port };
 
-		{ok, Port } -> 
-		    {ok,   "127.0.0.1", Port}
-
-	    end;
-
-	{ok, gen_server } ->
-	    ?debug("get_module_json_rpc_address(): Is gen_server"),
-	    { error, { is_gen_server, Module } };
-
-	{ok, Unknown } ->
-	    ?debug("get_module_json_rpc_address(): Is unknown: ~p", [Unknown]),
-	    { error, { unknown_type, Unknown } };
-
-	Err -> Err
+	{ok, Port } -> 
+	    ?debug("get_module_json_rpc_address(~p, ~p) -> 127.0.0.1:~p", 
+		   [ Component, Module, Port]),
+	    {ok,   "127.0.0.1", Port}
     end.
 
 
 get_module_json_rpc_url(Component, Module, CompSpec) ->
-    ?debug("get_module_json_rpc_url(~p, ~p, ~p)", [ Component, Module, CompSpec]),
     case get_module_json_rpc_address(Component, Module, CompSpec) of 
 	{ ok, IP, Port } when is_integer(Port)->
-	    "http://" ++ IP ++ ":" ++ integer_to_list(Port);
+	    Res = "http://" ++ IP ++ ":" ++ integer_to_list(Port),
+	    ?debug("get_module_json_rpc_url(~p, ~p) ->~p", [ Component, Module, Res ]),
+	    Res;
+
 
 	{ ok, IP, Port } when is_list(Port)->
-	    "http://" ++ IP ++ ":" ++ Port;
-
-	Err -> Err
+	    Res = "http://" ++ IP ++ ":" ++ Port,
+	    ?debug("get_module_json_rpc_url(~p, ~p) ->~p", [ Component, Module, Res ]),
+	    Res;
+	Err -> 
+	    ?debug("get_module_json_rpc_url(~p, ~p) Failed: ~p", [ Component, Module, Err ]),
+	    Err
     end.
 	  
 
@@ -620,6 +624,10 @@ start_json_rpc_server(Component, Module, Supervisor) ->
 	    exoport_exo_http:instance(Supervisor, 
 				      Module,
 				      ExoHttpOpts);
-	Err -> Err
+	Err -> 
+	    ?info("rvi_common:start_json_rpc_server(~p:~p): "
+		  "No JSON-RPC address setup. skip",
+		  [ Component, Module ]),
+	    Err
     end.
 	    
