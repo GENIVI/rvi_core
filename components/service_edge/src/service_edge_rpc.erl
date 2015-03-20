@@ -36,6 +36,7 @@
 
 %%-include_lib("lhttpc/include/lhttpc.hrl").
 -include_lib("lager/include/log.hrl").
+
 -include_lib("rvi_common/include/rvi_common.hrl").
 
 -define(SERVER, ?MODULE). 

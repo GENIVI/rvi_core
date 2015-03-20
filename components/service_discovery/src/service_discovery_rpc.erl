@@ -28,6 +28,8 @@
 -export([start_json_server/0]).
 
 -include_lib("lager/include/log.hrl").
+-include_lib("rvi_common/include/rvi_common.hrl").
+
 -define(LOCAL_SERVICE_TABLE, rvi_local_services).
 -define(REMOTE_SERVICE_TABLE, rvi_remote_services).
 -define(REMOTE_ADDRESS_TABLE, rvi_address_services).

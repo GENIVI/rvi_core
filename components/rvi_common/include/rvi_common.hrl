@@ -27,4 +27,3 @@
 -define(COMP_SPEC_AUTHORIZE_DEFAULT,         [ { authorize_rpc, gen_server, [] }]).
 -define(COMP_SPEC_DATA_LINK_DEFAULT,         [ { data_link_bert_rpc, gen_server, [] } ]).
 -define(COMP_SPEC_PROTOCOL_DEFAULT,          [ { protocol, gen_server, [] } ]).
-

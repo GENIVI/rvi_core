@@ -7,8 +7,10 @@
 %%
 
 -module(rvi_schedule).
+-include_lib("rvi_common/include/rvi_common.hrl").
 
--callback schedule_message(SvcName :: string(), 
+-callback schedule_message(CompSpec :: #component_spec{}, 
+			   SvcName :: string(), 
 			   Timeout :: integer(),
 			   Callback :: mfa(), 
 			   Parameters :: any(), 
@@ -16,9 +18,11 @@
 			   Certificate :: string()) -> Result::tuple().
 
 
--callback register_remote_services(NetworkAddress :: string(), 
-				  AvailableServices :: string()) -> Result::tuple().
+-callback register_remote_services(CompSpec :: #component_spec{}, 
+				   NetworkAddress :: string(), 
+				   AvailableServices :: string()) -> Result::tuple().
 
--callback unregister_remote_services(ServiceNames :: string()) -> Result::tuple().
+-callback unregister_remote_services(CompSpec :: #component_spec{}, 
+				     ServiceNames :: string()) -> Result::tuple().
 
 

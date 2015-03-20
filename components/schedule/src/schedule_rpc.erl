@@ -17,9 +17,9 @@
 
 %% API
 -export([start_link/0]).
--export([schedule_message/6,
-	 register_remote_services/2, 
-	 unregister_remote_services/1]).
+-export([schedule_message/7,
+	 register_remote_services/3, 
+	 unregister_remote_services/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -106,51 +106,105 @@ init([]) ->
 start_json_server() ->
     rvi_common:start_json_rpc_server(schedule, ?MODULE, schedule_sup).
 
-schedule_message(SvcName, 
+schedule_message(CompSpec, 
+		 SvcName, 
 		 Timeout, 
 		 Callback,
 		 Parameters,
 		 Signature,
 		 Certificate) ->
     
-    gen_server:call(?SERVER, { 
-		       schedule_message,
-		       SvcName, 
-		       Timeout, 
-		       Callback,
-		       Parameters,
-		       Signature,
-		       Certificate
-		      }).
+    rvi_common:request(schedule, ?MODULE, 
+		       schedule_message, 
+		       [SvcName, 
+			Timeout,
+			Callback, 
+			Parameters, 
+			Signature, 
+			Certificate], 
+		       [service_name,
+			timeout,
+			parameters,
+			signature,
+			certificate], 
+		       [status, transaction_id], CompSpec).
 
-register_remote_services(NetworkAddress, AvailableServices) ->
-    gen_server:call(?SERVER, { register_remote_services, NetworkAddress, AvailableServices }).
 
-unregister_remote_services(ServiceNames) ->
-    gen_server:call(?SERVER, { unregister_remote_services, ServiceNames }).
+register_remote_services(CompSpec, NetworkAddress, AvailableServices) ->
+    rvi_common:request(schedule, ?MODULE, 
+		       register_remote_services, 
+		       [NetworkAddress, AvailableServices], 
+		       [network_address, available_services], 
+		       [status, transaction_id], CompSpec).
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling call messages
-%%
-%% @spec handle_call(Request, From, St) ->
-%%                                   {reply, Reply, St} |
-%%                                   {reply, Reply, St, Timeout} |
-%%                                   {noreply, St} |
-%%                                   {noreply, St, Timeout} |
-%%                                   {stop, Reason, Reply, St} |
-%%                                   {stop, Reason, St}
-%% @end
-%%--------------------------------------------------------------------
-handle_call( { schedule_message,
-	       SvcName, 
-	       Timeout, 
-	       Callback,
-	       Parameters,
-	       Signature,
-	       Certificate
-	     }, _From, St) ->
+
+unregister_remote_services(CompSpec, ServiceNames) ->
+    rvi_common:request(schedule, ?MODULE, 
+		       unregister_remote_services, 
+		       [ServiceNames], 
+		       [services], 
+		       [status], CompSpec).
+
+
+
+%% JSON-RPC entry point
+%% CAlled by local exo http server
+handle_rpc("schedule_message", Args) ->
+    {ok, SvcName} = rvi_common:get_json_element(["service_name"], Args),
+    {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
+    {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
+    {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
+    {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
+
+    ?debug("schedule_rpc:schedule_request(): service_name:    ~p", [ SvcName]),
+    ?debug("schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
+%%    ?debug("schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
+    ?debug("schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
+    ?debug("schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
+
+    [ok, TransID] = gen_server:call(?SERVER, { rvi_call, schedule_message, 
+					       [ SvcName,
+						 Timeout,
+						 Signature,
+						 Certificate]}),
+
+    {ok, [ { status, rvi_common:json_rpc_status(ok)},
+	   { transaction_id, TransID } ] };
+
+
+handle_rpc("register_remote_services", Args) ->
+    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
+    {ok, AvailableServices} = rvi_common:get_json_element(["services"], Args),
+    ?debug("schedule_rpc:register_remote_services(): network_address: ~p", [ NetworkAddress]),
+    ?debug("schedule_rpc:register_remote_services(): services:        ~p", [ AvailableServices]),
+
+    [ok] = gen_server:call(?SERVER, { rvi_call, register_remote_services, 
+				       [ NetworkAddress,
+					 AvailableServices ]}),
+
+    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
+
+handle_rpc("unregister_remote_services", Args) ->
+    {ok,  DiscountinuedServices} = rvi_common:get_json_element(["services"], Args),
+    ?debug("schedule_rpc:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
+    [ok] = gen_server:call(?SERVER, { rvi_call, register_remote_services, 
+				       [ DiscountinuedServices ]}),
+
+    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
+
+
+handle_rpc(Other, _Args) ->
+    ?debug("schedule_rpc:handle_rpc(~p): unknown", [ Other ]),
+    {ok, [ {status, rvi_common:json_rpc_status(invalid_command)}]}.
+
+
+handle_call( { rvi_call, schedule_message,
+	       [SvcName, 
+		Timeout, 
+		Callback,
+		Parameters,
+		Signature,
+		Certificate] }, _From, St) ->
 
     ?debug("schedule:sched_msg(): service_name:     ~p", [SvcName]),
     ?debug("schedule:sched_msg(): timeout:          ~p", [Timeout]),
@@ -169,54 +223,27 @@ handle_call( { schedule_message,
 					 Certificate,
 					 St),
 
-    { reply, {ok, TransID}, NSt };
-
-handle_call({rvi_call, schedule_message, Args}, From, St) ->
-    {_, SvcName} = lists:keyfind(service_name, 1, Args),
-    {_, Timeout} = lists:keyfind(timeout, 1, Args),
-    {_, Parameters} = lists:keyfind(parameters, 1, Args),
-    {_, Signature} = lists:keyfind(signature, 1, Args),
-    {_, Certificate} = lists:keyfind(certificate, 1, Args),
-    { reply, { ok, TransID}, NSt} = 
-	handle_call( { schedule_message,
-		       SvcName, 
-		       Timeout, 
-		       no_callback,
-		       Parameters,
-		       Signature,
-		       Certificate
-		     }, From, St),
-    { reply, { ok, [ 
-		     { status, rvi_common:json_rpc_status(ok)},
-		     { transaction_id, TransID }]}, NSt};
-    
+    { reply, [ok, TransID], NSt };
   
 
 
-handle_call( {register_remote_services, NetworkAddress, AvailableServices}, _From, St) ->
-    ?info("schedule:register_remote_services(): services(~p) -> ~p", [AvailableServices, NetworkAddress]),
+handle_call( {rvi_call, register_remote_services, 
+	       [ NetworkAddress, 
+		 AvailableServices]}, _From, St) ->
+
+    ?info("schedule:register_remote_services(): services(~p) -> ~p", 
+	  [AvailableServices, NetworkAddress]),
+
     {ok, NSt} =  multiple_services_available(AvailableServices, NetworkAddress, St),
-    {reply, ok, NSt};
+    {reply, [ok], NSt};
 
 
-handle_call({rvi_call, register_remote_services, Args}, From, St) ->
-    {_, NetworkAddress } = lists:keyfind(network_address, 1, Args),
-    {_, AvailableServices } = lists:keyfind(services, 1, Args),
-    {reply, ok, NSt } = handle_call({ register_remote_services, 
-				      NetworkAddress, 
-				      AvailableServices}, From, St),
 
-    { reply, { ok, [{ status, rvi_common:json_rpc_status(ok) }] } , NSt}; 
-
-handle_call( {unregister_remote_services, ServiceNames}, _From, St) ->
+handle_call( {rvi_call, unregister_remote_services, [ServiceNames]}, _From, St) ->
     ?info("schedule:unregister_remote_services(): Services(~p)", [ServiceNames]),
     {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
-    {reply, ok, NSt };
+    {reply, [ok], NSt };
 
-handle_call({rvi_call, unregister_remote_services, Args}, From, St) ->
-    {_, Services } = lists:keyfind(services, 1, Args),
-    {reply, ok, NSt} = handle_call({ unregister_remote_services, Services}, From, St),
-    { reply, { ok, [{ status, rvi_common:json_rpc_status(ok) } ]}, NSt};
 
 
 
@@ -652,49 +679,4 @@ do_timeout_callback(Service, #message { timeout_cb = { M, F, A},
 %% callback element of #message is not an {M,F,A} format, ignore.
 do_timeout_callback(_,_) ->
     ok.
-
-
-%% JSON-RPC entry point
-%% CAlled by local exo http server
-handle_rpc("schedule_message", Args) ->
-    {ok, SvcName} = rvi_common:get_json_element(["service_name"], Args),
-    {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
-    {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
-    {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
-    {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
-
-    ?debug("schedule_rpc:schedule_request(): service_name:    ~p", [ SvcName]),
-    ?debug("schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
-%%    ?debug("schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
-    ?debug("schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
-    ?debug("schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
-
-    {ok, TransID } = schedule:schedule_message(SvcName, 
-					       Timeout, 
-					       no_callback,
-					       Parameters,
-					       Signature,
-					       Certificate),
-    {ok, [ { status, rvi_common:json_rpc_status(ok)},
-	   { transaction_id, TransID } ] };
-
-
-handle_rpc("register_remote_services", Args) ->
-    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
-    {ok, AvailableServices} = rvi_common:get_json_element(["services"], Args),
-    ?debug("schedule_rpc:register_remote_services(): network_address: ~p", [ NetworkAddress]),
-    ?debug("schedule_rpc:register_remote_services(): services:        ~p", [ AvailableServices]),
-    register_remote_services(NetworkAddress, AvailableServices),
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
-
-handle_rpc("unregister_remote_services", Args) ->
-    {ok,  DiscountinuedServices} = rvi_common:get_json_element(["services"], Args),
-    ?debug("schedule_rpc:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
-    unregister_remote_services(DiscountinuedServices),
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
-
-
-handle_rpc(Other, _Args) ->
-    ?debug("schedule_rpc:handle_rpc(~p): unknown", [ Other ]),
-    {ok, [ {status, rvi_common:json_rpc_status(invalid_command)}]}.
 
