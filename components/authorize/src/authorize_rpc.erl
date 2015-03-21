@@ -103,23 +103,22 @@ get_certificate_body(_Service) ->
 
 authorize_local_message(CompSpec, Service) ->
     ?debug("authorize_rpc:authorize_local_msg(): service:    ~p ~n", [Service]),
-    Res = rvi_common:request(authorize, ?MODULE,authorize_local_message, 
-			     [Service], [service ], 
-			     [staus, signature, certificate], CompSpec),
+    rvi_common:request(authorize, ?MODULE,authorize_local_message, 
+		       [Service], [service ], 
+		       [staus, signature, certificate], CompSpec).
     
 
-    { ok, Res  }.
 
 authorize_remote_message(CompSpec, Service, Signature, Certificate) ->
     ?debug("authorize_rpc:authorize_remote_msg(): service: ~p ~n", [Service]),
     ?debug("authorize_rpc:authorize_remote_msg(): signature:    ~p ~n", [Signature]),
     ?debug("authorize_rpc:authorize_remote_msg(): certificate:  ~p ~n", [Certificate]),
-    Res = rvi_common:request(authorize, ?MODULE,authorize_remote_message, 
-			     [Service, Signature, Certificate],
-			     [service, signature, certificate ], 
-			     [staus], CompSpec),
-    
-    {ok, Res}.
+    rvi_common:request(authorize, ?MODULE,authorize_remote_message, 
+		       [Service, Signature, Certificate],
+		       [service, signature, certificate ], 
+		       [staus], CompSpec).
+
+
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server

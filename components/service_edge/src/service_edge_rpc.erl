@@ -256,8 +256,8 @@ forward_message_to_local_service(ServiceName, NetworkAddress, Parameters, _CompS
     case rvi_common:get_request_result(
 	   dispatch_to_local_service(NetworkAddress, 
 				     message, 
-				     [ { service_name, SvcName },
-				       { parameters, Parameters }])) of
+				     {struct, [ { service_name, SvcName },
+						{ parameters, Parameters }]})) of
 
 	%% Request delivered.
 	{ ok, _Result } ->
@@ -468,7 +468,8 @@ handle_call({rvi_call, get_available_services, []}, _From, St) ->
     {reply, service_discovery_rpc:get_all_services(St#st.cs), St};
 
 
-handle_call({ rvi_call, handle_local_message, ServiceName, Timeout, Parameters }, _From, St) ->
+handle_call({ rvi_call, handle_local_message, 
+	      [ServiceName, Timeout, Parameters] }, _From, St) ->
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [ServiceName]),
     ?debug("service_edge_rpc:local_msg: timeout:         ~p", [Timeout]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
@@ -478,7 +479,8 @@ handle_call({ rvi_call, handle_local_message, ServiceName, Timeout, Parameters }
     %% that will be accepted by the receiving node that will deliver
     %% the messaage to its locally connected service_name service.
     %%
-    [ok, Certificate, Signature ] = authorize:autohorize_local_message(ServiceName),
+    [ok, Certificate, Signature ] = 
+	authorize_rpc:authorize_local_message(St#st.cs, ServiceName),
     
     
     %%
@@ -531,7 +533,10 @@ handle_call({rvi_call, handle_remote_message,
     ?debug("service_edge:remote_msg(): signature:       ~p", [Signature]),
     ?debug("service_edge:remote_msg(): certificate:     ~p", [Certificate]),
     case 
-	authorize:authorize_remote_message(ServiceName, Certificate, Signature) of
+	authorize_rpc:authorize_remote_message(St#st.cs, 
+					       ServiceName, 
+					       Certificate, 
+					       Signature) of
 	[ ok ] -> 
 	    { reply, [ forward_message_to_local_service(ServiceName, Parameters, St#st.cs) ], St };
 

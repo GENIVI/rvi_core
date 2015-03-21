@@ -87,7 +87,7 @@ get_remote_network_addresses(CompSpec) ->
 
 
 resolve_local_service(CompSpec, RawService) ->
-    rvi_common:request(service_discovery, ?MODULE, resove_local_service, 
+    rvi_common:request(service_discovery, ?MODULE, resolve_local_service, 
 		       [RawService], [service], 
 		       [status, full_service], CompSpec).
 
