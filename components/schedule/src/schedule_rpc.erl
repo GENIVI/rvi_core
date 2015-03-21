@@ -14,7 +14,7 @@
 -behaviour(rvi_schedule).
 
 -include_lib("lager/include/log.hrl").
-
+-include_lib("rvi_common/include/rvi_common.hrl").
 %% API
 -export([start_link/0]).
 -export([schedule_message/7,
@@ -43,7 +43,11 @@
 
 	  %% Table containing #message records, 
 	  %% indexed by their transaction ID (and sequence of delivery)
-	  messages_tid =  undefined
+	  messages_tid =  undefined,
+
+	  %% Component specification
+	  cs = #component_spec{}
+
 	 }).
 
 
@@ -63,7 +67,8 @@
 
 -record(st, { 
 	  next_transaction_id = 1, %% Sequentially incremented transaction id.
-	  services_tid = undefined %% Known services.
+	  services_tid = undefined,
+	  cs %% Known services.
 	 }).
 
 
@@ -99,7 +104,9 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     %% Setup the relevant ets tables.
-    {ok, #st{ services_tid = ets:new(rvi_schedule_services, 
+    {ok, #st{ 
+	    cs = #component_spec{},
+	    services_tid = ets:new(rvi_schedule_services, 
 				     [  set, private, 
 					{ keypos, #service.name } ])}}.
 
@@ -382,7 +389,7 @@ queue_message(SvcName,
     %% We will try to bring up a data link to it.
     case IsNewService of 
 	true ->
-	    bring_up_data_link(SvcName);
+	    bring_up_data_link(St#st.cs, SvcName);
 
 	false ->
 	    ok
@@ -427,13 +434,16 @@ try_sending_messages(#service {
 	    %% Extract first message and try to send it
 	    case ets:lookup(Tid, Key) of
 		[ Msg ] ->
-		    case send_message(NetworkAddress, 
-				      SvcName, 
-				      Msg#message.timeout,
-				      Msg#message.parameters,
-				      Msg#message.signature,
-				      Msg#message.certificate) of
-			ok -> 
+		    case protocol_rpc:send_message(
+			   St#st.cs,
+			   SvcName ,
+			   Msg#message.timeout,
+			   NetworkAddress,
+			   Msg#message.parameters,
+			   Msg#message.signature,
+			   Msg#message.certificate) of
+
+			[ok] -> 
 			    %% Send successful - delete entry.
 			    ets:delete(Tid, Key),
 
@@ -443,7 +453,7 @@ try_sending_messages(#service {
 			    %% Send the rest.
 			    try_sending_messages(Service, St);
 
-			Err ->
+			[Err] ->
 			    ?info("schedule:try_send(): No send: ~p -> ~p : ~p", [SvcName, NetworkAddress, Err]),
 			    %% Failed to send message, leave in queue and err out.
 			    { {send_failed, Err}, St}
@@ -480,29 +490,24 @@ service_unavailable(SvcName,  #st { services_tid = SvcTid } = St) ->
     { ok, St }.
 
 
-bring_up_data_link(SvcName) ->
+bring_up_data_link(CompSpec, SvcName) ->
     %% Resolve the service to a network address that we can 
     %% use to bring up the data link
-    case rvi_common:send_component_request(service_discovery, 
-					   resolve_remote_service,
-					   [ {service, SvcName} ],
-					   [ network_address ]) of
+    case service_discovery_rpc:resolve_remote_service(CompSpec, SvcName) of
 
-	{ ok, ok, [ NetworkAddress] } -> 
+	[ ok, Address] -> 
 	    %% Tell data link to bring up a communicationc hannel.
-	    case rvi_common:send_component_request(data_link, setup_data_link, 
-						   [
-						    {service, SvcName}, 
-						    {network_address, NetworkAddress}
-						   ]) of
-		{ok, already_connected } ->
+	    case data_link_bert_rpc_rpc:setup_data_link(CompSpec, Address) of
+		[ok ] ->
+		    ok;
+		[already_connected ] ->
 		    already_connected;
 		Que -> 
 		    ?info("schedule:bring_up_data_link() Failed:~p.", [Que]),
 		    ok
 	    end;
 
-	{ok, not_found, _ } ->
+	[ not_found ] ->
 	    ?info("schedule:bring_up_data_link() Failed to resolve remote Service: ~p."
 		  " Service not found.", 
 		  [ SvcName ]),
@@ -513,31 +518,6 @@ bring_up_data_link(SvcName) ->
 		  [ SvcName, Err ]),
 	    err
     end.
-
-send_message(NetworkAddress, SvcName, Timeout, 
-	     Parameters, Signature, Certificate) ->
-
-    ?info("schedule:send_message(): service(~p) -> addr(~p) ", [SvcName, NetworkAddress]),
-%%    ?info("schedule:send_message(): network_address: ~p", [NetworkAddress]),
-%%    ?info("schedule:send_message(): timeout:         ~p", [Timeout]),
-%%    ?info("schedule:send_message(): parameters:      ~p", [Parameters]),
-%%    ?info("schedule:send_message(): signature:       ~p", [Signature]),
-%%    ?info("schedule:send_message(): certificate:     ~p", [Certificate]),
-
-    case rvi_common:send_component_request(
-	   protocol, send_message, 
-	   [
-	    { service_name, SvcName },
-	    { timeout, Timeout},
-	    { network_address, NetworkAddress},
-	    { parameters, Parameters},
-	    { signature, Signature},
-	    { certificate, Certificate }
-	   ]) of
-	{ ok, _ } -> ok;
-	Err -> Err
-    end.
-
 
 
 %%

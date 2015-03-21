@@ -7,7 +7,7 @@
 %%
 
 %% A record defining the modules to use 
-%% Used by rvi_common:send_component_request() to
+%% Used by rvi_common:request() to
 %% figure out how to route an intra-component call
 
 -define(COMP_SPEC_TYPE, list({ module(), gen_server | json_rpc, list()})).

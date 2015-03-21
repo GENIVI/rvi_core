@@ -17,6 +17,8 @@
 
 -export([get_all_services/1,
 	 get_local_network_addresses/1,
+	 get_local_services/1,
+	 get_remote_services/1,
 	 resolve_local_service/2,
 	 resolve_remote_service/2,
 	 register_remote_services/3,
@@ -65,6 +67,15 @@ get_all_services(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
 		       get_all_services, [], [], [status, services], CompSpec).
 
+
+get_local_services(CompSpec) ->
+    rvi_common:request(service_discovery, ?MODULE, 
+		       get_local_services, [], [], [status, services], CompSpec).
+
+get_remote_services(CompSpec) ->
+    rvi_common:request(service_discovery, ?MODULE, 
+		       get_remote_services, [], [], [status, services], CompSpec).
+
 get_local_network_addresses(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
 		       get_local_network_addresses, [], [], [status], CompSpec).
@@ -79,7 +90,6 @@ resolve_remote_service(CompSpec, RawService) ->
     rvi_common:request(service_discovery, ?MODULE, resolve_remote_service, 
 		       [RawService], [service], 
 		       [status], CompSpec).
-
 
 register_remote_services(CompSpec, Address, Services) ->
     rvi_common:request(service_discovery, ?MODULE, register_remote_services, 
@@ -160,7 +170,10 @@ handle_rpc("unregister_local_service", Args) ->
 handle_rpc("get_remote_services", _Args) ->
     [ok, Services ] = gen_server:call(?SERVER, { rvi_call, get_remote_services,
 						 [ ]}),
-    {ok, [ {status, rvi_common:json_rpc_status(ok)} , { services, { array, Services } }]};
+    JSONServices = convert_json_services(Services),
+
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} , 
+	   { services, { array, JSONServices } }]};
 
 %%
 %% Get all services
@@ -220,7 +233,11 @@ handle_rpc("resolve_local_service", Args) ->
 handle_rpc("get_local_services", _Args) ->
     [ok, LocalServices ] = 
 	gen_server:call(?SERVER, { rvi_call, get_local_services, []}),
-    {ok, [ {status, rvi_common:json_rpc_status(ok)} , { services, { array, LocalServices }}]};
+    
+    JSONServices = convert_json_services(LocalServices),
+
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} , 
+	   { services, { array, JSONServices }}]};
 
 
 
@@ -244,7 +261,7 @@ handle_rpc( Other, _Args) ->
 
 
 %% Handle calls received through regular gen_server calls, routed by
-%% rvi_common:send_component_request()
+%% rvi_common:request()
 
 handle_call({rvi_call, register_local_service, [Service, Address] }, _From, State) ->
     ?info("service_discovery_rpc:register_local_service(): ~p ->  ~p",

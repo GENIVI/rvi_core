@@ -410,7 +410,7 @@ wse_message(Ws, ServiceName, Timeout, JSONParameters, _CallingService) ->
 
 
 %% Handle calls received through regular gen_server calls, routed byh
-%% rvi_common:send_component_request() We only need to implement
+%% rvi_common:request() We only need to implement
 %% register_remote_serviecs() and handle_remote_message Since they are
 %% the only calls invoked by other components, and not the locally
 %% connected services that uses the same HTTP port to transmit their

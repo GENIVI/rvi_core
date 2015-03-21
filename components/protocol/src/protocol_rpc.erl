@@ -116,11 +116,8 @@ handle_call({rvi_call, send_message,
     Data = term_to_binary({ ServiceName, Timeout, NetworkAddress, 
 			    Parameters, Signature, Certificate }),
 
-    Res = rvi_common:request(data_link, data_link_bert_rpc, send_data,
-			     [ NetworkAddress, Data ],
-			     [ network_address, data ],
-			     [ status], 
-			     State#st.cs),
+    Res = data_link_bert_rpc:send_data(NetworkAddress, Data),
+
     { reply, Res, State };
 
 
@@ -142,22 +139,13 @@ handle_call({rvi_call, receive_message, [Data]}, _From, State) ->
 %%    ?debug("    protocol:rcv(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
     ?debug("    protocol:rcv(): certificate:     ~p~n", [Certificate]),
-    Res = rvi_common:request(service_edge, service_edge_rpc, 
-			     handle_remote_message, 
-			     [ ServiceName,
-			       Timeout,
-			       NetworkAddress,
-			       Parameters,
-			       Signature,
-			       Certificate ],
-			     [ service_name,
-			       timeout,
-			       network_address,
-			       parameters,
-			       signature,
-			       certificate ],
-			     [ status ],
-			    State#st.cs),
+
+    Res = service_edge_rpc:handle_remote_message(ServiceName,
+						 Timeout,
+						 NetworkAddress,
+						 Parameters,
+						 Signature,
+						 Certificate),
     {reply, Res , State};
 
 handle_call(Other, _From, State) ->
