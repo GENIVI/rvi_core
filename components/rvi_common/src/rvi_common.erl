@@ -114,7 +114,6 @@ json_rpc_status(_) ->
 get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
     case get_json_element(["result", "status"], JSONBody) of 
 	{ok, Value} ->
-	    ?debug("get_request_result(~s)", [JSONBody]),
 	    { json_rpc_status(Value), JSONBody };
 
 	{ error, undefined} ->
@@ -193,7 +192,7 @@ send_http_request(Url,Method, Args) ->
 			      }))),
 
     Hdrs = [{'Content-Type', "application/json"} ],
-    ?debug("rvi_common:send_http_request() Sending:      ~p", [Req]),
+    %%?debug("rvi_common:send_http_request() Sending:      ~p", [Req]),
     try
         exo_http:wpost(Url, {1,1}, Hdrs, Req, 1000)
     catch
@@ -415,13 +414,13 @@ node_address_tuple() ->
 get_component_config_(Component, Default, CompList) ->
     case proplists:get_value(Component, CompList, undefined) of
 	undefined ->
-	    ?debug("get_component_config(~p): Default: ~p", 
-		   [Component, Default]),
+	    %% ?debug("get_component_config(~p): Default: ~p", 
+	    %% 	   [Component, Default]),
 	     Default;
 	
 	ModList ->
-	    ?debug("get_component_config(~p) -> ~p", 
-		   [Component, ModList]),
+	    %% ?debug("get_component_config(~p) -> ~p", 
+	    %% 	   [Component, ModList]),
 	    ModList
     end.
 
@@ -501,8 +500,8 @@ get_module_specification(Component, Module, CompSpec) ->
 		    {error, {not_found, Module}};
 
 		{ Module, Type, ModConf } -> 
-		    ?debug("get_component_module_specification(): ~p:~p -> ~p ",
-			   [Component, Module, { Module, Type, ModConf}]),
+		    %% ?debug("get_component_module_specification(): ~p:~p -> ~p ",
+		    %% 	   [Component, Module, { Module, Type, ModConf}]),
 		    {ok, Module, Type, ModConf };
 
 		IllegalFormat ->

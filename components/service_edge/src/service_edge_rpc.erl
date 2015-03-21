@@ -307,14 +307,17 @@ forward_message_to_local_service(ServiceName, Parameters, CompSpec) ->
 handle_rpc("register_service", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
-    gen_server:call(?SERVER, { rvi_call, register_local_service, [ Service, Address]}),
-    [ {status, rvi_common:json_rpc_status(ok) }];
+    [ok, FullSvcName ] = gen_server:call(?SERVER, 
+					 { rvi_call, register_local_service, 
+					   [ Service, Address]}),
+
+    {ok, [ {status, rvi_common:json_rpc_status(ok) }, { service, FullSvcName }]};
 
 
 handle_rpc("unregister_service", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     gen_server:call(?SERVER, { rvi_call, unregister_local_service, [ Service]}),
-    [ {status, rvi_common:json_rpc_status(ok) }];
+    {ok, [ {status, rvi_common:json_rpc_status(ok) }]};
 
 handle_rpc("get_available_services", _Args) ->
     [ Status, Services ] = gen_server:call(?SERVER, { rvi_call, get_available_services, []}),
@@ -331,7 +334,7 @@ handle_rpc("register_remote_services", Args) ->
     gen_server:call(?SERVER, { rvi_call, register_remote_services, 
 			       [ Services, LocalServiceAddresses]}),
 
-    [ { status, rvi_common:json_rpc_status(ok)} ];
+    {ok, [ { status, rvi_common:json_rpc_status(ok)} ]};
 
 handle_rpc("unregister_remote_services", Args) ->
     {ok, Services} = rvi_common:get_json_element(["services"], Args),
@@ -340,7 +343,7 @@ handle_rpc("unregister_remote_services", Args) ->
     gen_server:call(?SERVER, { rvi_call, unregister_remote_services, 
 			       [ Services, LocalServiceAddresses]}),
 
-    [ { status, rvi_common:json_rpc_status(ok)} ];
+    {ok, [ { status, rvi_common:json_rpc_status(ok)} ]};
 
 handle_rpc("message", Args) ->
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
@@ -348,7 +351,7 @@ handle_rpc("message", Args) ->
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     [ Res ] = gen_server:call(?SERVER, { rvi_call, handle_local_message, 
 					 [ ServiceName, Timeout, Parameters]}),
-    [ { status, rvi_common:json_rpc_status(Res)} ];
+    {ok,[ { status, rvi_common:json_rpc_status(Res)} ]};
 
 handle_rpc("handle_remote_message", Args) ->
     { ok, ServiceName } = rvi_common:get_json_element(["service_name"], Args),
@@ -365,12 +368,12 @@ handle_rpc("handle_remote_message", Args) ->
 					   Signature
 					 ]}),
 
-    [ { status, rvi_common:json_rpc_status(Res)} ];
+    {ok, [ { status, rvi_common:json_rpc_status(Res)} ]};
 
 
 handle_rpc(Other, _Args) ->
     ?debug("service_edge_rpc:handle_rpc(~p): unknown command", [ Other ]),
-    [ { status, rvi_common:json_rpc_status(invalid_command)} ].
+    {ok,[ { status, rvi_common:json_rpc_status(invalid_command)} ]}.
 
 
 %% Websocket iface 
@@ -427,7 +430,8 @@ handle_call({ rvi_call, register_local_service, [Service, ServiceAddress] }, _Fr
     SvcString = rvi_common:local_service_to_string(Service),
 
     %% Announce the new service to all connected nodes
-    data_link:announce_available_local_service(SvcString),
+    data_link_bert_rpc_rpc:
+	announce_available_local_service(St#st.cs, SvcString),
     
     %% Retrieve addresses of all locally registered services.
     [ ok, AnnounceAddresses ] = 
@@ -444,8 +448,12 @@ handle_call({ rvi_call, unregister_local_service, [Service] }, _From, St) ->
     ?debug("service_edge_rpc:unregister_local_service(): service: ~p ", [Service]),
 
     service_discovery_rpc:unregister_local_service(St#st.cs, Service),
-    data_link:announce_unavailable_local_service(Service),
-    [ ok, AnnounceAddresses ] = service_discovery_rpc:get_local_network_addresses(St#st.cs),
+    data_link_bert_rpc_rpc:
+
+	announce_unavailable_local_service(St#st.cs, Service),
+
+    [ ok, AnnounceAddresses ] = service_discovery_rpc:
+	get_local_network_addresses(St#st.cs),
     %% Send out an announcement to all locally connected services, but skip
     %% the one that made the registration call
     announce_service_availability(services_unavailable, AnnounceAddresses, Service),
@@ -500,7 +508,7 @@ handle_call({rvi_call, register_remote_services,
 	     [ Services, LocalServiceAddresses ]}, _From, State) ->
 
     announce_service_availability(services_available, LocalServiceAddresses, Services),
-    { reply, { ok, [ { status, rvi_common:json_rpc_status(ok)} ]}, State };
+    { reply, [ ok], State };
 
 handle_call({rvi_call, unregister_remote_services, 
 	     [Services, LocalServiceAddresses]}, _From, State) ->

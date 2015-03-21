@@ -17,6 +17,7 @@
 
 -export([get_all_services/1,
 	 get_local_network_addresses/1,
+	 get_remote_network_addresses/1,
 	 get_local_services/1,
 	 get_remote_services/1,
 	 resolve_local_service/2,
@@ -79,6 +80,10 @@ get_remote_services(CompSpec) ->
 get_local_network_addresses(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
 		       get_local_network_addresses, [], [], [status], CompSpec).
+
+get_remote_network_addresses(CompSpec) ->
+    rvi_common:request(service_discovery, ?MODULE, 
+		       get_remote_network_addresses, [], [], [status], CompSpec).
 
 
 resolve_local_service(CompSpec, RawService) ->

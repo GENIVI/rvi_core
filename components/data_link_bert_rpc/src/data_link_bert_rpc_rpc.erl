@@ -168,7 +168,7 @@ connect_remote(IP, Port) ->
 
 
 
-announce_local_service_(Service, Availability) ->
+announce_local_service_(CompSpec, Service, Availability) ->
     ?debug("data_link_bert:announce_local_service(~p): Service: ~p",  [Availability, Service]),
     %% Grab our local address.
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
@@ -176,7 +176,7 @@ announce_local_service_(Service, Availability) ->
     %% Grab all remote addresses we are currently connected to.
     %% We will get the data link address of all remote nodes that
     %% we currently have a conneciton to.
-    [ Addresses ] = service_discovery_rpc:get_remote_network_addresses(),
+    [ ok, Addresses ] = service_discovery_rpc:get_remote_network_addresses(CompSpec),
 
     %% Grab our local address.
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
@@ -261,7 +261,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     %% Send our own servide announcement to the remote server
     %% that just authorized to us.
     %% First grab all our services.
-    [ Services ] = service_discovery_rpc:get_local_services(),
+    [ ok, Services ] = service_discovery_rpc:get_local_services(),
 	 
     %% Covnert to JSON structured typles.
     LocalServices = [ Service || { Service, _LocalAddress } <- Services ],
@@ -407,11 +407,11 @@ handle_rpc(Other, _Args) ->
 
 
 handle_call({rvi_call, announce_available_local_service, [Service]}, _From, St) ->
-    announce_local_service_(Service, available),
+    announce_local_service_(St#st.cs, Service, available),
     {reply, [ok], St};
 
 handle_call({rvi_call, announce_unavailable_local_service, [Service]}, _From, St) ->
-    announce_local_service_(Service, unavailable),
+    announce_local_service_(St#st.cs, Service, unavailable),
     {reply, [ok], St};
 
 handle_call({rvi_call, setup_data_link, [ NetworkAddress ]}, _From, St) ->

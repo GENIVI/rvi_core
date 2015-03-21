@@ -73,7 +73,12 @@ handle_rpc(Mod, Method, Args) ->
 	    {ok, Result};
 	
 	{error, Reason} ->
-	    {error, Reason}
+	    {error, Reason};
+
+	Wut ->
+	    ?warning("exoport_exo_http_server:handle_rpc(ok): UNKNOWN:   ~p", [Wut]),
+	    {error, Wut}
+		
     catch
 	error:Crash ->
             ?error("rpc_callback() CRASHED: Reason:   ~p", [Crash]),
