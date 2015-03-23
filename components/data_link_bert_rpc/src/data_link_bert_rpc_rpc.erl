@@ -84,19 +84,19 @@ start_connection_manager() ->
 	    ?error("data_link_bert:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
 	    ok
     end,
-    ?info("data_link_bert_rpc_rpc:init_rvi_component(): Setting up static nodes."),
-    setup_static_node_data_links_(rvi_common:static_nodes()),
+    ?info("data_link_bert:init_rvi_component(): Setting up static nodes."),
+    setup_static_node_data_links_(rvi_common:static_nodes(), CompSpec),
     ok.
 
-setup_static_node_data_links_([ ]) ->
+setup_static_node_data_links_([ ], _CompSpec) ->
     ok;
 
 
-setup_static_node_data_links_([ { Prefix, NetworkAddress} | T]) ->
+setup_static_node_data_links_([ { Prefix, NetworkAddress} | T], CompSpec) ->
     ?debug("~p: Will connect static node ~p -> ~p", [self(), Prefix, NetworkAddress]),
     [ IP, Port] =  string:tokens(NetworkAddress, ":"),
-    connect_and_retry_remote(Prefix, IP, Port), 
-    setup_static_node_data_links_(T),
+    connect_and_retry_remote(Prefix, IP, Port, CompSpec), 
+    setup_static_node_data_links_(T, CompSpec),
     ok.
 
 %% Behavior implementation
@@ -130,7 +130,7 @@ send_data(CompSpec, NetworkAddress, Data) ->
 %%
 %% Connect to a remote RVI node.
 %%
-connect_remote(IP, Port) ->
+connect_remote(IP, Port, CompSpec) ->
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ ok, _Pid } ->
 	    already_connected;
@@ -147,7 +147,7 @@ connect_remote(IP, Port) ->
 
 		    %% Setup a genserver around the new connection.
 		    {ok, Pid } = connection:setup(IP, Port, Sock, 
-						  ?MODULE, handle_socket, []),
+						  ?MODULE, handle_socket, [CompSpec] ),
 
 		    %% Send authorize
 		    connection:send(Pid, 
@@ -164,11 +164,11 @@ connect_remote(IP, Port) ->
     end.
 		    
 
-connect_and_retry_remote(Prefix, IP, Port) ->
+connect_and_retry_remote(Prefix, IP, Port, CompSpec) ->
     ?info("data_link_bert:setup_static(): Connecting ~p -> ~p:~p", 
 	  [Prefix, IP, Port]),
 
-    case connect_remote(IP, list_to_integer(Port)) of
+    case connect_remote(IP, list_to_integer(Port), CompSpec) of
 	ok  -> ok;
 
 	Err -> %% Failed to connect. Sleep and try again
@@ -179,7 +179,7 @@ connect_and_retry_remote(Prefix, IP, Port) ->
 			   [IP, Port, ?DEFAULT_RECONNECT_INTERVAL]),
 
 	    setup_static_node_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL,
-					      Prefix, IP, Port),
+					      Prefix, IP, Port, CompSpec),
 
 	    not_available
     end.
@@ -217,7 +217,7 @@ announce_local_service_(CompSpec, Service, Availability) ->
       end, Addresses),
     ok.
 
-handle_socket(_FromPid, PeerIP, PeerPort, data, ping, _ExtraArgs) ->
+handle_socket(_FromPid, PeerIP, PeerPort, data, ping, [_CompSpec]) ->
     ?info("data_link_bert:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),
     ok;
 
@@ -228,7 +228,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 		RemotePort, 
 		Protocol, 
 		Certificate,
-		Signature}, _ExtraArgs) ->
+		Signature}, [CompSpec]) ->
 
     ?info("data_link_bert:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
     ?info("data_link_bert:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
@@ -278,7 +278,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     %% Send our own servide announcement to the remote server
     %% that just authorized to us.
     %% First grab all our services.
-    [ ok, Services ] = service_discovery_rpc:get_local_services(),
+    [ ok, Services ] = service_discovery_rpc:get_local_services(CompSpec),
 	 
     %% Covnert to JSON structured typles.
     LocalServices = [ Service || { Service, _LocalAddress } <- Services ],
@@ -311,7 +311,7 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 		TransactionID, 
 		available,
 		Services, 
-		Signature}, _ExtraArgs) ->
+		Signature}, [CompSpec]) ->
     ?debug("data_link_bert:service_announce(available): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
     ?debug("data_link_bert:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
     ?debug("data_link_bert:service_announce(available): TransactionID: ~p", [ TransactionID ]),
@@ -322,7 +322,7 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
     %% Register the received services with all relevant components
     
     NetworkAddress = RemoteIP  ++ ":" ++ integer_to_list(RemotePort),
-    service_discovery_rpc:register_remote_services(Services, NetworkAddress),
+    service_discovery_rpc:register_remote_services(CompSpec, Services, NetworkAddress),
     ok;
 
 
@@ -331,7 +331,7 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 		TransactionID, 
 		unavailable,
 		Services, 
-		Signature}, _ExtraArgs) ->
+		Signature}, [CompSpec]) ->
     ?debug("data_link_bert:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
     ?debug("data_link_bert:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
     ?debug("data_link_bert:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
@@ -340,29 +340,30 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 
     %% Register the received services with all relevant components
 
-    service_discovery_rpc:unregister_remote_services(Services),
+    service_discovery_rpc:unregister_remote_services(CompSpec, Services),
     ok;
 
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
-	      { receive_data, Data}, _ExtraArgs) ->
+	      { receive_data, Data}, [CompSpec]) ->
 %%    ?info("data_link_bert:receive_data(): ~p", [ Data ]),
     ?debug("data_link_bert:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    protocol_rpc:receive_message(Data),
+    protocol_rpc:receive_message(CompSpec, Data),
     ok;
 
 
-handle_socket(_FromPid, SetupIP, SetupPort, data, Data, _ExtraArgs) ->
+handle_socket(_FromPid, SetupIP, SetupPort, data, Data, [_CompSpec]) ->
     ?warning("data_link_bert:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     ?warning("data_link_bert:unknown_data(): Unknown data:  ~p",  [ Data]),
     ok.
 
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
-handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
+handle_socket(_FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
     ?info("data_link_bert:socket_closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     NetworkAddress = SetupIP  ++ ":" ++ integer_to_list(SetupPort),
-    service_discovery_rpc:unregister_remote_services_by_address(NetworkAddress),
+    service_discovery_rpc:
+	unregister_remote_services_by_address(CompSpec, NetworkAddress),
 
     %% Check if this is a static node. If so, setup a timer for a reconnect
     case lists:keyfind(NetworkAddress, 2, rvi_common:static_nodes()) of
@@ -377,7 +378,7 @@ handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
 
 	    setup_static_node_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, 
 					      StaticPrefix, 
-					      IP, Port)
+					      IP, Port, CompSpec)
 	    
     end,
     ok;
@@ -435,7 +436,7 @@ handle_call({rvi_call, announce_unavailable_local_service, [Service]}, _From, St
 
 handle_call({rvi_call, setup_data_link, [ NetworkAddress ]}, _From, St) ->
     [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
-    connect_remote(RemoteAddress, list_to_integer(RemotePort)),
+    connect_remote(RemoteAddress, list_to_integer(RemotePort), St#st.cs),
     { reply, [ok], St };
 
 
@@ -454,10 +455,13 @@ handle_call({rvi_call, send_data, [NetworkAddress, Data]}, _From, St) ->
 
 handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     %% Create a timer to handle periodic pings.
-    {ok, ServerOpts } = rvi_common:get_component_config(data_link, bert_rpc_server, []),
+    {ok, ServerOpts } = rvi_common:get_module_config(data_link, 
+						     data_link_bert_rpc,
+						     bert_rpc_server, [], 
+						     St#st.cs),
     Timeout = proplists:get_value(ping_interval, ServerOpts, ?DEFAULT_PING_INTERVAL),
 
-    ?info("data_link_bert_rpc_rpc:setup_ping(): ~p:~p will be pinged every ~p msec", 
+    ?info("data_link_bert:setup_ping(): ~p:~p will be pinged every ~p msec", 
 	  [ Address, Port, Timeout] ),
 										      
     erlang:send_after(Timeout, self(), { rvi_ping, Pid, Address, Port, Timeout }),
@@ -465,7 +469,7 @@ handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     {reply, ok, St};
 
 handle_call(Other, _From, St) ->
-    ?warning("data_link_bert_rpc_rpc:handle_rpc(~p): unknown", [ Other ]),
+    ?warning("data_link_bert:handle_rpc(~p): unknown", [ Other ]),
     { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, St}.
 
 
@@ -478,7 +482,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     %% Check that connection is up
     case connection:is_connection_up(Pid) of
 	true ->
-	    ?info("data_link_bert_rpc_rpc:ping(): Pinging: ~p:~p", [Address, Port]),
+	    ?info("data_link_bert:ping(): Pinging: ~p:~p", [Address, Port]),
 	    connection:send(Pid, ping),
 	    erlang:send_after(Timeout, self(), 
 			      { rvi_ping, Pid, Address, Port, Timeout });
@@ -489,8 +493,8 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     {noreply, St};
 
 %% Setup static nodes
-handle_info({ rvi_setup_static_node_data_link, Prefix, IP, Port }, St) ->
-    connect_and_retry_remote(Prefix, IP, Port),
+handle_info({ rvi_setup_static_node_data_link, Prefix, IP, Port, CompSpec }, St) ->
+    connect_and_retry_remote(Prefix, IP, Port, CompSpec),
     { noreply, St };
 
 
@@ -503,10 +507,9 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
-setup_static_node_reconnect_timer(MSec, Prefix, IP, Port) ->
+setup_static_node_reconnect_timer(MSec, Prefix, IP, Port, CompSpec) ->
     erlang:send_after(MSec, ?MODULE, 
 		      { rvi_setup_static_node_data_link, 
-			Prefix, 
-			IP, Port }),
+			Prefix, IP, Port, CompSpec }),
     ok.
 
