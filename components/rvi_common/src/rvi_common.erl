@@ -429,7 +429,7 @@ get_component_specification() ->
 	undefined -> 
 	    #component_spec { 
 	       service_edge = ?COMP_SPEC_SERVICE_EDGE_DEFAULT,
-	       scheduler = ?COMP_SPEC_SCHEDULER_DEFAULT,
+	       schedule = ?COMP_SPEC_SCHEDULE_DEFAULT,
 	       service_discovery = ?COMP_SPEC_SERVICE_DISCOVERY_DEFAULT,
 	       authorize = ?COMP_SPEC_AUTHORIZE_DEFAULT,
 	       data_link = ?COMP_SPEC_DATA_LINK_DEFAULT,
@@ -441,8 +441,8 @@ get_component_specification() ->
 	       service_edge = get_component_config_(service_edge, 
 						    ?COMP_SPEC_SERVICE_EDGE_DEFAULT,
 						    CompList), 
-	       scheduler = get_component_config_(scheduler,
-						 ?COMP_SPEC_SCHEDULER_DEFAULT,
+	       schedule = get_component_config_(schedule,
+						 ?COMP_SPEC_SCHEDULE_DEFAULT,
 						 CompList),
 	       service_discovery = get_component_config_(service_discovery, 
 							 ?COMP_SPEC_SERVICE_DISCOVERY_DEFAULT,
@@ -466,8 +466,8 @@ get_component_modules(Component) ->
 get_component_modules(service_edge, CompSpec) ->
     CompSpec#component_spec.service_edge;
 
-get_component_modules(scheduler, CompSpec) ->
-    CompSpec#component_spec.scheduler;
+get_component_modules(schedule, CompSpec) ->
+    CompSpec#component_spec.schedule;
 
 get_component_modules(service_discovery, CompSpec) ->
     CompSpec#component_spec.service_discovery;
@@ -490,22 +490,24 @@ get_component_modules(_, _) ->
 get_module_specification(Component, Module, CompSpec) ->
     case get_component_modules(Component, CompSpec) of
 	undefined ->
+	    ?debug("get_module_specification(): Missing: rvi:component: ~p: ~p", 
+		   [Component, CompSpec]),
 	    undefined;
 
 	Modules ->
 	    case lists:keyfind(Module, 1, Modules ) of
 		false ->
-		    ?debug("get_component_module_specification(): Missing component spec: "
-			   "rvi:component:~p:~p:{...}", [Component, Module]),
+		    ?debug("get_module_specification(): Missing component spec: "
+			   "rvi:component:~p:~p:{...}: ~p", [Component, Module, Modules]),
 		    {error, {not_found, Module}};
 
 		{ Module, Type, ModConf } -> 
-		    %% ?debug("get_component_module_specification(): ~p:~p -> ~p ",
+		    %% ?debug("get_module_specification(): ~p:~p -> ~p ",
 		    %% 	   [Component, Module, { Module, Type, ModConf}]),
 		    {ok, Module, Type, ModConf };
 
 		IllegalFormat ->
-		    ?warning("get_component_module_specification(): Illegal format: ~p: ~p", 
+		    ?warning("get_module_specification(): Illegal format: ~p: ~p", 
 			     [Module, IllegalFormat]),
 		    {error, {illegal_format,{ Module, IllegalFormat } } }
 	    end
@@ -518,17 +520,22 @@ get_module_config(Component, Module, Key, CompSpec) ->
 	{ok, _Module, _Type, ModConf } ->
 	    case proplists:get_value(Key, ModConf, undefined ) of
 		undefined ->
-		    ?debug("get_component_config(): Missing component spec: "
-			   "rvi:component:~p:~p:~p{...}", [Component, Module, Key]),
+		    ?debug("get_module_config(): Missing component spec: "
+			   "rvi:component:~p:~p:~p{...}: ~p", 
+			   [Component, Module, Key, ModConf]),
 		    {error, {not_found, Component, Module, Key}};
 
 
 		Config -> 
-		    ?debug("get_component_config(): ~p:~p:~p -> ~p: ",
+		    ?debug("get_module_config(): ~p:~p:~p -> ~p: ",
 			   [Component, Module, Key, Config]),
 		    {ok, Config }
 	    end;
-	Err -> Err
+	Err -> 
+	    ?debug("get_module_config(): ~p:~p:~p: Failed: ~p ",
+		   [Component, Module, Key, Err]),
+	    
+	    Err
     end.
 
 %% Get a specific option (bert_rpc_port) for a specific module
@@ -558,10 +565,10 @@ get_module_json_rpc_address(Component, Module, CompSpec) ->
 			   json_rpc_address,
 			   undefined, 
 			   CompSpec) of
-	undefined ->
-	    ?debug("get_component_config(): Missing component spec: "
-		   "rvi:component:~p:~p:json_rpc_addr, {...}", [Component, Module]),
-	    {error, {not_found, Component, Module, json_rpc_addr}};
+	{ok, undefined } ->
+	    ?debug("get_module_json_rpc_address(): Missing component spec: "
+		   "rvi:component:~p:~p:json_rpc_address, {...}", [Component, Module]),
+	    {error, {not_found, Component, Module, json_rpc_address}};
 
 	{ok, { IP, Port }} -> 
 	    ?debug("get_module_json_rpc_address(~p, ~p) -> ~p:~p", 

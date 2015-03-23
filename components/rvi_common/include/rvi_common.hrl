@@ -14,7 +14,7 @@
 
 -record(component_spec, {
 	  service_edge :: ?COMP_SPEC_TYPE,
-	  scheduler :: ?COMP_SPEC_TYPE,
+	  schedule :: ?COMP_SPEC_TYPE,
 	  service_discovery :: ?COMP_SPEC_TYPE,
 	  authorize :: ?COMP_SPEC_TYPE, 
 	  data_link :: ?COMP_SPEC_TYPE, 
@@ -22,7 +22,7 @@
 	 }).
 
 -define(COMP_SPEC_SERVICE_EDGE_DEFAULT,      [ { service_edge_rpc, gen_server, [] } ]).
--define(COMP_SPEC_SCHEDULER_DEFAULT,         [ { scheduler_rpc, gen_server, [] } ]).
+-define(COMP_SPEC_SCHEDULE_DEFAULT,          [ { schedule_rpc, gen_server, [] } ]).
 -define(COMP_SPEC_SERVICE_DISCOVERY_DEFAULT, [ { service_discovery_rpc, gen_server, [] } ]).
 -define(COMP_SPEC_AUTHORIZE_DEFAULT,         [ { authorize_rpc, gen_server, [] }]).
 -define(COMP_SPEC_DATA_LINK_DEFAULT,         [ { data_link_bert_rpc, gen_server, [] } ]).
