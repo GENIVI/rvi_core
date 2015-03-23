@@ -26,9 +26,9 @@
 	 terminate/2,
 	 code_change/3]).
 
--export([register_remote_services/2,
-	 unregister_remote_services/2,
-	 handle_remote_message/5]).
+-export([register_remote_services/3,
+	 unregister_remote_services/3,
+	 handle_remote_message/6]).
 
 -export([start_json_server/0, 
 	 start_websocket/0]).
@@ -110,29 +110,35 @@ start_websocket() ->
 		    ok
 	    end
     end.
-    
-register_remote_services(Service, LocalServiceAddresses) ->
+
+
+register_remote_services(CompSpec, Service, LocalServiceAddresses) ->
     rvi_common:request(service_edge, ?SERVER, register_remote_service, 
 		       [ Service, LocalServiceAddresses ], 
 		       [ service, local_service_addresses ],
-		       [ status ]).
+		       [ status ],
+		       CompSpec).
 
-unregister_remote_services(Services, LocalServiceAddresses) ->
+
+unregister_remote_services(CompSpec, Services, LocalServiceAddresses) ->
     rvi_common:request(service_edge, ?SERVER, unregister_remote_service, 
 		       [ Services, LocalServiceAddresses ], 
 		       [ services, local_service_addresses ],
-		       [ status ]).
+		       [ status ],
+		       CompSpec).
 
 
 %%
 %% Handle a message, delivered from a remote node through protocol, that is
 %% to be forwarded to a locally connected service.
 %%
-handle_remote_message(ServiceName, Timeout, Parameters, Signature, Certificate) ->
+handle_remote_message(CompSpec, ServiceName, Timeout, 
+		      Parameters, Signature, Certificate) ->
     rvi_common:request(servide_edge, ?SERVER, handle_remote_message,
 		       [ ServiceName, Timeout, Parameters, Signature, Certificate ],
 		       [ service, timeout, parameters, signature, certificate ],
-		       [ status ]).
+		       [ status ], 
+		       CompSpec).
 
 
 
