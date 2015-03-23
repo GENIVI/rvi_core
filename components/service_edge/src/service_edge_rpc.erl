@@ -121,7 +121,7 @@ register_remote_services(CompSpec, Service, LocalServiceAddresses) ->
 
 
 unregister_remote_services(CompSpec, Services, LocalServiceAddresses) ->
-    rvi_common:request(service_edge, ?SERVER, unregister_remote_service, 
+    rvi_common:request(service_edge, ?SERVER, unregister_remote_services, 
 		       [ Services, LocalServiceAddresses ], 
 		       [ services, local_service_addresses ],
 		       [ status ],
