@@ -67,7 +67,7 @@ start_connection_manager() ->
     IP = proplists:get_value(ip, BertOpts, ?DEFAULT_BERT_RPC_ADDRESS),
     Port = proplists:get_value(port, BertOpts, ?DEFAULT_BERT_RPC_PORT),
     
-    ?info("data_link_bert:init_rvi_component(): Starting listener."),
+    ?info("data_link_bert:init_rvi_component(~p): Starting listener.", [self()]),
 
     %% Fire up listener
     connection_manager:start_link(), 
@@ -93,7 +93,9 @@ setup_static_node_data_links_([ ]) ->
 
 
 setup_static_node_data_links_([ { Prefix, NetworkAddress} | T]) ->
-    ?MODULE ! { rvi_setup_static_node_data_links, Prefix, NetworkAddress },
+    ?debug("~p: Will connect static node ~p -> ~p", [self(), Prefix, NetworkAddress]),
+    [ IP, Port] =  string:tokens(NetworkAddress, ":"),
+    connect_and_retry_remote(Prefix, IP, Port), 
     setup_static_node_data_links_(T),
     ok.
 
@@ -162,10 +164,25 @@ connect_remote(IP, Port) ->
     end.
 		    
 
+connect_and_retry_remote(Prefix, IP, Port) ->
+    ?info("data_link_bert:setup_static(): Connecting ~p -> ~p:~p", 
+	  [Prefix, IP, Port]),
 
+    case connect_remote(IP, list_to_integer(Port)) of
+	ok  -> ok;
 
+	Err -> %% Failed to connect. Sleep and try again
+	    ?notice("data_link_bert:setup_static_node_data_link(~p:~p): Failed: ~p", 
+			   [IP, Port, Err]),
 
+	    ?notice("data_link_bert:setup_static_node_data_link(~p:~p): Will try again in ~p sec", 
+			   [IP, Port, ?DEFAULT_RECONNECT_INTERVAL]),
 
+	    setup_static_node_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL,
+					      Prefix, IP, Port),
+
+	    not_available
+    end.
 
 
 announce_local_service_(CompSpec, Service, Availability) ->
@@ -356,9 +373,11 @@ handle_socket(_FromPid, SetupIP, SetupPort, closed, _ExtraArgs) ->
 	    ?info("data_link_bert:socket_closed(): Reconnect service:  ~p", [ StaticPrefix ]),
 	    ?info("data_link_bert:socket_closed(): Reconnect address:  ~p", [ StaticNetworkAddress ]),
 	    ?info("data_link_bert:socket_closed(): Reconnect interval: ~p", [ ?DEFAULT_RECONNECT_INTERVAL ]),
+	    [ IP, Port] = string:tokens(StaticNetworkAddress, ":"),
+
 	    setup_static_node_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, 
 					      StaticPrefix, 
-					      StaticNetworkAddress)
+					      IP, Port)
 	    
     end,
     ok;
@@ -470,29 +489,13 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     {noreply, St};
 
 %% Setup static nodes
-handle_info({ rvi_setup_static_node_data_link, Prefix, NetworkAddress }, St) ->
-
-    [ Address, Port] = string:tokens(NetworkAddress, ":"),
-
-    case connect_remote(Address, list_to_integer(Port)) of
-	ok  -> ok;
-
-	Err -> %% Failed to connect. Sleep and try again
-	    ?notice("data_link_bert:setup_static_node_data_link(~p): Failed: ~p", 
-			   [NetworkAddress, Err]),
-
-	    ?notice("data_link_bert:setup_static_node_data_link(~p): Will try again in 5 sec", 
-			   [NetworkAddress]),
-
-	    setup_static_node_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL,
-					      Prefix, NetworkAddress),
-
-	    not_available
-    end,
+handle_info({ rvi_setup_static_node_data_link, Prefix, IP, Port }, St) ->
+    connect_and_retry_remote(Prefix, IP, Port),
     { noreply, St };
 
 
-handle_info(_Info, St) ->
+handle_info(Info, St) ->
+    ?notice("data_link_bert(): Unkown message: ~p", [ Info]),
     {noreply, St}.
 
 terminate(_Reason, _St) ->
@@ -500,10 +503,10 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
-setup_static_node_reconnect_timer(Prefix, NetworkAddress, MSec) ->
+setup_static_node_reconnect_timer(MSec, Prefix, IP, Port) ->
     erlang:send_after(MSec, ?MODULE, 
 		      { rvi_setup_static_node_data_link, 
 			Prefix, 
-			NetworkAddress }),
+			IP, Port }),
     ok.
 
