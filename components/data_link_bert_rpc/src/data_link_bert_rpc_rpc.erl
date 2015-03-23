@@ -106,7 +106,7 @@ announce_available_local_service(CompSpec, Service) ->
 
 
 announce_unavailable_local_service(CompSpec, Service) ->
-    rvi_common:request(data_link, ?MODULE, announce_available_local_service,
+    rvi_common:request(data_link, ?MODULE, announce_unavailable_local_service,
 		       [ Service ], [service],[status], CompSpec).
 
 
