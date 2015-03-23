@@ -25,7 +25,7 @@
 	 register_remote_services/3,
 	 register_local_service/3,
 	 unregister_remote_services_by_address/2,
-	 unregister_remote_service_by_name/2,
+	 unregister_remote_services_by_name/2,
 	 unregister_local_service/2]).
 
 -export([start_json_server/0]).
@@ -114,9 +114,9 @@ unregister_remote_services_by_address(CompSpec, Address) ->
 		       [Address], [network_address], 
 		       [status], CompSpec).
 
-unregister_remote_service_by_name(CompSpec, Service) ->
-    rvi_common:request(service_discovery, ?MODULE, unregister_remote_service_by_name, 
-		       [Service], [service], 
+unregister_remote_services_by_name(CompSpec, Service) ->
+    rvi_common:request(service_discovery, ?MODULE, unregister_remote_services_by_name, 
+		       [Service], [services], 
 		       [status], CompSpec).
 
 unregister_local_service(CompSpec, Service) ->
@@ -154,10 +154,10 @@ handle_rpc("unregister_remote_services_by_address", Args) ->
 				       [ Address ]}),
     {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
 
-handle_rpc("unregister_remote_service_by_name", Args) ->
-    {ok, Service} = rvi_common:get_json_element(["service"], Args),
+handle_rpc("unregister_remote_services_by_name", Args) ->
+    {ok, Services} = rvi_common:get_json_element(["services"], Args),
     [ok ] = gen_server:call(?SERVER, { rvi_call, unregister_remote_service_by_Name, 
-				       [ Service ]}),
+				       [ Services ]}),
     {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
 
 
