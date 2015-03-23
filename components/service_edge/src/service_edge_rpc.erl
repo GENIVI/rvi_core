@@ -504,11 +504,11 @@ handle_call({ rvi_call, handle_local_message,
 	_ -> %% ServiceName is remote
 	    %% Ask Schedule the request to resolve the network address
 	    ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
-		  schedule:schedule_message(ServiceName, 
-					    Timeout, 
-					    Parameters,
-					    Certificate,
-					    Signature)
+		  schedule_rpc:schedule_message(ServiceName, 
+						Timeout, 
+						Parameters,
+						Certificate,
+						Signature)
     end,
     { reply, Res, St};
 
