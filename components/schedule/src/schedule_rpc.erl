@@ -195,7 +195,7 @@ handle_rpc("register_remote_services", Args) ->
 handle_rpc("unregister_remote_services", Args) ->
     {ok,  DiscountinuedServices} = rvi_common:get_json_element(["services"], Args),
     ?debug("schedule_rpc:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
-    [ok] = gen_server:call(?SERVER, { rvi_call, register_remote_services, 
+    [ok] = gen_server:call(?SERVER, { rvi_call, unregister_remote_services, 
 				       [ DiscountinuedServices ]}),
 
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
