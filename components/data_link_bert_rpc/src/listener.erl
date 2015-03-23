@@ -42,11 +42,12 @@ init([], State) ->
 handle_call({add_listener, IpAddr, Port, CompSpec}, _From, State) ->
     case gen_nb_server:add_listen_socket({IpAddr, Port}, State) of
         {ok, State1} ->
-            {reply, ok, { State1#state { server_state = CompSpec }}};
+            {reply, ok, gen_nb_server:store_cb_state( CompSpec, State1 )};
 
         Error ->
-            {reply, Error, { State#state { server_state = CompSpec }}}
+            {reply, Error, gen_nb_server:store_cb_state( CompSpec, State )}
     end;
+
 handle_call({remove_listener, IpAddr, Port}, _From, State) ->
     case gen_nb_server:remove_listen_socket({IpAddr, Port}, State) of
         {ok, State1} ->
@@ -79,6 +80,6 @@ new_connection(IP, Port, Sock, State) ->
     %% Provide component spec as extra arg.
     {ok, _P} = connection:setup(undefined, 0, Sock, 
 				data_link_bert_rpc_rpc, 
-				handle_socket, [State#state.server_state]),
+				handle_socket, [gen_nb_server:get_cb_state(State)]),
     {ok, State}.
 
