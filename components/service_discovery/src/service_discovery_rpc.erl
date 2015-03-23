@@ -399,7 +399,7 @@ handle_call({rvi_call, unregister_remote_services_by_address, [Address]}, _From,
 	    true;
 	_ ->
 	    %% Tell scheduler to kill off services
-	    schedule_rpc:unregister_remote_services(SvcNames),
+	    schedule_rpc:unregister_remote_services(St#st.cs, SvcNames),
 
 	    %% Delete all services from remote service table.
 	    [ ets:delete(?REMOTE_SERVICE_TABLE, Svc#service_entry.service) || Svc <- Svcs ],
@@ -415,13 +415,15 @@ handle_call({rvi_call, unregister_remote_services_by_address, [Address]}, _From,
 
 	    %% Call service edge with local addresses (sorted and
 	    %% de-duped) and the services to register.
-	    service_edge_rpc:unregister_remote_services(SvcNames, lists:usort(LocalSvcAddresses))
+	    service_edge_rpc:unregister_remote_services(St#st.cs,
+							SvcNames, 
+							lists:usort(LocalSvcAddresses))
 
     end,
     {reply, [ok], St };
 
 handle_call({rvi_call, unregister_remote_services_by_name, [Services]}, _From, St) ->
-    unregister_remote_services_by_name_(Services),
+    unregister_remote_services_by_name_(St#st.cs, Services),
     {reply, [ok], St };
 
 handle_call({rvi_call, unregister_local_service, [Service]}, _From, St) ->
@@ -575,8 +577,8 @@ register_remote_service_(Service, NetworkAddress) ->
 
 
 
-unregister_single_remote_service_by_name_(Service) ->
-    ?info("service_discovery_rpc:unregister_remote_services_by_name(): ~p", 
+unregister_single_remote_service_by_name_(Service, CompSpec) ->
+    ?info("service_discovery_rpc:unregister_single_remote_service_by_name_(): ~p", 
 	  [Service]),
 
 
@@ -605,15 +607,17 @@ unregister_single_remote_service_by_name_(Service) ->
     
     %% Call service edge with local addresses (sorted and de-duped) and
     %% the services to register.
-    service_edge_rpc:unregister_remote_services([Service], lists:usort(LocalSvcAddresses)),
+    service_edge_rpc:unregister_remote_services(CompSpec,
+						[Service], 
+						lists:usort(LocalSvcAddresses)),
 
 
     ok.
 
 
 %% Loop through multiple services and remove them one by one
-unregister_remote_services_by_name_(Services) ->
-    [ unregister_single_remote_service_by_name_(Svc) || Svc <- Services],
+unregister_remote_services_by_name_(CompSpec, Services) ->
+    [ unregister_single_remote_service_by_name_(CompSpec, Svc) || Svc <- Services],
     ok.
 
 
