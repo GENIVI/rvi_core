@@ -75,7 +75,7 @@ start_connection_manager() ->
     ?info("data_link_bert:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
     
     %% Add listener port.
-    case listener:add_listener(Pid, IP, Port) of
+    case listener:add_listener(Pid, IP, Port, CompSpec) of
 	ok ->
 	    ?notice("---- RVI Node External Address: ~s", 
 		    [ application:get_env(rvi, node_address, undefined)]);
