@@ -113,7 +113,7 @@ start_websocket() ->
 
 
 register_remote_services(CompSpec, Service, LocalServiceAddresses) ->
-    rvi_common:request(service_edge, ?SERVER, register_remote_service, 
+    rvi_common:request(service_edge, ?SERVER, register_remote_services, 
 		       [ Service, LocalServiceAddresses ], 
 		       [ service, local_service_addresses ],
 		       [ status ],
