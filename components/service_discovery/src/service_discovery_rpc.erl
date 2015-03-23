@@ -577,7 +577,7 @@ register_remote_service_(Service, NetworkAddress) ->
 
 
 
-unregister_single_remote_service_by_name_(Service, CompSpec) ->
+unregister_single_remote_service_by_name_(CompSpec, Service) ->
     ?info("service_discovery_rpc:unregister_single_remote_service_by_name_(): ~p", 
 	  [Service]),
 
@@ -608,7 +608,7 @@ unregister_single_remote_service_by_name_(Service, CompSpec) ->
     %% Call service edge with local addresses (sorted and de-duped) and
     %% the services to register.
     service_edge_rpc:unregister_remote_services(CompSpec,
-						[Service], 
+						[[Service]], 
 						lists:usort(LocalSvcAddresses)),
 
 
