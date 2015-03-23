@@ -137,11 +137,11 @@ schedule_message(CompSpec,
 		       [status, transaction_id], CompSpec).
 
 
-register_remote_services(CompSpec, NetworkAddress, AvailableServices) ->
+register_remote_services(CompSpec, NetworkAddress, Services) ->
     rvi_common:request(schedule, ?MODULE, 
 		       register_remote_services, 
-		       [NetworkAddress, AvailableServices], 
-		       [network_address, available_services], 
+		       [NetworkAddress, Services], 
+		       [network_address, services], 
 		       [status, transaction_id], CompSpec).
 
 
@@ -182,13 +182,13 @@ handle_rpc("schedule_message", Args) ->
 
 handle_rpc("register_remote_services", Args) ->
     {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
-    {ok, AvailableServices} = rvi_common:get_json_element(["services"], Args),
+    {ok, Services} = rvi_common:get_json_element(["services"], Args),
     ?debug("schedule_rpc:register_remote_services(): network_address: ~p", [ NetworkAddress]),
-    ?debug("schedule_rpc:register_remote_services(): services:        ~p", [ AvailableServices]),
+    ?debug("schedule_rpc:register_remote_services(): services:        ~p", [ Services]),
 
     [ok] = gen_server:call(?SERVER, { rvi_call, register_remote_services, 
 				       [ NetworkAddress,
-					 AvailableServices ]}),
+					 Services ]}),
 
     {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
 
@@ -237,12 +237,12 @@ handle_call( { rvi_call, schedule_message,
 
 handle_call( {rvi_call, register_remote_services, 
 	       [ NetworkAddress, 
-		 AvailableServices]}, _From, St) ->
+		 Services]}, _From, St) ->
 
     ?info("schedule:register_remote_services(): services(~p) -> ~p", 
-	  [AvailableServices, NetworkAddress]),
+	  [Services, NetworkAddress]),
 
-    {ok, NSt} =  multiple_services_available(AvailableServices, NetworkAddress, St),
+    {ok, NSt} =  multiple_services_available(Services, NetworkAddress, St),
     {reply, [ok], NSt};
 
 
