@@ -340,7 +340,7 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 
     %% Register the received services with all relevant components
 
-    service_discovery_rpc:unregister_remote_services(CompSpec, Services),
+    service_discovery_rpc:unregister_remote_services_by_name(CompSpec, Services),
     ok;
 
 
