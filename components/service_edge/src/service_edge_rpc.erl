@@ -158,7 +158,7 @@ announce_service_availability(Cmd, LocalServiceAddresses, Services, SkipAddress)
 
 		 (LocalServiceAddress) ->
 		      dispatch_to_local_service(LocalServiceAddress, Cmd, 
-						[ { services, Services }])
+						{struct, [ { services, { array, [Services ]}}]})
 	      end, LocalServiceAddresses),
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ] }.
     
