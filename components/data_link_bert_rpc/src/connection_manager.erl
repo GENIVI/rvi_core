@@ -193,6 +193,7 @@ handle_call({find_connection_by_address, IP, Port}, _From,
 	error -> 
 	    ?debug("~p:handle_call(find_by_addr): not found: ~p", 
 		   [ ?MODULE, {IP, Port}]),
+
 	    { reply, not_found, St};
 	
 	{ok, Pid } ->

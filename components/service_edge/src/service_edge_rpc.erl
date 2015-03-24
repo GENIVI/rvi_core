@@ -28,7 +28,7 @@
 
 -export([register_remote_services/3,
 	 unregister_remote_services/3,
-	 handle_remote_message/6,
+	 handle_remote_message/7,
 	 handle_local_timeout/3]).
 
 -export([start_json_server/0, 
@@ -143,11 +143,21 @@ unregister_remote_services(CompSpec, Services, LocalServiceAddresses) ->
 %% Handle a message, delivered from a remote node through protocol, that is
 %% to be forwarded to a locally connected service.
 %%
-handle_remote_message(CompSpec, ServiceName, Timeout, 
+handle_remote_message(CompSpec, ServiceName, Timeout, NetworkAddress,
 		      Parameters, Signature, Certificate) ->
     rvi_common:request(servide_edge, ?SERVER, handle_remote_message,
-		       [ ServiceName, Timeout, Parameters, Signature, Certificate ],
-		       [ service, timeout, parameters, signature, certificate ],
+		       [ ServiceName, 
+			 Timeout, 
+			 NetworkAddress,
+			 Parameters,
+			 Signature, 
+			 Certificate ],
+		       [ service, 
+			 timeout, 
+			 network_address, 
+			 parameters, 
+			 signature, 
+			 certificate ],
 		       [ status, transaction_id ], 
 		       CompSpec).
 
@@ -385,6 +395,7 @@ handle_rpc("message", Args) ->
 handle_rpc("handle_remote_message", Args) ->
     { ok, ServiceName } = rvi_common:get_json_element(["service_name"], Args),
     { ok, Timeout } = rvi_common:get_json_element(["timeout"], Args),
+    { ok, NetworkAddress } = rvi_common:get_json_element(["network_address"], Args),
     { ok, Parameters } = rvi_common:get_json_element(["parameters"], Args),
     { ok, Certificate } = rvi_common:get_json_element(["certificate"], Args),
     { ok, Signature } = rvi_common:get_json_element(["signature"], Args),
@@ -392,6 +403,7 @@ handle_rpc("handle_remote_message", Args) ->
 					 [ 
 					   ServiceName, 
 					   Timeout, 
+					   NetworkAddress,
 					   Parameters,
 					   Certificate, 
 					   Signature
@@ -564,6 +576,7 @@ handle_call({rvi_call, handle_remote_message,
 	     [
 	      ServiceName,
 	      Timeout,
+	      NetworkAddress, 
 	      Parameters,
 	      Certificate,
 	      Signature
@@ -572,6 +585,7 @@ handle_call({rvi_call, handle_remote_message,
     ?debug("service_edge:remote_msg(): service_name:    ~p", [ServiceName]),
     ?debug("service_edge:remote_msg(): timeout:         ~p", [Timeout]),
     ?debug("service_edge:remote_msg(): parameters:      ~p", [Parameters]),
+    ?debug("service_edge:remote_msg(): parameters:      ~p", [NetworkAddress]),
     ?debug("service_edge:remote_msg(): signature:       ~p", [Signature]),
     ?debug("service_edge:remote_msg(): certificate:     ~p", [Certificate]),
     case 

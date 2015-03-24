@@ -448,7 +448,8 @@ handle_call({rvi_call, disconnect_data_link, [NetworkAddress] }, _From, St) ->
 
 
 handle_call({rvi_call, send_data, [NetworkAddress, Data]}, _From, St) ->
-    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
+    [ RemoteAddress, RemotePortStr] =  string:tokens(NetworkAddress, ":"),
+    RemotePort = list_to_integer(RemotePortStr),
     ?info("data_link_bert:send_data(): Remote: ~p:~p", [ RemoteAddress, RemotePort]),
     Res = connection:send(RemoteAddress, RemotePort, {receive_data, Data}),
     { reply, [ Res ], St};
