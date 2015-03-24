@@ -135,15 +135,15 @@ register_remote_services(CompSpec, NetworkAddress, Services) ->
     rvi_common:notification(schedule, ?MODULE, 
 			    register_remote_services, 
 			    [{ network_address, NetworkAddress} ,
-			     { services, Services }], 
-			    [status, transaction_id], CompSpec).
+			     { services, Services }],
+			    CompSpec).
 
 
 unregister_remote_services(CompSpec, ServiceNames) ->
     rvi_common:notification(schedule, ?MODULE, 
 			    unregister_remote_services, 
-			    [{ services, ServiceNames }], 
-			    [status], CompSpec).
+			    [{ services, ServiceNames }],
+			    CompSpec).
 
 
 
@@ -251,14 +251,14 @@ handle_cast( {rvi, register_remote_services,
 	  [Services, NetworkAddress]),
 
     {ok, NSt} =  multiple_services_available(Services, NetworkAddress, St),
-    {reply, [ok], NSt};
+    {noreply, NSt};
 
 
 
 handle_cast( {rvi, unregister_remote_services, [ServiceNames]}, St) ->
     ?info("schedule:unregister_remote_services(): Services(~p)", [ServiceNames]),
     {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
-    {reply, [ok], NSt };
+    {noreply, NSt };
 
 handle_cast(Other, St) ->
     ?warning("schedule:handle_cast(~p): unknown", [ Other ]),
