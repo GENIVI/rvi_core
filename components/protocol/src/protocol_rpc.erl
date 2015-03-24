@@ -116,7 +116,7 @@ handle_call({rvi_call, send_message,
     Data = term_to_binary({ ServiceName, Timeout, NetworkAddress, 
 			    Parameters, Signature, Certificate }),
 
-    Res = data_link_bert_rpc:send_data(NetworkAddress, Data),
+    Res = data_link_bert_rpc_rpc:send_data(NetworkAddress, Data),
 
     { reply, Res, State };
 
