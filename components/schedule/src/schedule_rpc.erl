@@ -122,32 +122,26 @@ schedule_message(CompSpec,
     
     rvi_common:request(schedule, ?MODULE, 
 		       schedule_message, 
-		       [SvcName, 
-			Timeout,
-			Parameters, 
-			Signature, 
-			Certificate], 
-		       [service_name,
-			timeout,
-			parameters,
-			signature,
-			certificate], 
+		       [{ service, SvcName }, 
+			{ timeout, Timeout },
+			{ parameters, Parameters }, 
+			{ signature, Signature }, 
+			{ certificate, Certificate }], 
 		       [status, transaction_id], CompSpec).
 
 
 register_remote_services(CompSpec, NetworkAddress, Services) ->
     rvi_common:request(schedule, ?MODULE, 
 		       register_remote_services, 
-		       [NetworkAddress, Services], 
-		       [network_address, services], 
+		       [{ network_address, NetworkAddress} ,
+			{ services, Services }], 
 		       [status, transaction_id], CompSpec).
 
 
 unregister_remote_services(CompSpec, ServiceNames) ->
     rvi_common:request(schedule, ?MODULE, 
 		       unregister_remote_services, 
-		       [ServiceNames], 
-		       [services], 
+		       [{ services, ServiceNames }], 
 		       [status], CompSpec).
 
 
@@ -155,17 +149,17 @@ unregister_remote_services(CompSpec, ServiceNames) ->
 %% JSON-RPC entry point
 %% CAlled by local exo http server
 handle_rpc("schedule_message", Args) ->
-    {ok, SvcName} = rvi_common:get_json_element(["service_name"], Args),
+    {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
 
-    ?debug("schedule_rpc:schedule_request(): service_name:    ~p", [ SvcName]),
-    ?debug("schedule_rpc:schedule_request(): timeout:         ~p", [ Timeout]),
+    ?debug("schedule_rpc:schedule_request(): service:     ~p", [ SvcName]),
+    ?debug("schedule_rpc:schedule_request(): timeout:     ~p", [ Timeout]),
 %%    ?debug("schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
-    ?debug("schedule_rpc:schedule_request(): signature:       ~p", [Signature]),
-    ?debug("schedule_rpc:schedule_request(): certificate:     ~p", [Certificate]),
+    ?debug("schedule_rpc:schedule_request(): signature:   ~p", [Signature]),
+    ?debug("schedule_rpc:schedule_request(): certificate: ~p", [Certificate]),
 
     [ok, TransID] = gen_server:call(?SERVER, { rvi_call, schedule_message, 
 					       [ SvcName,
@@ -211,12 +205,12 @@ handle_call( { rvi_call, schedule_message,
 		Signature,
 		Certificate] }, _From, St) ->
 
-    ?debug("schedule:sched_msg(): service_name:     ~p", [SvcName]),
-    ?debug("schedule:sched_msg(): timeout:          ~p", [Timeout]),
-    ?debug("schedule:sched_msg(): parameters:       ~p", [Parameters]),
-    ?debug("schedule:sched_msg(): signature:        ~p", [Signature]),
-    ?debug("schedule:sched_msg(): certificate:      ~p", [Certificate]),
-    ?debug("schedule:sched_msg(): St:               ~p", [St]),
+    ?debug("schedule:sched_msg(): service:     ~p", [SvcName]),
+    ?debug("schedule:sched_msg(): timeout:     ~p", [Timeout]),
+    ?debug("schedule:sched_msg(): parameters:  ~p", [Parameters]),
+    ?debug("schedule:sched_msg(): signature:   ~p", [Signature]),
+    ?debug("schedule:sched_msg(): certificate  ~p", [Certificate]),
+    ?debug("schedule:sched_msg(): St:          ~p", [St]),
 
 
     { ok, TransID, NSt } = queue_message(SvcName, 

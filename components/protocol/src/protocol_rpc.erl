@@ -49,22 +49,17 @@ send_message(CompSpec,
 	     Signature, 
 	     Certificate) ->
     rvi_common:request(protocol, ?MODULE, send_message,
-		       [ ServiceName,
-			 Timeout,
-			 NetworkAddress, 
-			 Parameters, 
-			 Signature,
-			 Certificate],
-		       [ service,
-			 timeout,
-			 network_address,
-			 signature,
-			 certificate],
+		       [ { service, ServiceName },
+			 { timeout, Timeout },
+			 { network_address, NetworkAddress }, 
+			 { parameters, Parameters },
+			 { signature, Signature },
+			 { certificate, Certificate }],
 		       [ status ], CompSpec).
 
 receive_message(CompSpec, Data) ->
     rvi_common:request(protocol, ?MODULE, receive_message, 
-		       [ Data ], [ data ], 
+		       [ {data, Data } ],
 		       [status], CompSpec).
 
 %% JSON-RPC entry point

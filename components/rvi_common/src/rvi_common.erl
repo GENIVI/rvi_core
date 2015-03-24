@@ -15,7 +15,7 @@
 -include_lib("rvi_common/include/rvi_common.hrl").
 
 -export([send_http_request/3]).
--export([request/7]).
+-export([request/6]).
 -export([json_rpc_status/1]).
 -export([get_json_element/2]).
 -export([sanitize_service_string/1]).
@@ -148,11 +148,14 @@ json_argument(ArgList, SpecList) ->
 request(Component, 
 	Module, 
 	Function, 
-	InArg,
-	InArgSpec,
+	InArgPropList,
 	OutArgSpec,
 	CompSpec) ->
 
+    %% Split [ { network_address, "127.0.0.1:888" } , { timeout, 34 } ] to
+    %% [ "127.0.0.1:888", 34] [ network_address, timeout ] 
+    InArg = [ Val || { _Key, Val } <- InArgPropList ],
+    InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
     %% Figure out how we are to invoke this MFA.
     case get_module_type(Component, Module, CompSpec) of
 	%% We have a gen_server

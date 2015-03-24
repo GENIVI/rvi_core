@@ -104,7 +104,7 @@ get_certificate_body(_Service) ->
 authorize_local_message(CompSpec, Service) ->
     ?debug("authorize_rpc:authorize_local_msg(): service:    ~p ~n", [Service]),
     rvi_common:request(authorize, ?MODULE,authorize_local_message, 
-		       [Service], [service ], 
+		       [{ service, Service }],
 		       [staus, signature, certificate], CompSpec).
     
 
@@ -114,8 +114,9 @@ authorize_remote_message(CompSpec, Service, Signature, Certificate) ->
     ?debug("authorize_rpc:authorize_remote_msg(): signature:    ~p ~n", [Signature]),
     ?debug("authorize_rpc:authorize_remote_msg(): certificate:  ~p ~n", [Certificate]),
     rvi_common:request(authorize, ?MODULE,authorize_remote_message, 
-		       [Service, Signature, Certificate],
-		       [service, signature, certificate ], 
+		       [{ service, Service},
+			{ signature, Signature },
+			{ certificate, Certificate }],
 		       [staus], CompSpec).
 
 

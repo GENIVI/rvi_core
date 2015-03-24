@@ -118,24 +118,24 @@ start_websocket() ->
 %% has timed out
 handle_local_timeout(CompSpec, Service, TransID) ->
     rvi_common:request(service_edge, ?SERVER, handle_local_timeout, 
-		       [ Service, TransID ], 
-		       [ service, transaction_id ],
+		       [ { service, Service}, 
+			 { transaction_id, TransID} ], 
 		       [ status ],
 		       CompSpec).
 
 
 register_remote_services(CompSpec, Service, LocalServiceAddresses) ->
     rvi_common:request(service_edge, ?SERVER, register_remote_services, 
-		       [ Service, LocalServiceAddresses ], 
-		       [ service, local_service_addresses ],
+		       [ { service, Service } , 
+			 { local_service_addresses, LocalServiceAddresses } ], 
 		       [ status ],
 		       CompSpec).
 
 
 unregister_remote_services(CompSpec, Services, LocalServiceAddresses) ->
     rvi_common:request(service_edge, ?SERVER, unregister_remote_services, 
-		       [ Services, LocalServiceAddresses ], 
-		       [ services, local_service_addresses ],
+		       [ { services, Services }, 
+			 { local_service_addresses, LocalServiceAddresses }], 
 		       [ status ],
 		       CompSpec).
 
@@ -146,18 +146,12 @@ unregister_remote_services(CompSpec, Services, LocalServiceAddresses) ->
 handle_remote_message(CompSpec, ServiceName, Timeout, NetworkAddress,
 		      Parameters, Signature, Certificate) ->
     rvi_common:request(service_edge, ?SERVER, handle_remote_message,
-		       [ ServiceName, 
-			 Timeout, 
-			 NetworkAddress,
-			 Parameters,
-			 Signature, 
-			 Certificate ],
-		       [ service, 
-			 timeout, 
-			 network_address, 
-			 parameters, 
-			 signature, 
-			 certificate ],
+		       [ { service, ServiceName }, 
+			 { timeout, Timeout }, 
+			 { network_address, NetworkAddress },
+			 { parameters, Parameters },
+			 { signature, Signature }, 
+			 { certificate, Certificate } ],
 		       [ status, transaction_id ], 
 		       CompSpec).
 

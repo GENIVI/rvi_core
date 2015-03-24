@@ -102,27 +102,29 @@ setup_static_node_data_links_([ { Prefix, NetworkAddress} | T], CompSpec) ->
 %% Behavior implementation
 announce_available_local_service(CompSpec, Service) ->
     rvi_common:request(data_link, ?MODULE, announce_available_local_service,
-		       [ Service ], [service],[status], CompSpec).
+		       [ {service, Service }], [status], CompSpec).
 
 
 announce_unavailable_local_service(CompSpec, Service) ->
     rvi_common:request(data_link, ?MODULE, announce_unavailable_local_service,
-		       [ Service ], [service],[status], CompSpec).
+		       [ {service, Service }], [status], CompSpec).
 
 
 setup_data_link(CompSpec, NetworkAddress) ->
     rvi_common:request(data_link, ?MODULE, setup_data_link,
-		       [ NetworkAddress ], [ network_address ], 
+		       [ { network_address, NetworkAddress }],
 		       [status], CompSpec).
+
 disconnect_data_link(CompSpec, NetworkAddress) ->
     rvi_common:request(data_link, ?MODULE, disconnect_data_link,
-		       [ NetworkAddress ], [ network_address ], 
+		       [ {network_address, NetworkAddress} ],
 		       [status], CompSpec).
 
 
 send_data(CompSpec, NetworkAddress, Data) ->
     rvi_common:request(data_link, ?MODULE, send_data,
-		       [ NetworkAddress, Data ], [ network_address, data ], 
+		       [ { network_address, NetworkAddress }, 
+			 { data, Data } ], 
 		       [status], CompSpec).
 
 %% End of behavior

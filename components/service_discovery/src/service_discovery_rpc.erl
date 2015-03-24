@@ -66,62 +66,64 @@ start_json_server() ->
 
 get_all_services(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
-		       get_all_services, [], [], [status, services], CompSpec).
+		       get_all_services, [], [status, services], CompSpec).
 
 
 get_local_services(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
-		       get_local_services, [], [], [status, services], CompSpec).
+		       get_local_services, [], [status, services], CompSpec).
 
 get_remote_services(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
-		       get_remote_services, [], [], [status, services], CompSpec).
+		       get_remote_services, [], [status, services], CompSpec).
 
 get_local_network_addresses(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
-		       get_local_network_addresses, [], [], [status], CompSpec).
+		       get_local_network_addresses, [], [status], CompSpec).
 
 get_remote_network_addresses(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
-		       get_remote_network_addresses, [], [], [status], CompSpec).
+		       get_remote_network_addresses, [], [status], CompSpec).
 
 
 resolve_local_service(CompSpec, RawService) ->
     rvi_common:request(service_discovery, ?MODULE, resolve_local_service, 
-		       [RawService], [service], 
+		       [{ service, RawService }],
 		       [status, full_service], CompSpec).
 
 resolve_remote_service(CompSpec, RawService) ->
     rvi_common:request(service_discovery, ?MODULE, resolve_remote_service, 
-		       [RawService], [service], 
+		       [{ service, RawService }],
 		       [status], CompSpec).
 
 register_remote_services(CompSpec, Address, Services) ->
     rvi_common:request(service_discovery, ?MODULE, register_remote_services, 
-		       [Address, Services], [network_address, services], 
+		       [{ network_address, Address },  
+			{ services, Services }],
 		       [status], CompSpec).
 
 
 register_local_service(CompSpec, Address, Services) ->
     rvi_common:request(service_discovery, ?MODULE, register_local_service, 
-		       [Address, Services], [network_address, service], 
+		       [{ network_address, Address }, 
+			{ service, Services }],
 		       [status], CompSpec).
 
 
 
 unregister_remote_services_by_address(CompSpec, Address) ->
     rvi_common:request(service_discovery, ?MODULE, unregister_remote_services_by_address, 
-		       [Address], [network_address], 
+		       [{ network_address, Address }],
 		       [status], CompSpec).
 
 unregister_remote_services_by_name(CompSpec, Service) ->
     rvi_common:request(service_discovery, ?MODULE, unregister_remote_services_by_name, 
-		       [Service], [services], 
+		       [{ services, Service }], 
 		       [status], CompSpec).
 
 unregister_local_service(CompSpec, Service) ->
     rvi_common:request(service_discovery, ?MODULE, unregister_local_service, 
-		       [Service], [service], 
+		       [{ service, Service }], 
 		       [status], CompSpec).
 
 
