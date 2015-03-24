@@ -105,7 +105,7 @@ start_link() ->
 init([]) ->
     %% Setup the relevant ets tables.
     {ok, #st{ 
-	    cs = #component_spec{},
+	    cs = rvi_common:get_component_specification(),
 	    services_tid = ets:new(rvi_schedule_services, 
 				     [  set, private, 
 					{ keypos, #service.name } ])}}.

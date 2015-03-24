@@ -150,9 +150,10 @@ connect_remote(IP, Port, CompSpec) ->
 						  ?MODULE, handle_socket, [CompSpec] ),
 
 		    %% Send authorize
+		    { LocalIP, LocalPort} = rvi_common:node_address_tuple(),
 		    connection:send(Pid, 
 				    { authorize, 
-				      1, IP, Port, rvi_binary, 
+				      1, LocalIP, LocalPort, rvi_binary, 
 				      { certificate, {}}, { signature, {}} }),
 		    ok;
 		

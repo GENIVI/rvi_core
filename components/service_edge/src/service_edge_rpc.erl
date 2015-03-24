@@ -547,6 +547,7 @@ handle_call({ rvi_call, handle_local_message,
 	    { reply, [ok, TID ], St}
     end;
 
+
 handle_call({rvi_call, register_remote_services, 
 	     [ Services, LocalServiceAddresses ]}, _From, State) ->
 
