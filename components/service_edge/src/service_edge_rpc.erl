@@ -145,7 +145,7 @@ unregister_remote_services(CompSpec, Services, LocalServiceAddresses) ->
 %%
 handle_remote_message(CompSpec, ServiceName, Timeout, NetworkAddress,
 		      Parameters, Signature, Certificate) ->
-    rvi_common:request(servide_edge, ?SERVER, handle_remote_message,
+    rvi_common:request(service_edge, ?SERVER, handle_remote_message,
 		       [ ServiceName, 
 			 Timeout, 
 			 NetworkAddress,
