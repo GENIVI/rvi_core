@@ -65,7 +65,8 @@ init_rvi_component() ->
 		    ok;
 
 		_ -> 
-		    ?info("data_link_bert_rpc_rpc:init_rvi_component(): exo_http_opts not specified. Gen Server only"),
+		    ?info("data_link_bert_rpc_rpc:init_rvi_component(): "
+			  "exo_http_opts not specified. Gen Server only"),
 		    ok
 		
 	    end;
@@ -270,58 +271,62 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     %% a service announce
     
     %% FIXME: Validate certificate and signature before continuing.
-    case connection_manager:find_connection_by_pid(FromPid) of
-	not_found ->
-	    ?info("data_link_bert:authorize(): New connection!"),
-	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
-	    ?debug("data_link_bert:authorize(): Sending authorize."),
-	    Res = connection:send(FromPid, 
-			    { authorize, 
-			      1, LocalAddress, LocalPort, rvi_binary, 
-			      {certificate, {}}, { signature, {}}}),
-	    ?debug("data_link_bert:authorize(): Sending authorize: ~p", [ Res]),
-	    ok;
-	_ -> ok
-    end,
+
+    spawn_monitor(
+      fun() ->
+	      case connection_manager:find_connection_by_pid(FromPid) of
+		  not_found ->
+		      ?info("data_link_bert:authorize(): New connection!"),
+		      connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
+		      ?debug("data_link_bert:authorize(): Sending authorize."),
+		      Res = connection:send(FromPid, 
+					    { authorize, 
+					      1, LocalAddress, LocalPort, rvi_binary, 
+					      {certificate, {}}, { signature, {}}}),
+		      ?debug("data_link_bert:authorize(): Sending authorize: ~p", [ Res]),
+		      ok;
+		  _ -> ok
+	      end,
 
 
-    %% Send our own servide announcement to the remote server
-    %% that just authorized to us.
-    %% First grab all our services.
-    case rvi_common:send_component_request(service_discovery, get_local_services, [], 
-					   [ services ]) of
-	{ ok, _, [ JSONSvc] } -> 
-	    %% Covnert to JSON structured typles.
-	    LocalServices = 
-		lists:foldl(fun({struct, JSONElem}, Acc) -> 
-				    [ proplists:get_value("service", JSONElem, undefined) | Acc];
-			       ({Service, _LocalAddress}, Acc) -> 
-				    [ Service | Acc ];
-			       (Elem, Acc) -> 
-				    [ Elem | Acc ]
-			    end,
-			    [], JSONSvc),
+	      %% Send our own servide announcement to the remote server
+	      %% that just authorized to us.
+	      %% First grab all our services.
+	      case rvi_common:send_component_request(service_discovery, get_local_services, [], 
+						     [ services ]) of
+		  { ok, _, [ JSONSvc] } -> 
+		      %% Covnert to JSON structured typles.
+		      LocalServices = 
+			  lists:foldl(fun({struct, JSONElem}, Acc) -> 
+					      [ proplists:get_value("service", JSONElem, undefined) | Acc];
+					 ({Service, _LocalAddress}, Acc) -> 
+					      [ Service | Acc ];
+					 (Elem, Acc) -> 
+					      [ Elem | Acc ]
+				      end,
+				      [], JSONSvc),
 
-	    %% Grab our local address.
-	    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+		      %% Grab our local address.
+		      { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
-	    %% Send an authorize back to the remote node
-	    ?info("data_link_bert:authorize(): Announcing local services: ~p to remote ~p:~p",
-		  [LocalServices, NRemoteAddress, NRemotePort]),
+		      %% Send an authorize back to the remote node
+		      ?info("data_link_bert:authorize(): Announcing local services: ~p to remote ~p:~p",
+			    [LocalServices, NRemoteAddress, NRemotePort]),
 
-	    connection:send(FromPid, 
-			    { service_announce, 2, available,
-			      LocalServices, { signature, {}}});
+		      connection:send(FromPid, 
+				      { service_announce, 2, available,
+					LocalServices, { signature, {}}});
 
-	Err -> 
-	    ?warning("data_link_bert:authorize() Failed at authorize: ~p", 
+		  Err -> 
+		      ?warning("data_link_bert:authorize() Failed at authorize: ~p", 
 
-		     [ Err ]),
-	    ok
-    end,
+			       [ Err ]),
+		      ok
+	      end,
 
-    %% Setup ping interval
-    gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
+	      %% Setup ping interval
+	      gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid })
+      end),
     ok;
 
 handle_socket(_FromPid, RemoteIP, RemotePort, data, 
@@ -340,11 +345,14 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
     %% Register the received services with all relevant components
     
     RemoteNetworkAddress = RemoteIP  ++ ":" ++ integer_to_list(RemotePort),
-    rvi_common:send_component_request(service_discovery, register_remote_services, 
-				      [
-				       {services, Services}, 
-				       {network_address, RemoteNetworkAddress}
-				      ]),
+    spawn_monitor(
+      fun() ->
+	      rvi_common:send_component_request(service_discovery, register_remote_services, 
+						[
+						 {services, Services}, 
+						 {network_address, RemoteNetworkAddress}
+						])
+      end),
     ok;
 
 
@@ -362,10 +370,14 @@ handle_socket(_FromPid, RemoteIP, RemotePort, data,
 
     %% Register the received services with all relevant components
 
-    rvi_common:send_component_request(service_discovery, unregister_remote_services_by_name, 
-				      [
-				       {services, Services}
-				      ]),
+    spawn_monitor(
+      fun() ->
+	      rvi_common:send_component_request(service_discovery, 
+						unregister_remote_services_by_name, 
+						[
+						 {services, Services}
+						])
+      end),
     ok;
 
 
@@ -373,17 +385,23 @@ handle_socket(_FromPid, SetupIP, SetupPort, data,
 	      { receive_data, Data}, _ExtraArgs) ->
 %%    ?info("data_link_bert:receive_data(): ~p", [ Data ]),
     ?debug("data_link_bert:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    case 
-	rvi_common:send_component_request(protocol, receive_message, 
-					  [
-					   { data, Data }
-					  ]) of
-	{ ok, _ } -> 
-	    ok;
-	Err -> 
-	    ?info("data_link_bert:receive_data(): Failed to send component request: ~p", 
-		   [ Err ])
-    end,
+
+    %% Start a process to avoid deadlock as described in issue #16
+    spawn_monitor(fun() ->
+			  case 
+			      rvi_common:send_component_request(protocol, receive_message, 
+								[
+								 { data, Data }
+								]) of
+			      { ok, _ } -> 
+				  ok;
+			      Err -> 
+				  ?info("data_link_bert:receive_data(): Failed to send component request: ~p", 
+					[ Err ])
+			  end,
+			  ok
+		  end),
+    
     ok;
 
 

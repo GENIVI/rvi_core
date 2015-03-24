@@ -199,42 +199,48 @@ handle_local_message(ServiceName, Timeout, Parameters) ->
     ?debug("service_edge_rpc:local_msg: timeout:         ~p", [Timeout]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
 
-    case 
-	%%
-	%% Authorize local message and retrieve a certificate / signature
-	%% that will be accepted by the receiving node that will deliver
-	%% the messaage to its locally connected service_name service.
-	%%
-	rvi_common:send_component_request(authorize, authorize_local_message,
-					  [
-					   {service_name, ServiceName}
-					  ],
-					  [ certificate, signature ]) of
-	{ ok, ok, [Certificate, Signature] } -> 
+    %% Workaround for issue #16
 
-	    %%
-	    %% Check if this is a local service by trying to resolve its service name. 
-	    %% If successful, just forward it to its service_name.
-	    %% 
-	    case rvi_common:send_component_request(service_discovery, resolve_local_service,
-						   [
-						    {service, ServiceName}
-						   ], [ network_address ]) of
-		{ ok, ok, [ NetworkAddress] } -> %% ServiceName is local. Forward message
-		    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
-		    forward_message_to_local_service(ServiceName, NetworkAddress, Parameters);
-		    
-		_ -> %% ServiceName is remote
-		    %% Ask Schedule the request to resolve the network address
-		    ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
-		    forward_message_to_scheduler(ServiceName, Timeout, Parameters, Certificate, Signature)
-	    end;
+    spawn_monitor(
+      fun() ->
+	      case 
+		  %%
+		  %% Authorize local message and retrieve a certificate / signature
+		  %% that will be accepted by the receiving node that will deliver
+		  %% the messaage to its locally connected service_name service.
+		  %%
+		  rvi_common:send_component_request(authorize, authorize_local_message,
+						    [
+						     {service_name, ServiceName}
+						    ],
+						    [ certificate, signature ]) of
+		  { ok, ok, [Certificate, Signature] } -> 
 
-	Err -> 
-	    ?warning("    service_edge_rpc:local_msg() Failed at authorize: ~p", 
-		      [ Err ]),
-	    Err
-    end.
+		      %%
+		      %% Check if this is a local service by trying to resolve its service name. 
+		      %% If successful, just forward it to its service_name.
+		      %% 
+		      case rvi_common:send_component_request(service_discovery, resolve_local_service,
+							     [
+							      {service, ServiceName}
+							     ], [ network_address ]) of
+			  { ok, ok, [ NetworkAddress] } -> %% ServiceName is local. Forward message
+			      ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
+			      forward_message_to_local_service(ServiceName, NetworkAddress, Parameters);
+
+			  _ -> %% ServiceName is remote
+			      %% Ask Schedule the request to resolve the network address
+			      ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
+			      forward_message_to_scheduler(ServiceName, Timeout, Parameters, Certificate, Signature)
+		      end;
+
+		  Err -> 
+		      ?warning("    service_edge_rpc:local_msg() Failed at authorize: ~p", 
+			       [ Err ]),
+		      Err
+	      end
+      end),
+      { ok, [ { status, rvi_common:json_rpc_status(ok)} ] }.
 
 
 %%
