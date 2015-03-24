@@ -590,13 +590,13 @@ handle_cast({ rvi, register_remote_services,
 	     [ Services, LocalServiceAddresses ]}, State) ->
 
     announce_service_availability(services_available, LocalServiceAddresses, Services),
-    { reply, State };
+    { noreply, State };
 
 handle_cast({ rvi, unregister_remote_services, 
 	     [Services, LocalServiceAddresses]}, State) ->
 
     announce_service_availability(services_unavailable, LocalServiceAddresses, Services),
-    { reply, State };
+    { noreply, State };
 
 handle_cast({ rvi, handle_local_timeout, [Service, TransactionID] }, St) ->
     %% FIXME: Should be forwarded to service.
