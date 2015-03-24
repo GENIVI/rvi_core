@@ -59,9 +59,9 @@ send_message(CompSpec,
 		       [ status ], CompSpec).
 
 receive_message(CompSpec, Data) ->
-    rvi_common:notificaion(protocol, ?MODULE, receive_message, 
-			   [ {data, Data } ],
-			   [status], CompSpec).
+    rvi_common:notification(protocol, ?MODULE, receive_message, 
+			    [ {data, Data } ],
+			    [status], CompSpec).
 
 %% JSON-RPC entry point
 
