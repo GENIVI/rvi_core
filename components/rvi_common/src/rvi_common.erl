@@ -14,8 +14,10 @@
 
 -include_lib("rvi_common/include/rvi_common.hrl").
 
--export([send_http_request/3]).
+-export([send_json_request/3]).
+-export([send_json_notification/3]).
 -export([request/6]).
+-export([notification/6]).
 -export([json_rpc_status/1]).
 -export([get_json_element/2]).
 -export([sanitize_service_string/1]).
@@ -171,7 +173,7 @@ request(Component,
 	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),	
 
 	    case get_request_result(
-		   send_http_request(URL, atom_to_list(Function),  JSONArg)
+		   send_json_request(URL, atom_to_list(Function),  JSONArg)
 		  ) of
 
 		{ ok, JSONBody} ->
@@ -183,7 +185,36 @@ request(Component,
 	Err1 -> Err1
     end.
 
-send_http_request(Url,Method, Args) ->
+notification(Component, 
+	     Module, 
+	     Function, 
+	     InArgPropList,
+	     OutArgSpec,
+	     CompSpec) ->
+
+    %% Split [ { network_address, "127.0.0.1:888" } , { timeout, 34 } ] to
+    %% [ "127.0.0.1:888", 34] [ network_address, timeout ] 
+    InArg = [ Val || { _Key, Val } <- InArgPropList ],
+    InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
+    %% Figure out how we are to invoke this MFA.
+    case get_module_type(Component, Module, CompSpec) of
+	%% We have a gen_server
+	{ ok, gen_server } ->
+	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),	
+	    gen_server:cast(Module, { rvi_call, Function, InArg}),
+	    ok;
+
+	%% We have a JSON-RPC server
+	{ ok,  json_rpc } ->
+	    URL = get_module_json_rpc_url(Component, Module, CompSpec),
+	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, URL]),	
+	    JSONArg = json_argument(InArg, InArgSpec),
+	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),	
+	    send_json_notification(URL, atom_to_list(Function),  JSONArg),
+	    ok
+    end.
+
+send_json_request(Url,Method, Args) ->
 
     Req = binary_to_list(
 	    iolist_to_binary(
@@ -195,17 +226,43 @@ send_http_request(Url,Method, Args) ->
 			      }))),
 
     Hdrs = [{'Content-Type', "application/json"} ],
-    %%?debug("rvi_common:send_http_request() Sending:      ~p", [Req]),
+    %%?debug("rvi_common:send_json_request() Sending:      ~p", [Req]),
     try
         exo_http:wpost(Url, {1,1}, Hdrs, Req, 1000)
     catch
         Type:Reason ->
-            ?error("rvi_common:send_http_request() CRASHED: URL:      ~p", [Url]),
-            ?error("rvi_common:send_http_request() CRASHED: Hdrs:     ~p", [Hdrs]),
-            ?error("rvi_common:send_http_request() CRASHED: Body:     ~p", [Req]),
-            ?error("rvi_common:send_http_request() CRASHED: Type:     ~p", [Type]),
-            ?error("rvi_common:send_http_request() CRASHED: Reason:   ~p", [Reason]),
-            ?error("rvi_common:send_http_request() CRASHED: Stack:    ~p", [ erlang:get_stacktrace()]),
+            ?error("rvi_common:send_json_request() CRASHED: URL:      ~p", [Url]),
+            ?error("rvi_common:send_json_request() CRASHED: Hdrs:     ~p", [Hdrs]),
+            ?error("rvi_common:send_json_request() CRASHED: Body:     ~p", [Req]),
+            ?error("rvi_common:send_json_request() CRASHED: Type:     ~p", [Type]),
+            ?error("rvi_common:send_json_request() CRASHED: Reason:   ~p", [Reason]),
+            ?error("rvi_common:send_json_request() CRASHED: Stack:    ~p", [ erlang:get_stacktrace()]),
+            {error, internal}
+    end.
+
+	
+send_json_notification(Url,Method, Args) ->
+
+    Req = binary_to_list(
+	    iolist_to_binary(
+	      exo_json:encode({struct, [{"jsonrpc", "2.0"},
+					{"method",  Method},
+					{"params", Args}
+				       ]
+			      }))),
+
+    Hdrs = [{'Content-Type', "application/json"} ],
+    %%?debug("rvi_common:send_json_notification() Sending:      ~p", [Req]),
+    try
+        exo_http:wpost(Url, {1,1}, Hdrs, Req, 1000)
+    catch
+        Type:Reason ->
+            ?error("rvi_common:send_json_notification() CRASHED: URL:      ~p", [Url]),
+            ?error("rvi_common:send_json_notification() CRASHED: Hdrs:     ~p", [Hdrs]),
+            ?error("rvi_common:send_json_notification() CRASHED: Body:     ~p", [Req]),
+            ?error("rvi_common:send_json_notification() CRASHED: Type:     ~p", [Type]),
+            ?error("rvi_common:send_json_notification() CRASHED: Reason:   ~p", [Reason]),
+            ?error("rvi_common:send_json_notification() CRASHED: Stack:    ~p", [ erlang:get_stacktrace()]),
             {error, internal}
     end.
 	

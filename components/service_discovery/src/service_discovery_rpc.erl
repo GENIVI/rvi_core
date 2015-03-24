@@ -10,8 +10,11 @@
 -module(service_discovery_rpc).
 -behaviour(gen_server).
 
--export([handle_rpc/2]).
+-export([handle_rpc/2,
+	 handle_notification/22]).
+
 -export([start_link/0]).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
@@ -97,17 +100,17 @@ resolve_remote_service(CompSpec, RawService) ->
 		       [status], CompSpec).
 
 register_remote_services(CompSpec, Address, Services) ->
-    rvi_common:request(service_discovery, ?MODULE, register_remote_services, 
-		       [{ network_address, Address },  
-			{ services, Services }],
-		       [status], CompSpec).
+    rvi_common:notification(service_discovery, ?MODULE, register_remote_services, 
+			    [{ network_address, Address },  
+			     { services, Services }],
+			    [status], CompSpec).
 
 
 register_local_service(CompSpec, Address, Services) ->
-    rvi_common:request(service_discovery, ?MODULE, register_local_service, 
-		       [{ network_address, Address }, 
-			{ service, Services }],
-		       [status], CompSpec).
+    rvi_common:notification(service_discovery, ?MODULE, register_local_service, 
+			    [{ network_address, Address }, 
+			     { service, Services }],
+			    [status], CompSpec).
 
 
 

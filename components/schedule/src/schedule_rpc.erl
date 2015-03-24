@@ -29,7 +29,8 @@
 -define(SERVER, ?MODULE). 
 
 
--export([handle_rpc/2]).
+-export([handle_rpc/2,
+	 handle_notification/2]).
 
 
 %% Message structure and storage
@@ -131,18 +132,18 @@ schedule_message(CompSpec,
 
 
 register_remote_services(CompSpec, NetworkAddress, Services) ->
-    rvi_common:request(schedule, ?MODULE, 
-		       register_remote_services, 
-		       [{ network_address, NetworkAddress} ,
-			{ services, Services }], 
-		       [status, transaction_id], CompSpec).
+    rvi_common:notification(schedule, ?MODULE, 
+			    register_remote_services, 
+			    [{ network_address, NetworkAddress} ,
+			     { services, Services }], 
+			    [status, transaction_id], CompSpec).
 
 
 unregister_remote_services(CompSpec, ServiceNames) ->
-    rvi_common:request(schedule, ?MODULE, 
-		       unregister_remote_services, 
-		       [{ services, ServiceNames }], 
-		       [status], CompSpec).
+    rvi_common:notification(schedule, ?MODULE, 
+			    unregister_remote_services, 
+			    [{ services, ServiceNames }], 
+			    [status], CompSpec).
 
 
 
@@ -172,31 +173,36 @@ handle_rpc("schedule_message", Args) ->
 	   { transaction_id, TransID } ] };
 
 
-handle_rpc("register_remote_services", Args) ->
-    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
-    {ok, Services} = rvi_common:get_json_element(["services"], Args),
-    ?debug("schedule_rpc:register_remote_services(): network_address: ~p", [ NetworkAddress]),
-    ?debug("schedule_rpc:register_remote_services(): services:        ~p", [ Services]),
-
-    [ok] = gen_server:call(?SERVER, { rvi_call, register_remote_services, 
-				       [ NetworkAddress,
-					 Services ]}),
-
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
-
-handle_rpc("unregister_remote_services", Args) ->
-    {ok,  DiscountinuedServices} = rvi_common:get_json_element(["services"], Args),
-    ?debug("schedule_rpc:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
-    [ok] = gen_server:call(?SERVER, { rvi_call, unregister_remote_services, 
-				       [ DiscountinuedServices ]}),
-
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
 
 
 handle_rpc(Other, _Args) ->
     ?debug("schedule_rpc:handle_rpc(~p): unknown", [ Other ]),
     {ok, [ {status, rvi_common:json_rpc_status(invalid_command)}]}.
 
+
+handle_notification("register_remote_services", Args) ->
+    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
+    {ok, Services} = rvi_common:get_json_element(["services"], Args),
+    ?debug("schedule_notification:register_remote_services(): network_address: ~p", [ NetworkAddress]),
+    ?debug("schedule_notification:register_remote_services(): services:        ~p", [ Services]),
+
+    gen_server:cast(?SERVER, { rvi_call, register_remote_services, 
+				      [ NetworkAddress,
+					Services ]}),
+
+    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
+
+handle_notification("unregister_remote_services", Args) ->
+    {ok,  DiscountinuedServices} = rvi_common:get_json_element(["services"], Args),
+    ?debug("schedule_notification:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
+    gen_server:cast(?SERVER, { rvi_call, unregister_remote_services, 
+			       [ DiscountinuedServices ]}),
+
+    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
+
+handle_notification(Other, _Args) ->
+    ?debug("schedule_notification:handle_other(~p): unknown", [ Other ]),
+    {ok, [ {status, rvi_common:json_rpc_status(invalid_command)}]}.
 
 handle_call( { rvi_call, schedule_message,
 	       [SvcName, 
@@ -224,22 +230,6 @@ handle_call( { rvi_call, schedule_message,
   
 
 
-handle_call( {rvi_call, register_remote_services, 
-	       [ NetworkAddress, 
-		 Services]}, _From, St) ->
-
-    ?info("schedule:register_remote_services(): services(~p) -> ~p", 
-	  [Services, NetworkAddress]),
-
-    {ok, NSt} =  multiple_services_available(Services, NetworkAddress, St),
-    {reply, [ok], NSt};
-
-
-
-handle_call( {rvi_call, unregister_remote_services, [ServiceNames]}, _From, St) ->
-    ?info("schedule:unregister_remote_services(): Services(~p)", [ServiceNames]),
-    {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
-    {reply, [ok], NSt };
 
 
 
@@ -260,6 +250,23 @@ handle_call(_Request, _From, St) ->
 %%                                  {stop, Reason, St}
 %% @end
 %%--------------------------------------------------------------------
+
+handle_cast( {rvi_call, register_remote_services, 
+	       [ NetworkAddress, 
+		 Services]}, _From, St) ->
+
+    ?info("schedule:register_remote_services(): services(~p) -> ~p", 
+	  [Services, NetworkAddress]),
+
+    {ok, NSt} =  multiple_services_available(Services, NetworkAddress, St),
+    {reply, [ok], NSt};
+
+
+
+handle_cast( {rvi_call, unregister_remote_services, [ServiceNames]}, _From, St) ->
+    ?info("schedule:unregister_remote_services(): Services(~p)", [ServiceNames]),
+    {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
+    {reply, [ok], NSt };
 
 handle_cast(_Msg, St) ->
     {noreply, St}.
@@ -643,7 +650,7 @@ calculate_timeout_period(UTC) ->
 
 do_timeout_callback(CompSpec, Service, 
 		    #message {transaction_id = TransID}) ->
-    service_edge_rpc:handle_local_timeout(CompSpec, Service, TransID),
+    %%service_edge_rpc:handle_local_timeout(CompSpec, Service, TransID),
     ok;
 
 

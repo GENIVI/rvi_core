@@ -44,11 +44,14 @@ handle_body(Socket, Request, Body, AppMod) when Request#http_request.method == '
 		{error, Error} ->
 		    error_response(Socket, Id, Error)
 	    end;
-	{notification, _Method, _Args} ->
-	    %% FIXME: Notification.
+
+	{notification, Method, Args} ->
+	    handle_notification(AppMod, Method, Args),
 	    exo_http_server:response(Socket, undefined, 200, "OK", "");
+
 	{error, _} ->
 	    error_response(Socket, parse_error)
+
     catch
 	error:_ ->
 	    exo_http_server:response(Socket, undefined, 501,
@@ -79,6 +82,20 @@ handle_rpc(Mod, Method, Args) ->
 	    ?warning("exoport_exo_http_server:handle_rpc(ok): UNKNOWN:   ~p", [Wut]),
 	    {error, Wut}
 		
+    catch
+	error:Crash ->
+            ?error("rpc_callback() CRASHED: Reason:   ~p", [Crash]),
+            ?error("post_request() CRASHED: Stack:    ~p", [erlang:get_stacktrace()]),
+	    {error, {internal_error, Crash}}
+    end.
+
+handle_notification(Mod, Method, Args) ->
+    ?debug("exoport_exo_http_server:handle_notification(): Mod:       ~p", [Mod]),
+    ?debug("exoport_exo_http_server:handle_notification(): Method:    ~p", [Method]),
+    ?debug("exoport_exo_http_server:handle_notification(): Args:      ~p", [Args]),
+
+    try Mod:handle_notification(Method, Args) of
+	_ -> ok
     catch
 	error:Crash ->
             ?error("rpc_callback() CRASHED: Reason:   ~p", [Crash]),
