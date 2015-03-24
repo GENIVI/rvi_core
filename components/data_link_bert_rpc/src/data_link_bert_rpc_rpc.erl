@@ -11,6 +11,7 @@
 -behavior(gen_server).
 
 -export([handle_rpc/2]).
+-export([handle_notification/2]).
 -export([handle_socket/6]).
 -export([handle_socket/5]).
 
@@ -101,13 +102,13 @@ setup_static_node_data_links_([ { Prefix, NetworkAddress} | T], CompSpec) ->
 
 %% Behavior implementation
 announce_available_local_service(CompSpec, Service) ->
-    rvi_common:request(data_link, ?MODULE, announce_available_local_service,
-		       [ {service, Service }], [status], CompSpec).
+    rvi_common:notification(data_link, ?MODULE, announce_available_local_service,
+			    [ {service, Service }], CompSpec).
 
 
 announce_unavailable_local_service(CompSpec, Service) ->
-    rvi_common:request(data_link, ?MODULE, announce_unavailable_local_service,
-		       [ {service, Service }], [status], CompSpec).
+    rvi_common:notification(data_link, ?MODULE, announce_unavailable_local_service,
+		       [ {service, Service }], CompSpec).
 
 
 setup_data_link(CompSpec, NetworkAddress) ->
@@ -123,8 +124,8 @@ disconnect_data_link(CompSpec, NetworkAddress) ->
 
 send_data(CompSpec, NetworkAddress, Data) ->
     rvi_common:request(data_link, ?MODULE, send_data,
-		       [ { network_address, NetworkAddress }, 
-			 { data, Data } ], 
+			    [ { network_address, NetworkAddress }, 
+			      { data, Data } ], 
 		       [status], CompSpec).
 
 %% End of behavior
@@ -159,10 +160,10 @@ connect_remote(IP, Port, CompSpec) ->
 				      { certificate, {}}, { signature, {}} }),
 		    ok;
 		
-		Err -> 
+		{error, Err } -> 
 		    ?info("data_link_bert:connect_remote(): Failed ~p:~p: ~p",
 			   [IP, Port, Err]),
-		    Err
+		    not_available
 	    end
     end.
 		    
@@ -393,34 +394,36 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
-handle_rpc("announce_available_local_service", Args) ->
+handle_notification("announce_available_local_service", Args) ->
     { ok,  Service } = rvi_common:get_json_element(["service"], Args),
-    [ ok ] = gen_server:call(?SERVER, { rvi_call, announce_available_local_service, [Service]}),
-    {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
+    gen_server:cast(?SERVER, { rvi, announce_available_local_service, [Service]}),
+    ok;
 
-
-handle_rpc("announce_unavailable_local_service", Args) ->
+handle_notification("announce_unavailable_local_service", Args) ->
     { ok,  Service } = rvi_common:get_json_element(["service"], Args),
 
-    [ ok ] = gen_server:call(?SERVER, { rvi_call, announce_unavailable_local_service, [Service]}),
-    {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
+    gen_server:cast(?SERVER, { rvi, announce_unavailable_local_service, [Service]}),
+    ok;
+
+handle_notification(Other, _Args) ->
+    ?info("data_link_bert:handle_notification(~p): unknown", [ Other ]),
+    ok.
 
 handle_rpc("setup_data_link", Args) ->
     { ok, Address } = rvi_common:get_json_element(["network_address"], Args),
-    [ ok ] = gen_server:call(?SERVER, { rvi_call, setup_data_link, 
-					 [ Address]}),
-    {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
+    Res = gen_server:call(?SERVER, { rvi, setup_data_link, 
+				     [ Address]}),
+    {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
 
 handle_rpc("disconenct_data_link", Args) ->
     { ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
-    [ ok ] = gen_server:call(?SERVER, { rvi_call, disconnect_data_link, [NetworkAddress]}),
-    {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
-
+    Res = gen_server:call(?SERVER, { rvi, disconnect_data_link, [NetworkAddress]}),
+    {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
 
 handle_rpc("send_data", Args) ->
     {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     { ok,  Data} = rvi_common:get_json_element(["data"], Args),
-    [ Res ]  = gen_server:call(?SERVER, { rvi_call, send_data, [NetworkAddress, Data]}),
+    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [NetworkAddress, Data]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
     
     
@@ -429,27 +432,32 @@ handle_rpc(Other, _Args) ->
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
-handle_call({rvi_call, announce_available_local_service, [Service]}, _From, St) ->
+handle_cast({rvi, announce_available_local_service, [Service]}, St) ->
     announce_local_service_(St#st.cs, Service, available),
-    {reply, [ok], St};
+    {noreply, St};
 
-handle_call({rvi_call, announce_unavailable_local_service, [Service]}, _From, St) ->
+handle_cast({rvi, announce_unavailable_local_service, [Service]}, St) ->
     announce_local_service_(St#st.cs, Service, unavailable),
-    {reply, [ok], St};
+    {noreply, St};
 
-handle_call({rvi_call, setup_data_link, [ NetworkAddress ]}, _From, St) ->
+
+handle_cast(Other, St) ->
+    ?warning("data_link_bert:handle_cast(~p): unknown", [ Other ]),
+    {noreply, St}.
+
+handle_call({rvi, setup_data_link, [ NetworkAddress ]}, _From, St) ->
     [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
-    connect_remote(RemoteAddress, list_to_integer(RemotePort), St#st.cs),
-    { reply, [ok], St };
+    Res = connect_remote(RemoteAddress, list_to_integer(RemotePort), St#st.cs),
+    { reply, [Res], St };
 
 
-handle_call({rvi_call, disconnect_data_link, [NetworkAddress] }, _From, St) ->
+handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
     [ Address, Port] = string:tokens(NetworkAddress, ":"),
     Res = connection:terminate_connection(Address,Port),
     { reply, [ Res ], St };
 
 
-handle_call({rvi_call, send_data, [NetworkAddress, Data]}, _From, St) ->
+handle_call({rvi, send_data, [NetworkAddress, Data]}, _From, St) ->
     [ RemoteAddress, RemotePortStr] =  string:tokens(NetworkAddress, ":"),
     RemotePort = list_to_integer(RemotePortStr),
     ?info("data_link_bert:send_data(): Remote: ~p:~p", [ RemoteAddress, RemotePort]),
@@ -477,8 +485,6 @@ handle_call(Other, _From, St) ->
     { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, St}.
 
 
-handle_cast(_Msg, St) ->
-    {noreply, St}.
 
 %% Ping time
 handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->

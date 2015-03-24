@@ -10,7 +10,8 @@
 -module(authorize_rpc).
 -behaviour(gen_server).
 
--export([handle_rpc/2]).
+-export([handle_rpc/2,
+	 handle_notification/2]).
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -126,7 +127,7 @@ authorize_remote_message(CompSpec, Service, Signature, Certificate) ->
 handle_rpc("authorize_local_message", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     [ Status | Rem ] = 
-	gen_server:call(?SERVER, { rvi_call, authorize_local_message, 
+	gen_server:call(?SERVER, { rvi, authorize_local_message, 
 				   [Service]}),
 
     { ok, [ rvi_common:json_rpc_status(Status) | Rem] };
@@ -136,7 +137,7 @@ handle_rpc("authorize_remote_message", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
-    [ Status ]  = gen_server:call(?SERVER, { rvi_call, authorize_remote_message, 
+    [ Status ]  = gen_server:call(?SERVER, { rvi, authorize_remote_message, 
 					     [Service, Signature, Certificate]}),
     { ok, rvi_common:json_rpc_status(Status)};
 
@@ -145,14 +146,17 @@ handle_rpc(Other, _Args) ->
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
+handle_notification(Other, _Args) ->
+    ?debug("authorize_rpc:handle_other(~p): unknown", [ Other ]),
+    ok.
 
 %%
 %% Genserver implementation
 %%
-handle_call({rvi_call, authorize_local_message, [_Service] }, _From, State) ->
+handle_call({rvi, authorize_local_message, [_Service] }, _From, State) ->
     {reply, [ ok, "signature", "certificate" ], State};
 
-handle_call({rvi_call, authorize_remote_message, 
+handle_call({rvi, authorize_remote_message, 
 	     [_Service, _Signature, _Certificate]},
 	     _From, State) ->
 
@@ -163,7 +167,8 @@ handle_call(Other, _From, State) ->
     ?warning("authorize_rpc:handle_call(~p): unknown", [ Other ]),
     { reply, unknown_command, State}.
 
-handle_cast(_Msg, State) ->
+handle_cast(Other, State) ->
+    ?warning("authorize_rpc:handle_cast(~p): unknown", [ Other ]),
     {noreply, State}.
 
 handle_info(_Info, State) ->

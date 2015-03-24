@@ -17,7 +17,7 @@
 -export([send_json_request/3]).
 -export([send_json_notification/3]).
 -export([request/6]).
--export([notification/6]).
+-export([notification/5]).
 -export([json_rpc_status/1]).
 -export([get_json_element/2]).
 -export([sanitize_service_string/1]).
@@ -163,7 +163,7 @@ request(Component,
 	%% We have a gen_server
 	{ ok, gen_server } ->
 	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),	
-	    gen_server:call(Module, { rvi_call, Function, InArg});
+	    gen_server:call(Module, { rvi, Function, InArg});
 
 	%% We have a JSON-RPC server
 	{ ok,  json_rpc } ->
@@ -185,11 +185,11 @@ request(Component,
 	Err1 -> Err1
     end.
 
+
 notification(Component, 
 	     Module, 
 	     Function, 
 	     InArgPropList,
-	     OutArgSpec,
 	     CompSpec) ->
 
     %% Split [ { network_address, "127.0.0.1:888" } , { timeout, 34 } ] to
@@ -201,7 +201,7 @@ notification(Component,
 	%% We have a gen_server
 	{ ok, gen_server } ->
 	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),	
-	    gen_server:cast(Module, { rvi_call, Function, InArg}),
+	    gen_server:cast(Module, { rvi, Function, InArg}),
 	    ok;
 
 	%% We have a JSON-RPC server

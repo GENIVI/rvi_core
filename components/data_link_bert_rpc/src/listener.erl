@@ -19,12 +19,6 @@
 -export([init/2, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, sock_opts/0, new_connection/4]).
 
--record(state, {cb,
-                addrs=dict:new(),
-                socks=dict:new(),
-                server_state}).
-
-
 -behavior(gen_nb_server).
 
 start_link() ->
@@ -55,6 +49,7 @@ handle_call({remove_listener, IpAddr, Port}, _From, State) ->
         Error ->
             {reply, Error, State}
     end;
+
 handle_call(_Msg, _From, State) ->
     {reply, ignored, State}.
 

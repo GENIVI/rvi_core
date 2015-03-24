@@ -10,7 +10,8 @@
 -module(protocol_rpc).
 -behaviour(gen_server).
 
--export([handle_rpc/2]).
+-export([handle_rpc/2,
+	 handle_notification/2]).
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
@@ -58,9 +59,9 @@ send_message(CompSpec,
 		       [ status ], CompSpec).
 
 receive_message(CompSpec, Data) ->
-    rvi_common:request(protocol, ?MODULE, receive_message, 
-		       [ {data, Data } ],
-		       [status], CompSpec).
+    rvi_common:notificaion(protocol, ?MODULE, receive_message, 
+			   [ {data, Data } ],
+			   [status], CompSpec).
 
 %% JSON-RPC entry point
 
@@ -72,7 +73,7 @@ handle_rpc("send_message", Args) ->
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
-    [ ok ] = gen_server:call(?SERVER, { rvi_call, send_message, 
+    [ ok ] = gen_server:call(?SERVER, { rvi, send_message, 
 					[ServiceName,
 					 Timeout,
 					 NetworkAddress,
@@ -82,18 +83,24 @@ handle_rpc("send_message", Args) ->
     {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
 				 
 
-handle_rpc("receive_message", Args) ->
-    {ok, Data} = rvi_common:get_json_element(["data"], Args),
-
-    [ ok ] = gen_server:call(?SERVER, { rvi_call, receive_message, [Data]}),
-    {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
-
 
 handle_rpc(Other, _Args) ->
-    ?debug("    protocol_rpc:handle_rpc(~p): Unknown~n", [ Other ]),
+    ?warning("protocol_rpc:handle_rpc(~p): Unknown~n", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
-handle_call({rvi_call, send_message, 
+
+handle_notification("receive_message", Args) ->
+    {ok, Data} = rvi_common:get_json_element(["data"], Args),
+
+    gen_server:cast(?SERVER, { rvi, receive_message, [Data]}),
+    ok;
+
+handle_notification(Other, _Args) ->
+    ?debug("protocol_rpc:handle_other(~p): unknown", [ Other ]),
+    ok.
+
+
+handle_call({rvi, send_message, 
 	     [ServiceName,
 	      Timeout,
 	      NetworkAddress,
@@ -116,12 +123,15 @@ handle_call({rvi_call, send_message,
     { reply, Res, St };
 
 
-%% Convert list-based data to binary.
-handle_call({rvi_call, receive_message, [Data]}, From, St) when is_list(Data)->
-    handle_call({ rvi_call, receive_message, 
-		  [ list_to_binary(Data) ] }, From, St);
+handle_call(Other, _From, St) ->
+    ?warning("protocol_rpc:handle_call(~p): unknown", [ Other ]),
+    { reply, [ invalid_command ], St}.
 
-handle_call({rvi_call, receive_message, [Data]}, _From, St) ->
+%% Convert list-based data to binary.
+handle_cast({rvi, receive_message, [Data]}, St) when is_list(Data)->
+    handle_cast({ rvi, receive_message, [ list_to_binary(Data) ] }, St);
+
+handle_cast({rvi, receive_message, [Data]}, St) ->
     { ServiceName, 
       Timeout, 
       NetworkAddress, 
@@ -135,20 +145,18 @@ handle_call({rvi_call, receive_message, [Data]}, _From, St) ->
     ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
     ?debug("    protocol:rcv(): certificate:     ~p~n", [Certificate]),
 
-    Res = service_edge_rpc:handle_remote_message(St#st.cs, 
-						 ServiceName,
-						 Timeout,
-						 NetworkAddress,
-						 Parameters,
-						 Signature,
-						 Certificate),
-    {reply, Res , St};
+    service_edge_rpc:handle_remote_message(St#st.cs, 
+					   ServiceName,
+					   Timeout,
+					   NetworkAddress,
+					   Parameters,
+					   Signature,
+					   Certificate),
+    {noreply, St};
 
-handle_call(Other, _From, St) ->
-    ?warning("protocol_rpc:handle_call(~p): unknown", [ Other ]),
-    { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, St}.
 
-handle_cast(_Msg, St) ->
+handle_cast(Other, St) ->
+    ?warning("protocol_rpc:handle_cast(~p): unknown", [ Other ]),
     {noreply, St}.
 
 handle_info(_Info, St) ->

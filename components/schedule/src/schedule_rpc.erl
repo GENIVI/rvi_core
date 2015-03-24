@@ -162,7 +162,7 @@ handle_rpc("schedule_message", Args) ->
     ?debug("schedule_rpc:schedule_request(): signature:   ~p", [Signature]),
     ?debug("schedule_rpc:schedule_request(): certificate: ~p", [Certificate]),
 
-    [ok, TransID] = gen_server:call(?SERVER, { rvi_call, schedule_message, 
+    [ok, TransID] = gen_server:call(?SERVER, { rvi, schedule_message, 
 					       [ SvcName,
 						 Timeout,
 						 Parameters,
@@ -186,25 +186,24 @@ handle_notification("register_remote_services", Args) ->
     ?debug("schedule_notification:register_remote_services(): network_address: ~p", [ NetworkAddress]),
     ?debug("schedule_notification:register_remote_services(): services:        ~p", [ Services]),
 
-    gen_server:cast(?SERVER, { rvi_call, register_remote_services, 
+    gen_server:cast(?SERVER, { rvi, register_remote_services, 
 				      [ NetworkAddress,
 					Services ]}),
 
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
+    ok;
 
 handle_notification("unregister_remote_services", Args) ->
     {ok,  DiscountinuedServices} = rvi_common:get_json_element(["services"], Args),
     ?debug("schedule_notification:unregister_remote_services(): services         ~p", [ DiscountinuedServices]),
-    gen_server:cast(?SERVER, { rvi_call, unregister_remote_services, 
+    gen_server:cast(?SERVER, { rvi, unregister_remote_services, 
 			       [ DiscountinuedServices ]}),
-
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]};
+    ok;
 
 handle_notification(Other, _Args) ->
     ?debug("schedule_notification:handle_other(~p): unknown", [ Other ]),
-    {ok, [ {status, rvi_common:json_rpc_status(invalid_command)}]}.
+    ok.
 
-handle_call( { rvi_call, schedule_message,
+handle_call( { rvi, schedule_message,
 	       [SvcName, 
 		Timeout, 
 		Parameters,
@@ -229,15 +228,9 @@ handle_call( { rvi_call, schedule_message,
     { reply, [ok, TransID], NSt };
   
 
-
-
-
-
-
-
-handle_call(_Request, _From, St) ->
-    Reply = ok,
-    {reply, Reply, St}.
+handle_call(Other, _From, St) ->
+    ?warning("schedule:handle_call(~p): unknown", [ Other ]),
+    { reply,  [unknown_command] , St}.
 
 
 %%--------------------------------------------------------------------
@@ -251,9 +244,8 @@ handle_call(_Request, _From, St) ->
 %% @end
 %%--------------------------------------------------------------------
 
-handle_cast( {rvi_call, register_remote_services, 
-	       [ NetworkAddress, 
-		 Services]}, _From, St) ->
+handle_cast( {rvi, register_remote_services, 
+	       [ NetworkAddress, Services]}, St) ->
 
     ?info("schedule:register_remote_services(): services(~p) -> ~p", 
 	  [Services, NetworkAddress]),
@@ -263,12 +255,13 @@ handle_cast( {rvi_call, register_remote_services,
 
 
 
-handle_cast( {rvi_call, unregister_remote_services, [ServiceNames]}, _From, St) ->
+handle_cast( {rvi, unregister_remote_services, [ServiceNames]}, St) ->
     ?info("schedule:unregister_remote_services(): Services(~p)", [ServiceNames]),
     {ok, NSt} =  multiple_services_unavailable(ServiceNames, St),
     {reply, [ok], NSt };
 
-handle_cast(_Msg, St) ->
+handle_cast(Other, St) ->
+    ?warning("schedule:handle_cast(~p): unknown", [ Other ]),
     {noreply, St}.
 
 %%--------------------------------------------------------------------
@@ -493,9 +486,9 @@ bring_up_data_link(CompSpec, SvcName) ->
 	[ ok, Address] -> 
 	    %% Tell data link to bring up a communicationc hannel.
 	    case data_link_bert_rpc_rpc:setup_data_link(CompSpec, Address) of
-		[ok ] ->
+		[ ok ] ->
 		    ok;
-		[already_connected ] ->
+		[ already_connected ] ->
 		    already_connected;
 		Que -> 
 		    ?info("schedule:bring_up_data_link() Failed:~p.", [Que]),
@@ -650,7 +643,7 @@ calculate_timeout_period(UTC) ->
 
 do_timeout_callback(CompSpec, Service, 
 		    #message {transaction_id = TransID}) ->
-    %%service_edge_rpc:handle_local_timeout(CompSpec, Service, TransID),
+    service_edge_rpc:handle_local_timeout(CompSpec, Service, TransID),
     ok;
 
 
