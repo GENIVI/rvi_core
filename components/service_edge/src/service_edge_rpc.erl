@@ -28,7 +28,8 @@
 
 -export([register_remote_services/3,
 	 unregister_remote_services/3,
-	 handle_remote_message/6]).
+	 handle_remote_message/6,
+	 handle_local_timeout/3]).
 
 -export([start_json_server/0, 
 	 start_websocket/0]).
@@ -112,6 +113,17 @@ start_websocket() ->
     end.
 
 
+%% Invoked by schedule_rpc.
+%% A message originated from a locally connected service
+%% has timed out
+handle_local_timeout(CompSpec, Service, TransID) ->
+    rvi_common:request(service_edge, ?SERVER, handle_local_timeout, 
+		       [ Service, TransID ], 
+		       [ service, transaction_id ],
+		       [ status ],
+		       CompSpec).
+
+
 register_remote_services(CompSpec, Service, LocalServiceAddresses) ->
     rvi_common:request(service_edge, ?SERVER, register_remote_services, 
 		       [ Service, LocalServiceAddresses ], 
@@ -127,7 +139,6 @@ unregister_remote_services(CompSpec, Services, LocalServiceAddresses) ->
 		       [ status ],
 		       CompSpec).
 
-
 %%
 %% Handle a message, delivered from a remote node through protocol, that is
 %% to be forwarded to a locally connected service.
@@ -137,7 +148,7 @@ handle_remote_message(CompSpec, ServiceName, Timeout,
     rvi_common:request(servide_edge, ?SERVER, handle_remote_message,
 		       [ ServiceName, Timeout, Parameters, Signature, Certificate ],
 		       [ service, timeout, parameters, signature, certificate ],
-		       [ status ], 
+		       [ status, transaction_id ], 
 		       CompSpec).
 
 
@@ -266,19 +277,20 @@ forward_message_to_local_service(ServiceName, NetworkAddress, Parameters, _CompS
 						{ parameters, Parameters }]})) of
 
 	%% Request delivered.
+	%% -1 is transaction ID.
 	{ ok, _Result } ->
-	    ok;
+	    [ ok, -1 ];
 
 	%% status returned was an error code.
 	{ Other, _Result } ->
 	    ?warning("service_edge:forward_to_local(): ~p:~p Failed: ~p.", 
 		     [NetworkAddress, ServiceName, Other]),
-	    Other;
+	    [not_found, -1];
 
 	Other ->
 	    ?warning("service_edge:forward_to_local(): ~p:~p Unknown error: ~p.", 
 		     [NetworkAddress, ServiceName, Other]),
-	    internal
+	    [internal, -1]
     end.
     
 %% A message is to targeting a service that is connected to the local RVI
@@ -298,18 +310,27 @@ forward_message_to_local_service(ServiceName, Parameters, CompSpec) ->
 	[ not_found ] ->
 	    ?info("service_edge_rpc:forward_message_to_local() Not found: ~p", 
 		   [ ServiceName ]),
-	    not_found;
+	    [not_found, -1];
 		    
 	Err ->  
 	    ?debug("service_edge_rpc:local_msg() Failed at service discovery: ~p", 
 			      [ Err ]),
-	    internal
+	    [internal, -1]
     end.
 
 
 
 %% JSON-RPC entry point
 %% Called by local exo http server
+handle_rpc("handle_local_timeout", Args) ->
+    {ok, Service} = rvi_common:get_json_element(["service"], Args),
+    {ok, TransactionID} = rvi_common:get_json_element(["transaction_id"], Args),
+    gen_server:call(?SERVER, { rvi_call, handle_local_timeout, 
+			       [ Service, TransactionID]}),
+
+    {ok, [ {status, rvi_common:json_rpc_status(ok) }]};
+
+
 handle_rpc("register_service", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
@@ -355,9 +376,11 @@ handle_rpc("message", Args) ->
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
-    [ Res ] = gen_server:call(?SERVER, { rvi_call, handle_local_message, 
-					 [ ServiceName, Timeout, Parameters]}),
-    {ok,[ { status, rvi_common:json_rpc_status(Res)} ]};
+    [ Res, TID ] = gen_server:call(?SERVER, { rvi_call, handle_local_message, 
+					      [ ServiceName, Timeout, Parameters]}),
+    io:format("MESSGE: ~p, ~p", [ Res, TID]), 
+    {ok, [ { status, rvi_common:json_rpc_status(Res) },
+	   { transaction_id, TID } ]};
 
 handle_rpc("handle_remote_message", Args) ->
     { ok, ServiceName } = rvi_common:get_json_element(["service_name"], Args),
@@ -408,14 +431,24 @@ wse_message(Ws, ServiceName, Timeout, JSONParameters) ->
     ?debug("service_edge_rpc:wse_message(~p) Timeout:         ~p", [ Ws, Timeout]),
     ?debug("service_edge_rpc:wse_message(~p) Parameters:      ~p", [ Ws, Parameters ]),
 
-    [ Res ] = gen_server:call(?SERVER, { rvi_call, handle_local_message, 
-					 [ ServiceName, Timeout, Parameters]}),
+    [ Res, TID ] = gen_server:call(?SERVER, { rvi_call, handle_local_message, 
+					      [ ServiceName, Timeout, Parameters]}),
 
-    { ok, [ { status, rvi_common:json_rpc_status(Res) } ] }.
+    { ok, [ { status, rvi_common:json_rpc_status(Res) }, 
+	    { transaction_id, TID} ] }.
 
 %% Deprecated
 wse_message(Ws, ServiceName, Timeout, JSONParameters, _CallingService) ->
     wse_message(Ws, ServiceName, Timeout, JSONParameters).
+
+
+handle_call({ rvi_call, handle_local_timeout, [Service, TransactionID] }, _From, St) ->
+
+    %% FIXME: Should be forwarded to service.
+    ?info("service_edge_rpc:handle_local_timeout(): service: ~p trans_id: ~p ", 
+	  [Service, TransactionID]),
+    
+    { reply, [ok], St};
 
 
 %% Handle calls received through regular gen_server calls, routed byh
@@ -493,24 +526,26 @@ handle_call({ rvi_call, handle_local_message,
     %% Check if this is a local service by trying to resolve its service name. 
     %% If successful, just forward it to its service_name.
     %% 
-    Res = case service_discovery_rpc:resolve_local_service(St#st.cs, ServiceName) of
+    case service_discovery_rpc:resolve_local_service(St#st.cs, ServiceName) of
 	[ ok, NetworkAddress]  -> %% ServiceName is local. Forward message
 	    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
-	    [ forward_message_to_local_service(ServiceName, 
-					       NetworkAddress, 
-					       Parameters,
-					       St#st.cs) ];
+	    Res = forward_message_to_local_service(ServiceName, 
+						   NetworkAddress, 
+						   Parameters,
+						   St#st.cs),
+	    { reply, Res , St};
 
 	_ -> %% ServiceName is remote
 	    %% Ask Schedule the request to resolve the network address
 	    ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
-		  schedule_rpc:schedule_message(ServiceName, 
-						Timeout, 
-						Parameters,
-						Certificate,
-						Signature)
-    end,
-    { reply, Res, St};
+	    [ _, TID ] = schedule_rpc:schedule_message(St#st.cs, 
+						       ServiceName, 
+						       Timeout, 
+						       Parameters,
+						       Certificate,
+						       Signature),
+	    { reply, [ok, TID ], St}
+    end;
 
 handle_call({rvi_call, register_remote_services, 
 	     [ Services, LocalServiceAddresses ]}, _From, State) ->

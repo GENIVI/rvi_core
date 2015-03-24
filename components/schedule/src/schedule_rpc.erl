@@ -17,7 +17,7 @@
 -include_lib("rvi_common/include/rvi_common.hrl").
 %% API
 -export([start_link/0]).
--export([schedule_message/7,
+-export([schedule_message/6,
 	 register_remote_services/3, 
 	 unregister_remote_services/2]).
 
@@ -68,7 +68,7 @@
 -record(st, { 
 	  next_transaction_id = 1, %% Sequentially incremented transaction id.
 	  services_tid = undefined,
-	  cs %% Known services.
+	  cs %% Service specification
 	 }).
 
 
@@ -116,7 +116,6 @@ start_json_server() ->
 schedule_message(CompSpec, 
 		 SvcName, 
 		 Timeout, 
-		 Callback,
 		 Parameters,
 		 Signature,
 		 Certificate) ->
@@ -125,7 +124,6 @@ schedule_message(CompSpec,
 		       schedule_message, 
 		       [SvcName, 
 			Timeout,
-			Callback, 
 			Parameters, 
 			Signature, 
 			Certificate], 
@@ -209,14 +207,12 @@ handle_rpc(Other, _Args) ->
 handle_call( { rvi_call, schedule_message,
 	       [SvcName, 
 		Timeout, 
-		Callback,
 		Parameters,
 		Signature,
 		Certificate] }, _From, St) ->
 
     ?debug("schedule:sched_msg(): service_name:     ~p", [SvcName]),
     ?debug("schedule:sched_msg(): timeout:          ~p", [Timeout]),
-    ?debug("schedule:sched_msg(): callback:         ~p", [Callback]),
     ?debug("schedule:sched_msg(): parameters:       ~p", [Parameters]),
     ?debug("schedule:sched_msg(): signature:        ~p", [Signature]),
     ?debug("schedule:sched_msg(): certificate:      ~p", [Certificate]),
@@ -225,7 +221,6 @@ handle_call( { rvi_call, schedule_message,
 
     { ok, TransID, NSt } = queue_message(SvcName, 
 					 Timeout, 
-					 Callback, 
 					 Parameters, 
 					 Signature,
 					 Certificate,
@@ -287,7 +282,8 @@ handle_cast(_Msg, St) ->
 %%--------------------------------------------------------------------
 
 %% Handle timeouts
-handle_info({ rvi_message_timeout, SvcName, TransID}, #st { services_tid = SvcTid } = St) ->
+handle_info({ rvi_message_timeout, SvcName, TransID}, 
+	    #st { cs = CompSpec, services_tid = SvcTid } = St) ->
 
     case  ets:lookup(SvcTid, SvcName) of
 	[ Svc ] ->
@@ -295,7 +291,7 @@ handle_info({ rvi_message_timeout, SvcName, TransID}, #st { services_tid = SvcTi
 	    case ets:lookup(Svc#service.messages_tid, TransID) of
 		[ Msg ] ->
 		    ?info("schedule:timeout(): trans_id(~p) service(~p)", [ TransID, SvcName]),
-		    do_timeout_callback(Svc, Msg),
+		    do_timeout_callback(CompSpec, Svc, Msg),
 		    ets:delete(Svc#service.messages_tid, TransID);
 		_ -> 
 		    ?info("schedule:timeout(): trans_id(~p) service(~p): Yanked while processing", [ TransID, SvcName]),
@@ -347,7 +343,6 @@ code_change(_OldVsn, St, _Extra) ->
 %% 'unavailable'
 queue_message(SvcName, 
 	      Timeout, 
-	      Callback, 
 	      Parameters, 
 	      Signature,
 	      Certificate, St) ->
@@ -369,7 +364,6 @@ queue_message(SvcName,
 	     transaction_id = NewTransID,
 	     timeout = Timeout,
 	     timeout_tref = TRef,
-	     timeout_cb = Callback,
 	     parameters = Parameters, 
 	     signature = Signature,
 	     certificate = Certificate
@@ -653,11 +647,13 @@ calculate_timeout_period(UTC) ->
 
 %% Handle a callback for a timed out message.
 
-do_timeout_callback(Service, #message { timeout_cb = { M, F, A}, 
-					transaction_id = TransID}) ->
-    M:F(Service, TransID, A);
+do_timeout_callback(CompSpec, Service, 
+		    #message {transaction_id = TransID}) ->
+    service_edge_rpc:handle_local_timeout(CompSpec, Service, TransID),
+    ok;
+
 
 %% callback element of #message is not an {M,F,A} format, ignore.
-do_timeout_callback(_,_) ->
+do_timeout_callback(_,_,_) ->
     ok.
 

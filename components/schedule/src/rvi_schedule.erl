@@ -12,7 +12,6 @@
 -callback schedule_message(CompSpec :: #component_spec{}, 
 			   SvcName :: string(), 
 			   Timeout :: integer(),
-			   Callback :: mfa(), 
 			   Parameters :: any(), 
 			   Signature :: string(),
 			   Certificate :: string()) -> Result::tuple().
