@@ -104,7 +104,7 @@ handle_call({rvi_call, send_message,
 	      NetworkAddress,
 	      Parameters,
 	      Signature,
-	      Certificate]}, _From, State) ->
+	      Certificate]}, _From, St) ->
     ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
     ?debug("    protocol:send(): network_address: ~p~n", [NetworkAddress]),
@@ -116,17 +116,17 @@ handle_call({rvi_call, send_message,
     Data = term_to_binary({ ServiceName, Timeout, NetworkAddress, 
 			    Parameters, Signature, Certificate }),
 
-    Res = data_link_bert_rpc_rpc:send_data(NetworkAddress, Data),
+    Res = data_link_bert_rpc_rpc:send_data(St#st.cs, NetworkAddress, Data),
 
-    { reply, Res, State };
+    { reply, Res, St };
 
 
 %% Convert list-based data to binary.
-handle_call({rvi_call, receive_message, [Data]}, From, State) when is_list(Data)->
+handle_call({rvi_call, receive_message, [Data]}, From, St) when is_list(Data)->
     handle_call({ rvi_call, receive_message, 
-		  [ list_to_binary(Data) ] }, From, State);
+		  [ list_to_binary(Data) ] }, From, St);
 
-handle_call({rvi_call, receive_message, [Data]}, _From, State) ->
+handle_call({rvi_call, receive_message, [Data]}, _From, St) ->
     { ServiceName, 
       Timeout, 
       NetworkAddress, 
@@ -140,25 +140,26 @@ handle_call({rvi_call, receive_message, [Data]}, _From, State) ->
     ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
     ?debug("    protocol:rcv(): certificate:     ~p~n", [Certificate]),
 
-    Res = service_edge_rpc:handle_remote_message(ServiceName,
+    Res = service_edge_rpc:handle_remote_message(St#st.cs, 
+						 ServiceName,
 						 Timeout,
 						 NetworkAddress,
 						 Parameters,
 						 Signature,
 						 Certificate),
-    {reply, Res , State};
+    {reply, Res , St};
 
-handle_call(Other, _From, State) ->
+handle_call(Other, _From, St) ->
     ?warning("protocol_rpc:handle_call(~p): unknown", [ Other ]),
-    { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, State}.
+    { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, St}.
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+handle_cast(_Msg, St) ->
+    {noreply, St}.
 
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info(_Info, St) ->
+    {noreply, St}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, _St) ->
     ok.
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, St, _Extra) ->
+    {ok, St}.
