@@ -19,5 +19,5 @@
 		  rvi_common
                  ]},
   {mod, { data_link_bert_rpc_app, []}},
-  {start_phases, [{init, []}]}
+  {start_phases, [{json_rpc, []}, {connection_manager, []}]}
  ]}.

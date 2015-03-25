@@ -19,5 +19,5 @@
 		  rvi_common
                  ]},
   {mod, { protocol_app, []}},
-  {start_phases, [{init, []}]}
+  {start_phases, [{json_rpc, []}]}
  ]}.

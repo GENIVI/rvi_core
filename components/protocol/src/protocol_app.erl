@@ -25,6 +25,10 @@ start(_StartType, _StartArgs) ->
 
 start_phase(init, _, _) ->
     protocol_rpc:init_rvi_component(),
+    ok;
+
+start_phase(json_rpc, _, _) ->
+    protocol_rpc:start_json_server(),
     ok.
 
 stop(_State) ->

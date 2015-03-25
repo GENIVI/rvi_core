@@ -44,13 +44,12 @@ rvi_node = sys.argv[1]
 rvi = RVI(rvi_node)
 
 
-print "RVI Node:         ", rvi_node
-
-
 #
-# Send the messge.
+# Retreieve services
 #
-print rvi.get_available_services()
+for i in rvi.get_available_services():
+    print i
+
 
 
 
