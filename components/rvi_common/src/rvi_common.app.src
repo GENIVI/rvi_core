@@ -18,7 +18,6 @@
                   stdlib
                  ]},
   {mod, { rvi_common_app, []}},
-  {env, [
-	 {yang_spec_modules, [{"$PRIV_DIR/yang", "yang_spec_*.beam"}]}
-	]}
+  {start_phases, [{setup_config, []}]},
+  {env, []}
  ]}.

@@ -23,7 +23,8 @@
 start(_StartType, _StartArgs) ->
     rvi_common_sup:start_link().
 
-start_phase(_, _, _) ->
+start_phase(setup_config, _, _) ->
+    rvi_config:setup_substitution(rvi),
     ok.
 
 stop(_State) ->
