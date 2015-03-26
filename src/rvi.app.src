@@ -16,9 +16,9 @@
   {applications, [
                   kernel,
                   stdlib,
+		  rvi_common,
 		  schedule,
 		  lager,
-		  rvi_common,
 		  service_edge,
 		  service_discovery,
 		  authorize,
