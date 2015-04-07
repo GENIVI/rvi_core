@@ -35,5 +35,6 @@ init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
 	    ?CHILD(schedule_rpc, worker)
+	    ?CHILD(router, worker)
 	   ]} }.
 

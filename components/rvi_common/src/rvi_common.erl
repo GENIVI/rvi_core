@@ -85,6 +85,9 @@ json_rpc_status(5) ->
 json_rpc_status("5") ->
     already_connected;
 
+json_rpc_status("6") ->
+    no_route;
+
 
 json_rpc_status(Unknown) when is_integer(Unknown)->
     undefined;
@@ -109,6 +112,10 @@ json_rpc_status(internal) ->
 
 json_rpc_status(already_connected) ->
     5;
+
+
+json_rpc_status(no_route) ->
+    6;
 
 json_rpc_status(_) ->
     999.
