@@ -7,7 +7,7 @@
 %%
 
 
--module(protocol_rpc).
+-module(proto_bert_rpc_rpc).
 -behaviour(gen_server).
 
 -export([handle_rpc/2,

@@ -7,7 +7,7 @@
 %%
 
 
--module(protocol_sup).
+-module(proto_bert_rpc_sup).
 
 -behaviour(supervisor).
 
@@ -34,6 +34,6 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-	    ?CHILD(protocol_rpc, worker)
+	    ?CHILD(proto_bert_rpc_rpc, worker)
 	   ]} }.
 
