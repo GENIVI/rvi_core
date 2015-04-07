@@ -18,6 +18,6 @@
                   stdlib,
 		  rvi_common
                  ]},
-  {mod, { proto_bert_rpc_app, []}},
+  {mod, { proto_bert_app, []}},
   {start_phases, [{json_rpc, []}]}
  ]}.

@@ -7,7 +7,7 @@
 %%
 
 
--module(protocol_app).
+-module(proto_bert_app).
 
 -behaviour(application).
 

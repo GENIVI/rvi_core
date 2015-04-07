@@ -7,7 +7,7 @@
 %%
 
 
--module(proto_bert_rpc_sup).
+-module(proto_bert_sup).
 
 -behaviour(supervisor).
 
