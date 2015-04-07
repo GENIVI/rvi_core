@@ -22,7 +22,7 @@
 
 -define(SERVER, ?MODULE). 
 -export([start_json_server/0]).
--export([send_message/7,
+-export([send_message/10,
 	 receive_message/2]).
 
 -record(st, { 
@@ -45,6 +45,9 @@ start_json_server() ->
 send_message(CompSpec, 
 	     ServiceName, 
 	     Timeout, 
+	     ProtoOpts,
+	     DataLinkMod,
+	     DataLinkOpts,
 	     NetworkAddress, 
 	     Parameters, 
 	     Signature, 
@@ -52,6 +55,9 @@ send_message(CompSpec,
     rvi_common:request(protocol, ?MODULE, send_message,
 		       [ { service, ServiceName },
 			 { timeout, Timeout },
+			 { protocol_opts, ProtoOpts },
+			 { data_link_mod, DataLinkMod },
+			 { data_link_opts, DataLinkOpts },
 			 { network_address, NetworkAddress }, 
 			 { parameters, Parameters },
 			 { signature, Signature },
@@ -69,6 +75,9 @@ receive_message(CompSpec, Data) ->
 handle_rpc("send_message", Args) ->
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
+    {ok, ProtoOpts} = rvi_common:get_json_element(["protocol_opts"], Args),
+    {ok, DataLinkMod} = rvi_common:get_json_element(["data_link_mod"], Args),
+    {ok, DataLinkOpts} = rvi_common:get_json_element(["data_link_opts"], Args),
     {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
@@ -76,6 +85,9 @@ handle_rpc("send_message", Args) ->
     [ ok ] = gen_server:call(?SERVER, { rvi, send_message, 
 					[ServiceName,
 					 Timeout,
+					 ProtoOpts,
+					 DataLinkMod,
+					 DataLinkOpts,
 					 NetworkAddress,
 					 Parameters,
 					 Signature, 
@@ -103,12 +115,18 @@ handle_notification(Other, _Args) ->
 handle_call({rvi, send_message, 
 	     [ServiceName,
 	      Timeout,
+	      ProtoOpts,
+	      DataLinkMod,
+	      DataLinkOpts,
 	      NetworkAddress,
 	      Parameters,
 	      Signature,
 	      Certificate]}, _From, St) ->
     ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
+    ?debug("    protocol:send(): opts:            ~p~n", [Opts]),
+    ?debug("    protocol:send(): data_link_mod:   ~p~n", [DataLinkMod]),
+    ?debug("    protocol:send(): data_link_opts:  ~p~n", [DataLinkOpts]),
     ?debug("    protocol:send(): network_address: ~p~n", [NetworkAddress]),
 %%    ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
@@ -118,7 +136,7 @@ handle_call({rvi, send_message,
     Data = term_to_binary({ ServiceName, Timeout, NetworkAddress, 
 			    Parameters, Signature, Certificate }),
 
-    Res = data_link_bert_rpc_rpc:send_data(St#st.cs, NetworkAddress, Data),
+    Res = DataLinkMod:send_data(St#st.cs, NetworkAddress, DataLinkOpts, Data),
 
     { reply, Res, St };
 
