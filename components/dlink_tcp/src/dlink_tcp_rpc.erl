@@ -7,7 +7,7 @@
 %%
 
 
--module(data_link_bert_rpc_rpc).
+-module(dlink_tcp_rpc).
 -behavior(gen_server).
 
 -export([handle_rpc/2]).
@@ -55,7 +55,7 @@ init([]) ->
     }.
 
 start_json_server() ->
-    rvi_common:start_json_rpc_server(data_link, ?MODULE, data_link_bert_rpc_sup).
+    rvi_common:start_json_rpc_server(data_link, ?MODULE, dlink_tcp_sup).
 
 
 start_connection_manager() ->
@@ -468,7 +468,7 @@ handle_call({rvi, send_data, [NetworkAddress, Data]}, _From, St) ->
 handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     %% Create a timer to handle periodic pings.
     {ok, ServerOpts } = rvi_common:get_module_config(data_link, 
-						     data_link_bert_rpc,
+						     dlink_tcp,
 						     bert_rpc_server, [], 
 						     St#st.cs),
     Timeout = proplists:get_value(ping_interval, ServerOpts, ?DEFAULT_PING_INTERVAL),

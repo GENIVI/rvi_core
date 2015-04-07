@@ -8,7 +8,7 @@
 
 
 %% -*- erlang -*-
-{application, data_link_bert_rpc,
+{application, dlink_tcp,
  [
   {description, ""},
   {vsn, "0.1"},
@@ -18,6 +18,6 @@
                   stdlib,
 		  rvi_common
                  ]},
-  {mod, { data_link_bert_rpc_app, []}},
+  {mod, { dlink_tcp_app, []}},
   {start_phases, [{json_rpc, []}, {connection_manager, []}]}
  ]}.

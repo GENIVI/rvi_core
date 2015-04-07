@@ -7,7 +7,7 @@
 %%
 
 
--module(data_link_bert_rpc_app).
+-module(dlink_tcp_app).
 
 -behaviour(application).
 
@@ -21,17 +21,17 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    data_link_bert_rpc_sup:start_link().
+    dlink_tcp_sup:start_link().
 
 start_phase(init, _, _) ->
-    data_link_bert_rpc_rpc:init_rvi_component();
+    dlink_tcp_rpc:init_rvi_component();
 
 start_phase(json_rpc, _, _) ->
-    data_link_bert_rpc_rpc:start_json_server(),
+    dlink_tcp_rpc:start_json_server(),
     ok;
 
 start_phase(connection_manager, _, _) ->
-    data_link_bert_rpc_rpc:start_connection_manager(),
+    dlink_tcp_rpc:start_connection_manager(),
     ok.
 
 
