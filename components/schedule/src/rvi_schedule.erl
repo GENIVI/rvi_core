@@ -7,6 +7,7 @@
 %%
 
 -module(rvi_schedule).
+
 -include_lib("rvi_common/include/rvi_common.hrl").
 
 -callback schedule_message(CompSpec :: #component_spec{}, 

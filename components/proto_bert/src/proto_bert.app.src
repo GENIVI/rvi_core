@@ -8,7 +8,7 @@
 
 
 %% -*- erlang -*-
-{application, proto_bert_rpc,
+{application, proto_bert,
  [
   {description, ""},
   {vsn, "0.1"},

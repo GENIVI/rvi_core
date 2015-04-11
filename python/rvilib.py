@@ -73,6 +73,10 @@ class RVI(SimpleJSONRPCServer):
     # in an RVI network to access your service.
     #
     def register_service(self, service_name, function):
+        # Add a prefixing slash if necessary
+        if service_name[0] != '/':
+            service_name = '/' + service_name
+
         # Register service_name within SimpleJSONRPCServer so that
         # when it gets invoked with the given URL suffic, it will call 'function'.
         #

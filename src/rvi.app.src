@@ -22,8 +22,8 @@
 		  service_edge,
 		  service_discovery,
 		  authorize,
-		  data_link_bert_rpc,
-		  protocol
+		  dlink_tcp,
+		  proto_bert
                  ]},
   {mod, { rvi_app, []}}
  ]}.

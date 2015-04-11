@@ -13,10 +13,12 @@
 #
 import sys
 from rvilib import RVI
+import getopt
 
 def usage():
-    print "Usage:", sys.argv[0], "<rvi_url> <service_name>"
-    print "  <rvi_url>                     URL of Service Edge on a local RVI node"
+    print "Usage:", sys.argv[0], "[-n <rvi_url>] <service_name>"
+    print "  <rvi_url>                     URL of Service Edge on a local RVI node."
+    print "                                Default: http://localhost:8801"
     print "  <service_name>                URL of Service to register"
     print
     print "The RVI Service Edge URL can be found in"
@@ -26,7 +28,7 @@ def usage():
     print "The Service Edge URL is also logged as a notice when the"
     print "RVI node is started."
     print
-    print "Example: ./rvi_service.py http://rvi1.nginfotpdx.net:8801 /test/some_service"
+    print "Example: ./rvi_service.py /test/some_service http://rvi1.nginfotpdx.net:8801"
     sys.exit(255)
 
 
@@ -68,11 +70,23 @@ def services_unavailable(**args):
     return ['ok']
 
 
-if len(sys.argv) != 3:
+# 
+# Check that we have the correct arguments
+#
+opts, args= getopt.getopt(sys.argv[1:], "n:")
+
+rvi_node_url = "http://localhost:8801"
+for o, a in opts:
+    if o == "-n":
+        rvi_node_url = a
+    else:
+        usage()
+
+if len(args) != 1:
     usage()
 
-# Grab the URL to use
-[ progname, rvi_node_url, service_name ] = sys.argv    
+service_name = args[0]
+
 
 # Setup a connection to the local RVI node
 rvi = RVI(rvi_node_url)

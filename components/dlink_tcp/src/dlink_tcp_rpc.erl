@@ -22,9 +22,12 @@
 -export([start_json_server/0]).
 -export([start_connection_manager/0]).
 
--export([announce_available_local_service/2,
-	 announce_unavailable_local_service/2,
-	 setup_data_link/2,
+%% Invoked by service discovery
+%% FIXME: Should be rvi_service_discovery behavior
+-export([service_available/4,
+	 service_unavailable/4]).
+
+-export([setup_data_link/3,
 	 disconnect_data_link/2,
 	 send_data/3]).
 
@@ -32,11 +35,21 @@
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
 
+-define(PERSISTENT_CONNECTIONS, persistent_connections).
 -define(DEFAULT_BERT_RPC_PORT, 9999).
 -define(DEFAULT_RECONNECT_INTERVAL, 5000).
 -define(DEFAULT_BERT_RPC_ADDRESS, "0.0.0.0").
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
 -define(SERVER, ?MODULE). 
+
+-define(CONNECTION_TABLE, rvi_dlink_tcp_connections).
+-define(SERVICE_TABLE, rvi_dlink_tcp_services).
+
+-record(service_entry, {
+	  service = [],           %% Name of service
+	  connection = undefined  %% PID of connection that can reach this service
+	 }).
+
 -record(st, { 
 	  cs = #component_spec{}
 	 }).
@@ -46,8 +59,14 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-    ?info("data_link_bert:init(): Called"),
+    ?info("dlink_tcp:init(): Called"),
     %% Dig out the bert rpc server setup
+
+    ets:new(?SERVICE_TABLE, [ duplicate_bag,  public, named_table, 
+			     { keypos, #service_entry.service }]),
+
+    ets:new(?CONNECTION_TABLE, [ duplicate_bag,  public, named_table, 
+				 { keypos, #service_entry.connection }]),
 
     {ok, #st { 
 	    cs = rvi_common:get_component_specification()
@@ -68,12 +87,12 @@ start_connection_manager() ->
     IP = proplists:get_value(ip, BertOpts, ?DEFAULT_BERT_RPC_ADDRESS),
     Port = proplists:get_value(port, BertOpts, ?DEFAULT_BERT_RPC_PORT),
     
-    ?info("data_link_bert:init_rvi_component(~p): Starting listener.", [self()]),
+    ?info("dlink_tcp:init_rvi_component(~p): Starting listener.", [self()]),
 
     %% Fire up listener
     connection_manager:start_link(), 
     {ok,Pid} = listener:start_link(), 
-    ?info("data_link_bert:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
+    ?info("dlink_tcp:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
     
     %% Add listener port.
     case listener:add_listener(Pid, IP, Port, CompSpec) of
@@ -82,39 +101,54 @@ start_connection_manager() ->
 		    [ application:get_env(rvi, node_address, undefined)]);
 
 	Err -> 	
-	    ?error("data_link_bert:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
+	    ?error("dlink_tcp:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
 	    ok
     end,
-    ?info("data_link_bert:init_rvi_component(): Setting up static nodes."),
-    setup_static_node_data_links_(rvi_common:static_nodes(), CompSpec),
+    ?info("dlink_tcp:init_rvi_component(): Setting up persistent connections."),
+    
+    {ok, PersistentConnections } = rvi_common:get_module_config(data_link, 
+								?MODULE, 
+								?PERSISTENT_CONNECTIONS, 
+								[], 
+								CompSpec),
+
+
+    setup_persistent_connections_(PersistentConnections, CompSpec),
     ok.
 
-setup_static_node_data_links_([ ], _CompSpec) ->
-    ok;
+setup_persistent_connections_([ ], _CompSpec) ->
+     ok;
 
 
-setup_static_node_data_links_([ { Prefix, NetworkAddress} | T], CompSpec) ->
-    ?debug("~p: Will connect static node ~p -> ~p", [self(), Prefix, NetworkAddress]),
+setup_persistent_connections_([ NetworkAddress | T], CompSpec) ->
+    ?debug("~p: Will persistently connect connect : ~p", [self(), NetworkAddress]),
     [ IP, Port] =  string:tokens(NetworkAddress, ":"),
-    connect_and_retry_remote(Prefix, IP, Port, CompSpec), 
-    setup_static_node_data_links_(T, CompSpec),
+    connect_and_retry_remote(IP, Port, CompSpec), 
+    setup_persistent_connections_(T, CompSpec),
     ok.
 
-%% Behavior implementation
-announce_available_local_service(CompSpec, Service) ->
-    rvi_common:notification(data_link, ?MODULE, announce_available_local_service,
-			    [ {service, Service }], CompSpec).
+service_available(CompSpec, SvcName, DataLinkModule, Address) ->
+    rvi_common:notification(data_link, ?MODULE, 
+			    service_available, 
+			    [{ service, SvcName },
+			     { data_link_module, DataLinkModule },
+			     { address, Address }],
+			    CompSpec).
+
+service_unavailable(CompSpec, SvcName, DataLinkModule, Address) ->
+    rvi_common:notification(data_link, ?MODULE, 
+			    service_unavailable, 
+			    [{ service, SvcName },
+			     { data_link_module, DataLinkModule },
+			     { address, Address }],
+			    CompSpec).
 
 
-announce_unavailable_local_service(CompSpec, Service) ->
-    rvi_common:notification(data_link, ?MODULE, announce_unavailable_local_service,
-		       [ {service, Service }], CompSpec).
-
-
-setup_data_link(CompSpec, NetworkAddress) ->
+setup_data_link(CompSpec, Service, Opts) ->
     rvi_common:request(data_link, ?MODULE, setup_data_link,
-		       [ { network_address, NetworkAddress }],
-		       [status], CompSpec).
+		       [ { service, Service },
+			 { opts, Opts }],
+		       [status, timeout], CompSpec).
 
 disconnect_data_link(CompSpec, NetworkAddress) ->
     rvi_common:request(data_link, ?MODULE, disconnect_data_link,
@@ -122,11 +156,12 @@ disconnect_data_link(CompSpec, NetworkAddress) ->
 		       [status], CompSpec).
 
 
-send_data(CompSpec, NetworkAddress, Data) ->
+send_data(CompSpec, Service, Data) ->
     rvi_common:request(data_link, ?MODULE, send_data,
-			    [ { network_address, NetworkAddress }, 
+			    [ { service, Service }, 
 			      { data, Data } ], 
 		       [status], CompSpec).
+
 
 %% End of behavior
 
@@ -140,12 +175,12 @@ connect_remote(IP, Port, CompSpec) ->
 
 	not_found ->
 	    %% Setup a new outbound connection
-	    ?info("data_link_bert:connect_remote(): Connecting ~p:~p",
+	    ?info("dlink_tcp:connect_remote(): Connecting ~p:~p",
 		  [IP, Port]),
 
 	    case gen_tcp:connect(IP, Port, [binary, {packet, 4}]) of
 		{ ok, Sock } -> 
-		    ?info("data_link_bert:connect_remote(): Connected ~p:~p", 
+		    ?info("dlink_tcp:connect_remote(): Connected ~p:~p", 
 			   [IP, Port]),
 
 		    %% Setup a genserver around the new connection.
@@ -161,36 +196,35 @@ connect_remote(IP, Port, CompSpec) ->
 		    ok;
 		
 		{error, Err } -> 
-		    ?info("data_link_bert:connect_remote(): Failed ~p:~p: ~p",
+		    ?info("dlink_tcp:connect_remote(): Failed ~p:~p: ~p",
 			   [IP, Port, Err]),
 		    not_available
 	    end
     end.
 		    
 
-connect_and_retry_remote(Prefix, IP, Port, CompSpec) ->
-    ?info("data_link_bert:setup_static(): Connecting ~p -> ~p:~p", 
-	  [Prefix, IP, Port]),
+connect_and_retry_remote( IP, Port, CompSpec) ->
+    ?info("dlink_tcp:connect_and_retry_remote(): ~p:~p", 
+	  [ IP, Port]),
 
     case connect_remote(IP, list_to_integer(Port), CompSpec) of
 	ok  -> ok;
 
 	Err -> %% Failed to connect. Sleep and try again
-	    ?notice("data_link_bert:setup_static_node_data_link(~p:~p): Failed: ~p", 
+	    ?notice("dlink_tcp:connect_and_retry_remote(~p:~p): Failed: ~p", 
 			   [IP, Port, Err]),
 
-	    ?notice("data_link_bert:setup_static_node_data_link(~p:~p): Will try again in ~p sec", 
+	    ?notice("dlink_tcp:connect_and_retry_remote(~p:~p): Will try again in ~p sec", 
 			   [IP, Port, ?DEFAULT_RECONNECT_INTERVAL]),
 
-	    setup_static_node_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL,
-					      Prefix, IP, Port, CompSpec),
+	    setup_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, IP, Port, CompSpec),
 
 	    not_available
     end.
 
 
 announce_local_service_(CompSpec, Service, Availability) ->
-    ?debug("data_link_bert:announce_local_service(~p): Service: ~p",  [Availability, Service]),
+    ?debug("dlink_tcp:announce_local_service(~p): Service: ~p",  [Availability, Service]),
     %% Grab our local address.
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
@@ -205,7 +239,7 @@ announce_local_service_(CompSpec, Service, Availability) ->
     %% Loop over all returned addresses
     lists:map(
       fun(Address) ->
-	      ?info("data_link_bert:announce_local_service(~p): Announcing ~p to ~p", 
+	      ?info("dlink_tcp:announce_local_service(~p): Announcing ~p to ~p", 
 		    [ Availability, Service, Address]),
 
 	      %% Split the address into host and port
@@ -216,13 +250,13 @@ announce_local_service_(CompSpec, Service, Availability) ->
 	      Res = connection:send(RemoteAddress, list_to_integer(RemotePort), 
 				    {service_announce, 3, Availability, 
 				     [Service], { signature, {}}}),
-	      ?debug("data_link_bert:announce_local_service(~p): Res      ~p", 
+	      ?debug("dlink_tcp:announce_local_service(~p): Res      ~p", 
 		     [ Availability, Res])
       end, Addresses),
     ok.
 
 handle_socket(_FromPid, PeerIP, PeerPort, data, ping, [_CompSpec]) ->
-    ?info("data_link_bert:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),
+    ?info("dlink_tcp:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),
     ok;
 
 handle_socket(FromPid, PeerIP, PeerPort, data, 
@@ -234,12 +268,12 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 		Certificate,
 		Signature}, [CompSpec]) ->
 
-    ?info("data_link_bert:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
-    ?info("data_link_bert:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
-    ?info("data_link_bert:authorize(): Protocol:       ~p", [ Protocol ]),
-    ?debug("data_link_bert:authorize(): TransactionID:  ~p", [ TransactionID ]),
-    ?debug("data_link_bert:authorize(): Certificate:    ~p", [ Certificate ]),
-    ?debug("data_link_bert:authorize(): Signature:      ~p", [ Signature ]),
+    ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
+    ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
+    ?info("dlink_tcp:authorize(): Protocol:       ~p", [ Protocol ]),
+    ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:authorize(): Certificate:    ~p", [ Certificate ]),
+    ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
 
 
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
@@ -252,7 +286,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	case { RemoteAddress, RemotePort } of
 	    { "0.0.0.0", 0 } ->
 		
-		?info("data_link_bert:authorize(): Remote is behind firewall. Will use ~p:~p", 
+		?info("dlink_tcp:authorize(): Remote is behind firewall. Will use ~p:~p", 
 		      [ PeerIP, PeerPort]),
 		{ PeerIP, PeerPort };
 
@@ -267,14 +301,14 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     %% FIXME: Validate certificate and signature before continuing.
     case connection_manager:find_connection_by_pid(FromPid) of
 	not_found ->
-	    ?info("data_link_bert:authorize(): New connection!"),
+	    ?info("dlink_tcp:authorize(): New connection!"),
 	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
-	    ?debug("data_link_bert:authorize(): Sending authorize."),
+	    ?debug("dlink_tcp:authorize(): Sending authorize."),
 	    Res = connection:send(FromPid, 
 			    { authorize, 
 			      1, LocalAddress, LocalPort, rvi_binary, 
 			      {certificate, {}}, { signature, {}}}),
-	    ?debug("data_link_bert:authorize(): Sending authorize: ~p", [ Res]),
+	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
 	    ok;
 	_ -> ok
     end,
@@ -299,7 +333,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
     %% Send an authorize back to the remote node
-    ?info("data_link_bert:authorize(): Announcing local services: ~p to remote ~p:~p",
+    ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
 	  [LocalServices, NRemoteAddress, NRemotePort]),
 
     connection:send(FromPid, 
@@ -310,145 +344,216 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
     ok;
 
-handle_socket(_FromPid, RemoteIP, RemotePort, data, 
+handle_socket(FromPid, RemoteIP, RemotePort, data, 
 	      { service_announce, 
-		TransactionID, 
+		TransactionID,
 		available,
-		Services, 
-		Signature}, [CompSpec]) ->
-    ?debug("data_link_bert:service_announce(available): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-    ?debug("data_link_bert:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
-    ?debug("data_link_bert:service_announce(available): TransactionID: ~p", [ TransactionID ]),
-    ?debug("data_link_bert:service_announce(available): Signature:     ~p", [ Signature ]),
-    ?debug("data_link_bert:service_announce(available): Service:       ~p", [ Services ]),
+		Services,
+		Signature }, [CompSpec]) ->
+    ?debug("dlink_tcp:service_announce(available): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
+    ?debug("dlink_tcp:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
+    ?debug("dlink_tcp:service_announce(available): TransactionID: ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:service_announce(available): Signature:     ~p", [ Signature ]),
+    ?debug("dlink_tcp:service_announce(available): Service:       ~p", [ Services ]),
 
-
-    %% Register the received services with all relevant components
     
-    NetworkAddress = RemoteIP  ++ ":" ++ integer_to_list(RemotePort),
-    service_discovery_rpc:register_remote_services(CompSpec, Services, NetworkAddress),
+    %% Insert into our own tables
+    [ ets:insert(?SERVICE_TABLE, 
+		 #service_entry { 
+		    service = SvcName,
+		    connection = FromPid })  || SvcName <- Services ],
+
+    [ ets:insert(?CONNECTION_TABLE, 
+		 #service_entry { 
+		    service = SvcName,
+		    connection = FromPid }) || SvcName <- Services ],
+    
+    service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
     ok;
 
 
-handle_socket(_FromPid, RemoteIP, RemotePort, data, 
+handle_socket(FromPid, RemoteIP, RemotePort, data, 
 	      { service_announce, 
 		TransactionID, 
 		unavailable,
 		Services, 
 		Signature}, [CompSpec]) ->
-    ?debug("data_link_bert:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-    ?debug("data_link_bert:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
-    ?debug("data_link_bert:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
-    ?debug("data_link_bert:service_announce(unavailable): Signature:     ~p", [ Signature ]),
-    ?debug("data_link_bert:service_announce(unavailable): Service:       ~p", [ Services ]),
+    ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
+    ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
+    ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
+    ?debug("dlink_tcp:service_announce(unavailable): Service:       ~p", [ Services ]),
 
     %% Register the received services with all relevant components
 
-    service_discovery_rpc:unregister_remote_services_by_name(CompSpec, Services),
+    
+    %% Delete from our own tables.
+    
+    [ ets:delete(?SERVICE_TABLE, SvcName ) || SvcName <- Services ],
+    
+    [ ets:match_delete(?CONNECTION_TABLE, 
+		       #service_entry { 
+			  service = SvcName,
+			  connection = FromPid }) || SvcName <- Services ],
+
+    service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
     ok;
 
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
 	      { receive_data, Data}, [CompSpec]) ->
-%%    ?info("data_link_bert:receive_data(): ~p", [ Data ]),
-    ?debug("data_link_bert:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+%%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
+    ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     protocol_rpc:receive_message(CompSpec, Data),
     ok;
 
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, Data, [_CompSpec]) ->
-    ?warning("data_link_bert:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ?warning("data_link_bert:unknown_data(): Unknown data:  ~p",  [ Data]),
+    ?warning("dlink_tcp:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?warning("dlink_tcp:unknown_data(): Unknown data:  ~p",  [ Data]),
     ok.
+
 
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
-handle_socket(_FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
-    ?info("data_link_bert:socket_closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
+    ?info("dlink_tcp:socket_closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+
     NetworkAddress = SetupIP  ++ ":" ++ integer_to_list(SetupPort),
-    service_discovery_rpc:
-	unregister_remote_services_by_address(CompSpec, NetworkAddress),
 
+    %% Get all service records associated with the given connection and
+    %% extract the service name from them
+    %
+
+
+    Services = [ SvcName || #service_entry { service = SvcName } <- 
+				ets:lookup(?CONNECTION_TABLE, FromPid) ],
+    ?debug("dlink_tcp:close(): Deleting ~p", [ Services]),
+
+    %% Step through all services and delete their corresponding record
+    %% from the service table.
+    %% We do this instead of match_delete because it is much faster since
+    %% service is the key in ?SERVICE_TABLE. No linear search and delete
+    %% needed.
+    [ ets:delete(?SERVICE_TABLE, SvcName) || SvcName <- Services ],
+
+    %% Delete all entries in the connection table that matches the closed
+    %% connection.
+    ets:delete(?CONNECTION_TABLE, FromPid),
+
+
+    {ok, PersistentConnections } = rvi_common:get_module_config(data_link, 
+								?MODULE, 
+								persistent_connections, 
+								[], 
+								CompSpec),
     %% Check if this is a static node. If so, setup a timer for a reconnect
-    case lists:keyfind(NetworkAddress, 2, rvi_common:static_nodes()) of
-	false ->
-	    true;
+    case lists:member(NetworkAddress, PersistentConnections) of
+	true ->
+	    ?info("dlink_tcp:socket_closed(): Reconnect address:  ~p", [ NetworkAddress ]),
+	    ?info("dlink_tcp:socket_closed(): Reconnect interval: ~p", [ ?DEFAULT_RECONNECT_INTERVAL ]),
+	    [ IP, Port] = string:tokens(NetworkAddress, ":"),
 
-	{ StaticPrefix, StaticNetworkAddress } ->
-	    ?info("data_link_bert:socket_closed(): Reconnect service:  ~p", [ StaticPrefix ]),
-	    ?info("data_link_bert:socket_closed(): Reconnect address:  ~p", [ StaticNetworkAddress ]),
-	    ?info("data_link_bert:socket_closed(): Reconnect interval: ~p", [ ?DEFAULT_RECONNECT_INTERVAL ]),
-	    [ IP, Port] = string:tokens(StaticNetworkAddress, ":"),
-
-	    setup_static_node_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, 
-					      StaticPrefix, 
-					      IP, Port, CompSpec)
-	    
+	    setup_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, 
+				  IP, Port, CompSpec);
+	false -> ok
     end,
     ok;
 
 handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
-    ?info("data_link_bert:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?info("dlink_tcp:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     ok.
 
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
-handle_notification("announce_available_local_service", Args) ->
-    { ok,  Service } = rvi_common:get_json_element(["service"], Args),
-    gen_server:cast(?SERVER, { rvi, announce_available_local_service, [Service]}),
+handle_notification("service_available", Args) ->
+    {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
+    {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
+    {ok, Address} = rvi_common:get_json_element(["address"], Args),
+
+    gen_server:cast(?SERVER, { rvi, service_available, 
+				      [ SvcName,
+					DataLinkModule,
+					Address ]}),
+
     ok;
+handle_notification("service_unavailable", Args) ->
+    {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
+    {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
+    {ok, Address} = rvi_common:get_json_element(["address"], Args),
 
-handle_notification("announce_unavailable_local_service", Args) ->
-    { ok,  Service } = rvi_common:get_json_element(["service"], Args),
+    gen_server:cast(?SERVER, { rvi, service_unavailable, 
+				      [ SvcName,
+					DataLinkModule,
+					Address ]}),
 
-    gen_server:cast(?SERVER, { rvi, announce_unavailable_local_service, [Service]}),
     ok;
 
 handle_notification(Other, _Args) ->
-    ?info("data_link_bert:handle_notification(~p): unknown", [ Other ]),
+    ?info("dlink_tcp:handle_notification(~p): unknown", [ Other ]),
     ok.
 
 handle_rpc("setup_data_link", Args) ->
-    { ok, Address } = rvi_common:get_json_element(["network_address"], Args),
-    Res = gen_server:call(?SERVER, { rvi, setup_data_link, 
-				     [ Address]}),
-    {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
+    { ok, Service } = rvi_common:get_json_element(["service"], Args),
+
+    { ok, Opts } = rvi_common:get_json_element(["opts"], Args),
+
+    [ Res, Timeout ] = gen_server:call(?SERVER, { rvi, setup_data_link, 
+						  [ Service, Opts ] }),
+
+    {ok, [ {status, rvi_common:json_rpc_status(Res)} , { timeout, Timeout }]};
 
 handle_rpc("disconenct_data_link", Args) ->
     { ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
-    Res = gen_server:call(?SERVER, { rvi, disconnect_data_link, [NetworkAddress]}),
+    [Res] = gen_server:call(?SERVER, { rvi, disconnect_data_link, [NetworkAddress]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
 
 handle_rpc("send_data", Args) ->
-    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
-    { ok,  Data} = rvi_common:get_json_element(["data"], Args),
-    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [NetworkAddress, Data]}),
+    { ok, Service } = rvi_common:get_json_element(["service"], Args),
+    { ok,  Data } = rvi_common:get_json_element(["data"], Args),
+    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [Service, Data]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
     
-    
+
 handle_rpc(Other, _Args) ->
-    ?info("data_link_bert:handle_rpc(~p): unknown", [ Other ]),
+    ?info("dlink_tcp:handle_rpc(~p): unknown", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
-handle_cast({rvi, announce_available_local_service, [Service]}, St) ->
-    announce_local_service_(St#st.cs, Service, available),
+handle_cast( {rvi, service_available, [SvcName, local, _Address]}, St) ->
+    announce_local_service_(St#st.cs, SvcName, available),
     {noreply, St};
 
-handle_cast({rvi, announce_unavailable_local_service, [Service]}, St) ->
-    announce_local_service_(St#st.cs, Service, unavailable),
+
+handle_cast( {rvi, service_unavailable, [SvcName, local, _Address]}, St) ->
+    announce_local_service_(St#st.cs, SvcName, unavailable),
     {noreply, St};
 
 
 handle_cast(Other, St) ->
-    ?warning("data_link_bert:handle_cast(~p): unknown", [ Other ]),
+    ?warning("dlink_tcp:handle_cast(~p): unknown", [ Other ]),
     {noreply, St}.
 
-handle_call({rvi, setup_data_link, [ NetworkAddress ]}, _From, St) ->
-    [ RemoteAddress, RemotePort] =  string:tokens(NetworkAddress, ":"),
-    Res = connect_remote(RemoteAddress, list_to_integer(RemotePort), St#st.cs),
-    { reply, [Res], St };
+
+handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
+    case proplists:get_value(target, Opts, undefined) of
+	undefined ->
+	    ?info("dlink_tcp:setup_data_link(~p) Failed: no target given in options.",
+		  [Service]),
+	     { reply, [ no_route, 0 ], St };
+
+	Addr -> 
+	    [ Address, Port] =  string:tokens(Addr, ":"),
+
+	    case connect_remote(Address, list_to_integer(Port), St#st.cs) of
+		ok  ->
+		    { reply, [ok, 2000], St };  %% 2 second timeout
+
+		Err ->
+		    { reply, [Err, 0], St }
+	    end
+    end;
 
 
 handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
@@ -457,23 +562,31 @@ handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
     { reply, [ Res ], St };
 
 
-handle_call({rvi, send_data, [NetworkAddress, Data]}, _From, St) ->
-    [ RemoteAddress, RemotePortStr] =  string:tokens(NetworkAddress, ":"),
-    RemotePort = list_to_integer(RemotePortStr),
-    ?info("data_link_bert:send_data(): Remote: ~p:~p", [ RemoteAddress, RemotePort]),
-    Res = connection:send(RemoteAddress, RemotePort, {receive_data, Data}),
-    { reply, [ Res ], St};
+handle_call({rvi, send_data, [Service, Data]}, _From, St) ->
+
+    %% Resolve connection pid from service
+    case ets:lookup(?SERVICE_TABLE, Service) of
+	[ #service_entry { connection = ConnPid } ] ->
+	    ?debug("dlink_tcp:send_data(): ~p -> ~p", [ Service, ConnPid]),
+	    Res = connection:send(ConnPid, {receive_data, Data}),
+	    { reply, [ Res ], St};
+
+	[] -> %% Service disappeared during send.
+	    { reply, [ no_route ], St}
+    end;
+	    
+
 
 
 handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     %% Create a timer to handle periodic pings.
     {ok, ServerOpts } = rvi_common:get_module_config(data_link, 
-						     dlink_tcp,
+						     ?MODULE,
 						     bert_rpc_server, [], 
 						     St#st.cs),
     Timeout = proplists:get_value(ping_interval, ServerOpts, ?DEFAULT_PING_INTERVAL),
 
-    ?info("data_link_bert:setup_ping(): ~p:~p will be pinged every ~p msec", 
+    ?info("dlink_tcp:setup_ping(): ~p:~p will be pinged every ~p msec", 
 	  [ Address, Port, Timeout] ),
 										      
     erlang:send_after(Timeout, self(), { rvi_ping, Pid, Address, Port, Timeout }),
@@ -481,7 +594,7 @@ handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     {reply, ok, St};
 
 handle_call(Other, _From, St) ->
-    ?warning("data_link_bert:handle_rpc(~p): unknown", [ Other ]),
+    ?warning("dlink_tcp:handle_rpc(~p): unknown", [ Other ]),
     { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, St}.
 
 
@@ -492,7 +605,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     %% Check that connection is up
     case connection:is_connection_up(Pid) of
 	true ->
-	    ?info("data_link_bert:ping(): Pinging: ~p:~p", [Address, Port]),
+	    ?info("dlink_tcp:ping(): Pinging: ~p:~p", [Address, Port]),
 	    connection:send(Pid, ping),
 	    erlang:send_after(Timeout, self(), 
 			      { rvi_ping, Pid, Address, Port, Timeout });
@@ -503,13 +616,13 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     {noreply, St};
 
 %% Setup static nodes
-handle_info({ rvi_setup_static_node_data_link, Prefix, IP, Port, CompSpec }, St) ->
-    connect_and_retry_remote(Prefix, IP, Port, CompSpec),
+handle_info({ rvi_setup_persitent_connection, IP, Port, CompSpec }, St) ->
+    connect_and_retry_remote(IP, Port, CompSpec),
     { noreply, St };
 
 
 handle_info(Info, St) ->
-    ?notice("data_link_bert(): Unkown message: ~p", [ Info]),
+    ?notice("dlink_tcp(): Unkown message: ~p", [ Info]),
     {noreply, St}.
 
 terminate(_Reason, _St) ->
@@ -517,9 +630,11 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
-setup_static_node_reconnect_timer(MSec, Prefix, IP, Port, CompSpec) ->
+setup_reconnect_timer(MSec, IP, Port, CompSpec) ->
     erlang:send_after(MSec, ?MODULE, 
-		      { rvi_setup_static_node_data_link, 
-			Prefix, IP, Port, CompSpec }),
+		      { rvi_setup_persitent_connection, 
+			IP, Port, CompSpec }),
     ok.
 
+
+    

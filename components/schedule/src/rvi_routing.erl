@@ -9,6 +9,9 @@
 
 -behaviour(gen_server).
 
+
+-include_lib("lager/include/log.hrl").
+
 %% API
 -export([get_service_routes/1]).
 -export([start_link/0]).
@@ -88,7 +91,7 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call( { rvi_get_service_routes, Service }, _From, St) ->
-    {reply, normalize_routes_(find_routes_(Service, St#st.routes), []), t};
+    {reply, normalize_routes_(find_routes_( St#st.routes, Service), []), t};
 
 handle_call(_Request, _From, St) ->
     Reply = ok,
@@ -179,8 +182,13 @@ find_routes_([ { ServicePrefix, Routes } | T], Service, CurRoutes, CurMatchLen )
 	false ->
 	    %% Continue with the old routes and matching len installed
 	    find_routes_(T, Service, CurRoutes, CurMatchLen)
-    end.
+    end;
     
+find_routes_(Rt, Svc, CurRoutes, CurMatchLen) ->
+    ?info("----------------Failed on ~p", [Rt]),
+    { x, y}.
+    
+
 find_routes_(Routes, Service) ->
     case find_routes_(Routes, Service, undefined, 0) of
 	{ undefined, 0 } ->
@@ -203,6 +211,5 @@ normalize_routes_({ServicePrefix, [ { Pr, { DL, DLOp }} | Rem ]}, Acc) ->
 normalize_routes_({ServicePrefix, [ {{ Pr, PrOp}, DL } | Rem ]}, Acc) ->
     normalize_routes_({ServicePrefix, Rem}, [ { {Pr, PrOp}, { DL, [] } } | Acc]);  
 
-normalize_routes_({ServicePrefix, [ {{ Pr, PrOp }, DL} | Rem ]}, Acc) ->
-    normalize_routes_({ServicePrefix, Rem}, [ { {Pr, PrOp}, { DL, [] } } | Acc]).
-
+normalize_routes_({ServicePrefix, [ {Pr, DL} | Rem ]}, Acc) ->
+    normalize_routes_({ServicePrefix, Rem}, [ { {Pr, []}, { DL, [] } } | Acc]).

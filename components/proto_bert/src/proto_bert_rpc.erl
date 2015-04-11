@@ -22,7 +22,7 @@
 
 -define(SERVER, ?MODULE). 
 -export([start_json_server/0]).
--export([send_message/10,
+-export([send_message/9,
 	 receive_message/2]).
 
 -record(st, { 
@@ -34,11 +34,11 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-    ?debug("protocol_rpc:init(): called."),
+    ?debug("proto_bert_rpc:init(): called."),
     {ok, #st { cs = rvi_common:get_component_specification() } }.
 
 start_json_server() ->
-    rvi_common:start_json_rpc_server(protocol, ?MODULE, protocol_sup).
+    rvi_common:start_json_rpc_server(protocol, ?MODULE, proto_bert_sup).
 
 
 
@@ -48,7 +48,6 @@ send_message(CompSpec,
 	     ProtoOpts,
 	     DataLinkMod,
 	     DataLinkOpts,
-	     NetworkAddress, 
 	     Parameters, 
 	     Signature, 
 	     Certificate) ->
@@ -58,7 +57,6 @@ send_message(CompSpec,
 			 { protocol_opts, ProtoOpts },
 			 { data_link_mod, DataLinkMod },
 			 { data_link_opts, DataLinkOpts },
-			 { network_address, NetworkAddress }, 
 			 { parameters, Parameters },
 			 { signature, Signature },
 			 { certificate, Certificate }],
@@ -78,7 +76,6 @@ handle_rpc("send_message", Args) ->
     {ok, ProtoOpts} = rvi_common:get_json_element(["protocol_opts"], Args),
     {ok, DataLinkMod} = rvi_common:get_json_element(["data_link_mod"], Args),
     {ok, DataLinkOpts} = rvi_common:get_json_element(["data_link_opts"], Args),
-    {ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
@@ -88,7 +85,6 @@ handle_rpc("send_message", Args) ->
 					 ProtoOpts,
 					 DataLinkMod,
 					 DataLinkOpts,
-					 NetworkAddress,
 					 Parameters,
 					 Signature, 
 					 Certificate]}),
@@ -97,7 +93,7 @@ handle_rpc("send_message", Args) ->
 
 
 handle_rpc(Other, _Args) ->
-    ?warning("protocol_rpc:handle_rpc(~p): Unknown~n", [ Other ]),
+    ?warning("proto_bert_rpc:handle_rpc(~p): Unknown~n", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
@@ -108,7 +104,7 @@ handle_notification("receive_message", Args) ->
     ok;
 
 handle_notification(Other, _Args) ->
-    ?debug("protocol_rpc:handle_other(~p): unknown", [ Other ]),
+    ?debug("proto_bert_rpc:handle_other(~p): unknown", [ Other ]),
     ok.
 
 
@@ -118,31 +114,28 @@ handle_call({rvi, send_message,
 	      ProtoOpts,
 	      DataLinkMod,
 	      DataLinkOpts,
-	      NetworkAddress,
 	      Parameters,
 	      Signature,
 	      Certificate]}, _From, St) ->
     ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
-    ?debug("    protocol:send(): opts:            ~p~n", [Opts]),
+    ?debug("    protocol:send(): opts:            ~p~n", [ProtoOpts]),
     ?debug("    protocol:send(): data_link_mod:   ~p~n", [DataLinkMod]),
     ?debug("    protocol:send(): data_link_opts:  ~p~n", [DataLinkOpts]),
-    ?debug("    protocol:send(): network_address: ~p~n", [NetworkAddress]),
 %%    ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
     ?debug("    protocol:send(): certificate:     ~p~n", [Certificate]),
 
     
-    Data = term_to_binary({ ServiceName, Timeout, NetworkAddress, 
-			    Parameters, Signature, Certificate }),
+    Data = term_to_binary({ ServiceName, Timeout, Parameters, Signature, Certificate }),
 
-    Res = DataLinkMod:send_data(St#st.cs, NetworkAddress, DataLinkOpts, Data),
+    Res = DataLinkMod:send_data(St#st.cs, ServiceName, DataLinkOpts, Data),
 
     { reply, Res, St };
 
 
 handle_call(Other, _From, St) ->
-    ?warning("protocol_rpc:handle_call(~p): unknown", [ Other ]),
+    ?warning("proto_bert_rpc:handle_call(~p): unknown", [ Other ]),
     { reply, [ invalid_command ], St}.
 
 %% Convert list-based data to binary.
@@ -152,13 +145,11 @@ handle_cast({rvi, receive_message, [Data]}, St) when is_list(Data)->
 handle_cast({rvi, receive_message, [Data]}, St) ->
     { ServiceName, 
       Timeout, 
-      NetworkAddress, 
       Parameters, 
       Signature, 
       Certificate } = binary_to_term(Data),
     ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
-    ?debug("    protocol:rcv(): network_address: ~p~n", [NetworkAddress]),
 %%    ?debug("    protocol:rcv(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
     ?debug("    protocol:rcv(): certificate:     ~p~n", [Certificate]),
@@ -166,7 +157,6 @@ handle_cast({rvi, receive_message, [Data]}, St) ->
     service_edge_rpc:handle_remote_message(St#st.cs, 
 					   ServiceName,
 					   Timeout,
-					   NetworkAddress,
 					   Parameters,
 					   Signature,
 					   Certificate),
@@ -174,7 +164,7 @@ handle_cast({rvi, receive_message, [Data]}, St) ->
 
 
 handle_cast(Other, St) ->
-    ?warning("protocol_rpc:handle_cast(~p): unknown", [ Other ]),
+    ?warning("proto_bert_rpc:handle_cast(~p): unknown", [ Other ]),
     {noreply, St}.
 
 handle_info(_Info, St) ->

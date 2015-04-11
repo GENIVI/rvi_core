@@ -26,8 +26,6 @@
 -export([remote_service_to_string/1]).
 -export([remote_service_to_string/2]).
 -export([local_service_prefix/0]).
--export([get_static_node/1]).
--export([static_nodes/0]).
 -export([node_address_string/0]).
 -export([node_address_tuple/0]).
 -export([get_request_result/1]).
@@ -46,7 +44,6 @@
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
 -define(NODE_ADDRESS, node_address).
--define(STATIC_NODES, static_nodes).
 
 
 json_rpc_status(0) ->
@@ -84,6 +81,10 @@ json_rpc_status(5) ->
 
 json_rpc_status("5") ->
     already_connected;
+
+
+json_rpc_status(6) ->
+    no_route;
 
 json_rpc_status("6") ->
     no_route;
@@ -401,62 +402,6 @@ local_service_prefix() ->
 	$/ -> Prefix;
 
 	_ -> Prefix ++ "/"
-    end.
-
-static_nodes() ->
-    case application:get_env(rvi, ?STATIC_NODES) of
-
-	{ok, NodeList} -> 
-	    NodeList;
-
-	undefined -> 
-	    not_found
-    end.
-
-
-%% Locate the statically configured node whose service(s) prefix-
-%% matches the provided service.
-%% FIXME: Longest prefix match.
-get_static_node(Service) ->
-	case application:get_env(rvi, ?STATIC_NODES) of
-
-	    {ok, NodeList} when is_list(NodeList) -> 
-		get_static_node(Service, NodeList);
-
-	    undefined -> 
-		?debug("No ~p configured under rvi.", [?STATIC_NODES]),
-		not_found
-	end.
-
-get_static_node(_Service, []) ->
-    not_found;
-
-%% Validate that argumenst are all lists.
-get_static_node(Service, [{ SvcPrefix, NetworkAddress} | T ]) when 
-      not is_list(Service); not is_list(SvcPrefix); not is_list(NetworkAddress) ->
-    ?warning("rvi_common:get_static_node(): Could not resolve ~p against {~p, ~p}:"
-	     "One or more elements not strings.",  [ Service, SvcPrefix, NetworkAddress]),
-    get_static_node(Service, T );
-    
-
-%% If the service we are trying to resolve has a shorter name than
-%% the prefix we are comparing with, ignore.
-get_static_node(Service, [{ SvcPrefix, _NetworkAddress } | T ]) when 
-      length(Service) < length(SvcPrefix) ->
-    ?debug("rvi_common:get_static_node(): Service: ~p is shorter than prefix ~p. Ignore.",
-	   [ Service, SvcPrefix]),
-    get_static_node(Service, T );
-
-get_static_node(Service, [{ SvcPrefix, NetworkAddress} | T] ) ->
-    case string:str(Service, SvcPrefix) of
-	1 ->
-	    ?debug("rvi_common:get_static_node(): Service: ~p -> { ~p, ~p}.",
-		   [ Service, SvcPrefix, NetworkAddress]),
-	    NetworkAddress;
-	_ ->
-	    ?debug("rvi_common:get_static_node(): Service: ~p != { ~p, ~p}.",
-		   [ Service, SvcPrefix, NetworkAddress]),
-	    get_static_node(Service, T )
     end.
 
 

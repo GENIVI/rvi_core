@@ -74,7 +74,7 @@ new_connection(IP, Port, Sock, State) ->
     %% first data.
     %% Provide component spec as extra arg.
     {ok, _P} = connection:setup(undefined, 0, Sock, 
-				data_link_bert_rpc_rpc, 
+				dlink_tcp_rpc, 
 				handle_socket, [gen_nb_server:get_cb_state(State)]),
     {ok, State}.
 
