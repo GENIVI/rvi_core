@@ -219,27 +219,22 @@ handle_call( { rvi, schedule_message,
     ?debug("schedule:sched_msg(): certificate  ~p", [Certificate]),
     %%?debug("schedule:sched_msg(): St:          ~p", [St]),
 
-    %%
-    %% Retrieve the routes that we should try for this message
-    %%
-    case rvi_routing:get_service_routes(SvcName) of 
-	not_found -> 
-	    {reply, [ no_route ], St };
+    %% Create a transaction ID
+    { TransID, NSt1} = create_transaction_id(St),
 
-	Routes ->
-	    { TransID, NSt1} = create_transaction_id(St),
-	    NSt2 = queue_message(SvcName, 
-				 TransID, 
-				 Routes, 
-				 Timeout, 
-				 calc_relative_tout(Timeout),
-				 Parameters, 
-				 Signature, 
-				 Certificate,
-				 NSt1),
+    %% Queue the message
+    NSt2 = queue_message(SvcName, 
+			 TransID, 
+			 rvi_routing:get_service_routes(SvcName), %% Can be no_route
+			 Timeout, 
+			 calc_relative_tout(Timeout),
+			 Parameters, 
+			 Signature, 
+			 Certificate,
+			 NSt1),
 
-	    { reply, [ok, TransID], NSt2 }
-    end;
+    { reply, [ok, TransID], NSt2 };
+
 
 
 handle_call(Other, _From, St) ->
@@ -382,21 +377,6 @@ code_change(_OldVsn, St, _Extra) ->
 
 
 
-%%
-%% No more routes to try
-%%
-queue_message(SvcName, 
-	      _TransID, 
-	      [  ],
-	      _MessageTimeout,
-	      _RelativeTimeout,
-	      _Parameters, 
-	      _Signature,
-	      _Certificate, St) ->
-
-    %% FIXME: Handle route failure
-    ?notice("schedule:queue_message(): Ran out of routes to try for ~p", [SvcName]),
-    { route_failed, St };
 
 
 %%
@@ -413,6 +393,25 @@ queue_message(SvcName,
 	      St) ->
     do_timeout_callback(St#st.cs, SvcName, TransID),
     { timeout, St };
+
+%%
+%% No more routes to try, or no routes found at all
+%% by rvi_routing:get_service_routes()
+%%
+%% Stash the message in the unknown datalinvariant of the service
+%% and opportunistically send it if the service
+queue_message(SvcName, 
+	      _TransID, 
+	      [ ],
+	      _MessageTimeout,
+	      _RelativeTimeout,
+	      _Parameters, 
+	      _Signature,
+	      _Certificate, St) ->
+
+    %% FIXME: Handle route failure
+    ?notice("schedule:queue_message(): Ran out of routes to try for ~p", [SvcName]),
+    { route_failed, St };
 
     
 %% Try to queue message
@@ -442,6 +441,7 @@ queue_message(SvcName,
 
 	{ _ , NSt } -> %% Failed to send message. Setup data link
 	
+
 	    %%
 	    %% Bring up the relevant data link for the given route.
 	    %% Once up, the data link will invoke service_availble()
@@ -453,9 +453,11 @@ queue_message(SvcName,
 		    %% Setup a timeout that triggers on whatever
 		    %% comes first of the message's general timeout
 		    %% or the timeout of the data link bringup
-		    TRef = erlang:send_after(min(RelativeTimeout, DLTimeout),
+		    %%
+		    TRef = erlang:send_after(select_timeout(RelativeTimeout, DLTimeout),
 					     self(), 
 					     { rvi_message_timeout, SvcName, DLMod, TransID }),
+
 
 		    %% Setup a message to be added to the service / dl table.
 		    Msg = #message { 
@@ -468,7 +470,6 @@ queue_message(SvcName,
 			     signature = Signature,
 			     certificate = Certificate
 			    },
-
 
 		    %% Add to ets table
 		    TransID = ets:insert(SvcRec#service.messages_tid, Msg),
@@ -689,4 +690,24 @@ first_service_message(#service {  messages_tid = Tid }) ->
 	    end
     end.
 		    
-		       
+
+%% A timeout of -1 means 'does not apply'
+%%
+%% However, if both are -1, we just return the shortest posssible
+%% timeout.
+%% If both timeouts are specified, we select the shortest one.
+%%
+select_timeout(TimeOut1, TimeOut2) ->
+
+    case { TimeOut1 =:= -1, TimeOut2 =:= -1 } of
+	{ true, true } -> 1;
+
+	{ true, false } -> TimeOut2;
+
+	{ false, true } -> TimeOut1;
+
+	{ false, false } -> min(TimeOut1, TimeOut2)
+    end.
+
+
+	    

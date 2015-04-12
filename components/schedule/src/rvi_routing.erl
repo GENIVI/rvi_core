@@ -16,6 +16,9 @@
 -export([get_service_routes/1]).
 -export([start_link/0]).
 
+-export([find_routes_/2, 
+	 normalize_routes_/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
@@ -91,7 +94,7 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call( { rvi_get_service_routes, Service }, _From, St) ->
-    {reply, normalize_routes_(find_routes_( St#st.routes, Service), []), t};
+    {reply, find_routes_( St#st.routes, Service), St};
 
 handle_call(_Request, _From, St) ->
     Reply = ok,
@@ -155,17 +158,25 @@ code_change(_OldVsn, St, _Extra) ->
 %%%===================================================================
 
 
-prefix_match_(_, [], Len) ->
+%% We ran out of prefix chars.
+%%  Service is a prefix match
+prefix_match_(_Service, [], Len) ->
     Len;
 
-prefix_match_([], _, Len ) ->
-    Len;
+%% We ran out of service chars.
+%%  Service is shorter than prefix no match.
+prefix_match_([], _Prefix, _Len ) ->
+    -1;
 
-prefix_match_([ C1 | T1], [ C2 | T2 ], Len) when C1 =:= C2 ->
-    prefix_match_(T1, T2, Len +1);
+%% 
+prefix_match_([ ServiceH | ServiceT], [ PrefixH | PrefixT ], Len)
+  when ServiceH =:= PrefixH ->
 
-prefix_match_(_,_, Len) ->
-    Len.
+    prefix_match_(ServiceT, PrefixT, Len + 1);
+
+%% Mismatch between the the service and candidate. No match
+prefix_match_(_Service, _Prefix, _Len) ->
+    -1. 
 
 find_routes_([], _Service, CurRoutes, CurMatchLen ) ->
     { CurRoutes, CurMatchLen };
@@ -178,32 +189,38 @@ find_routes_([ { ServicePrefix, Routes } | T], Service, CurRoutes, CurMatchLen )
 	true -> 
 	    %% Continue with the new routes and matching len installed
 	    find_routes_(T, Service, Routes, MatchLen);
-	
+
 	false ->
 	    %% Continue with the old routes and matching len installed
 	    find_routes_(T, Service, CurRoutes, CurMatchLen)
     end;
-    
-find_routes_(Rt, Svc, CurRoutes, CurMatchLen) ->
-    ?info("----------------Failed on ~p", [Rt]),
-    { x, y}.
+
+find_routes_(Rt, _Svc, CurRoutes, CurMatchLen) ->
+    ?warning("rvi_routing(): Incorrect route entry: ~p", [Rt]),
+    { CurRoutes, CurMatchLen }.
     
 
 find_routes_(Routes, Service) ->
     case find_routes_(Routes, Service, undefined, 0) of
 	{ undefined, 0 } ->
-	    not_found;
+	    ?debug("rvi_routing(): ~p -> unknown", [ Service]),
+	    []; %% No routes found
 
-	{ Routes, _MatchLen } ->
-	    Routes
+	{ MatchRoutes, _MatchLen } ->
+	    ?debug("rvi_routing(): ~p -> ~p", [ Service, MatchRoutes ]),
+	    normalize_routes_(MatchRoutes, [])	    
     end.
 
 
+%% { Protocol,            DataLink }          -> { {Protocol, [] },   {DataLink, [] } },
+%% { Protocol,            { DataLink, DOpts } -> { {Protocol, [] },   {DataLink, DOpts } },
+%% { { Protocol, POpts }, DataLink }          -> { {Protocol, POpts}, {DataLink, [] }},
+%% { { Protocol, POpts }, { DataLink, DOpts } -> { {Protocol, POpts}, {DataLink, DOpts }},
 normalize_routes_({ServicePrefix, []}, Acc) ->
     { ServicePrefix, lists:reverse(Acc) };
 
 normalize_routes_({ServicePrefix, [ {{ Pr, PrOp }, { DL, DLOp }} | Rem ]}, Acc) ->
-    normalize_routes_({ServicePrefix, Rem}, [ { {Pr, PrOp}, { DL, DLOp } } | Acc]);  
+    normalize_routes_({ServicePrefix, Rem}, [ {{Pr, PrOp}, { DL, DLOp } } | Acc]);  
 
 normalize_routes_({ServicePrefix, [ { Pr, { DL, DLOp }} | Rem ]}, Acc) ->
     normalize_routes_({ServicePrefix, Rem}, [ { {Pr, []}, { DL, DLOp } } | Acc]);  
@@ -213,3 +230,4 @@ normalize_routes_({ServicePrefix, [ {{ Pr, PrOp}, DL } | Rem ]}, Acc) ->
 
 normalize_routes_({ServicePrefix, [ {Pr, DL} | Rem ]}, Acc) ->
     normalize_routes_({ServicePrefix, Rem}, [ { {Pr, []}, { DL, [] } } | Acc]).
+

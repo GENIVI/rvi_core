@@ -541,7 +541,7 @@ handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
 	undefined ->
 	    ?info("dlink_tcp:setup_data_link(~p) Failed: no target given in options.",
 		  [Service]),
-	     { reply, [ no_route, 0 ], St };
+	     { reply, [ok, -1 ], St };
 
 	Addr -> 
 	    [ Address, Port] =  string:tokens(Addr, ":"),
