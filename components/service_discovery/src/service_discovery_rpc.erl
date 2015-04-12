@@ -18,7 +18,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--export([get_services/1,
+-export([get_all_services/1,
+	 get_services_by_module/2,
+	 get_modules_by_service/2,
 	 subscribe/3,
 	 unsubscribe/3,
 	 register_services/3,
@@ -56,7 +58,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-    ?debug("service_discovery_rpc:init(): called."),
+    ?debug("svc_disc:init(): called."),
     ets:new(?SERVICE_TABLE, [ duplicate_bag,  public, named_table, 
 			     { keypos, #service_entry.service }]),
 
@@ -72,9 +74,21 @@ init([]) ->
 start_json_server() ->
     rvi_common:start_json_rpc_server(service_discovery, ?MODULE, service_discovery_sup).
 
-get_services(CompSpec) ->
+get_all_services(CompSpec) ->
     rvi_common:request(service_discovery, ?MODULE, 
-		       get_services, [], [status, services], CompSpec).
+		       get_all_services, [], [status, services], CompSpec).
+
+get_services_by_module(CompSpec, DataLinkMod) ->
+    rvi_common:request(service_discovery, ?MODULE, 
+		       get_services_by_module, 
+		       [ { data_link_module, DataLinkMod }], 
+		       [status, services], CompSpec).
+
+get_modules_by_service(CompSpec, Service) ->
+    rvi_common:request(service_discovery, ?MODULE, 
+		       get_modules_by_service,
+		       [ { service, Service }], 
+		       [status, modules], CompSpec).
 
 
 register_services(CompSpec, Services, DataLinkModule) ->
@@ -91,14 +105,14 @@ unregister_services(CompSpec, Services, DataLinkModule) ->
 
 subscribe(CompSpec, Service, SubscribingMod) ->
     rvi_common:notification(service_discovery, ?MODULE, subscribe, 
-			    [ { service, Service }], 
-			    [ { subscribing_module, SubscribingMod }], 
+			    [ { service, Service }, 
+			      { subscribing_module, SubscribingMod }], 
 			    CompSpec).
 
 unsubscribe(CompSpec, Service, SubscribingMod) ->
     rvi_common:notification(service_discovery, ?MODULE, unsubscribe_from_service_availability, 
-			    [ { service, Service }], 
-			    [ { subscribing_module, SubscribingMod }], 
+			    [ { service, Service }, 
+			      { subscribing_module, SubscribingMod }], 
 			    CompSpec).
     
 
@@ -142,17 +156,38 @@ handle_notification("unsubscribe_from_service", Args) ->
     ok;
 
 handle_notification( Other, _Args) ->
-    ?info("service_discovery_rpc:handle_notification(~p): unknown", [ Other ]),
+    ?info("svc_disc:handle_notification(~p): unknown", [ Other ]),
     ok.
 
 
 %%
 %% Get all services
 %%
-handle_rpc("get_services", _Args) ->
-    ?debug("service_discovery_rpc:get_services(json-rpc)"),
-    [ok, Services ] = gen_server:call(?SERVER, { rvi, get_services, []}),
+handle_rpc("get_all_services", _Args) ->
+    ?debug("svc_disc:get_all_services(json-rpc)"),
+    [ok, Services ] = gen_server:call(?SERVER, { rvi, get_all_services, []}),
     {ok, [ {status, rvi_common:json_rpc_status(ok)} , { services, { array, Services } }]};
+
+
+handle_rpc("get_services_by_module", Args) ->
+    {ok, DataLinkMod } = rvi_common:get_json_element(["data_link_module"], Args),
+    ?debug("svc_disc:get_services_by_module(json-rpc): ~p ", [DataLinkMod]),
+    [ok, Services ] = gen_server:call(?SERVER, 
+				      { rvi, 
+					get_services_by_module, 
+					[DataLinkMod]}),
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} , { services, { array, Services } }]};
+
+
+handle_rpc("get_modules_by_service", Args) ->
+    {ok, Service } = rvi_common:get_json_element(["service"], Args),
+    ?debug("svc_disc:get_modules_by_service(json-rpc): ~p ", [Service]),
+    [ok, Modules ] = gen_server:call(?SERVER, 
+				      { rvi,
+					get_modules_by_service,
+					[Service]}),
+
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} , { modules, { array, Modules } }]};
 
 
 
@@ -161,35 +196,40 @@ handle_rpc("get_services", _Args) ->
 %% Handle the rest.
 %%
 handle_rpc( Other, _Args) ->
-    ?info("service_discovery_rpc:handle_rpc(~p): unknown", [ Other ]),
+    ?info("svc_disc:handle_rpc(~p): unknown", [ Other ]),
     {ok, [ { status, invalid_command } ]}.
 
 
-
-
-handle_call({rvi, get_services, _Args}, _From, St) ->
+handle_call({rvi, get_all_services, _Args}, _From, St) ->
     Svcs = ets:foldl(fun(#service_entry {service = ServiceName}, Acc) -> 
 			    [ ServiceName | Acc ] end, 
 		    [], ?SERVICE_TABLE),
-
     {reply,  [ok, Svcs], St };
 
 
+handle_call({rvi, get_services_by_module, [Module]}, _From, St) ->
+    {reply,  [ok, get_services_by_module_(Module)], St };
+
+
+handle_call({rvi, get_modules_by_service, [Service]}, _From, St) ->
+    {reply,  [ok, get_modules_by_service_(Service)], St };
+
+
 handle_call(Other, _From, St) ->
-    ?warning("service_discovery_rpc:handle_call(~p): unknown", [ Other ]),
+    ?warning("svc_disc:handle_call(~p): unknown", [ Other ]),
     { reply,  [unknown_command] , St}.
 
 
 
 handle_cast({rvi, subscribe, [Service, SubsMod] }, St) ->
     case ets:lookup(?NOTIFICATION_TABLE, Service) of
-	'$end_of_table' ->
+	[] ->
 	    %% Insert new entry.
 	    ets:insert(?NOTIFICATION_TABLE,
 		       #notification_subs { service = Service, 
 					    modules = [SubsMod] });
 
-	#notification_subs { modules = SubsMods } ->
+	[#notification_subs { modules = SubsMods }] ->
 	    %% Replace existing entry
 	    ets:insert(?NOTIFICATION_TABLE,
 		       #notification_subs { service = Service, 
@@ -202,11 +242,11 @@ handle_cast({rvi, subscribe, [Service, SubsMod] }, St) ->
 
 handle_cast({rvi, unsubscribe, [Service, SubsMod] }, St) ->
     case ets:lookup(?NOTIFICATION_TABLE, Service) of
-	'$end_of_table' ->
+	[] ->
 	    %% No match.
 	    ok;
 
-	#notification_subs { modules = SubsMods } ->
+	[#notification_subs { modules = SubsMods }] ->
 	    %% Replace existing entry
 	    ets:insert(?NOTIFICATION_TABLE,
 		       #notification_subs { service = Service, 
@@ -218,7 +258,7 @@ handle_cast({rvi, unsubscribe, [Service, SubsMod] }, St) ->
 %% Handle calls received through regular gen_server calls, routed by
 %% rvi_common:request()
 handle_cast({rvi, register_services, [Services, DataLinkModule] }, St) ->
-    ?info("service_discovery_rpc:register_service(): ~p:~p",
+    ?info("svc_disc:register_service(): ~p:~p",
 	  [DataLinkModule, Services]),
 
     [ register_single_service_(SvcName, DataLinkModule) || SvcName <- Services],
@@ -237,7 +277,7 @@ handle_cast({rvi, register_services, [Services, DataLinkModule] }, St) ->
 %% rvi_common:request()
 handle_cast({rvi, unregister_services, [Services, DataLinkModule] }, St) ->
 
-    ?info("service_discovery_rpc:unregister_service(): ~p:~p",
+    ?info("svc_disc:unregister_service(): ~p:~p",
 	  [DataLinkModule, Services]),
 
     [ unregister_single_service_(SvcName, DataLinkModule) || SvcName <- Services],
@@ -254,7 +294,7 @@ handle_cast({rvi, unregister_services, [Services, DataLinkModule] }, St) ->
 
 
 handle_cast(Other, St) ->
-    ?warning("service_discovery_rpc:handle_cast(~p): unknown", [ Other ]),
+    ?warning("svc_disc:handle_cast(~p): unknown", [ Other ]),
     {noreply, St}.
 
 handle_info(_Info, St) ->
@@ -282,7 +322,7 @@ code_change(_OldVsn, St, _Extra) ->
 
 
 register_single_service_(Service, DataLinkModule) ->
-    ?info("service_discovery_rpc:register_remote_service_(~p:~p)", 
+    ?info("svc_disc:register_remote_service_(~p:~p)", 
 	  [DataLinkModule,Service]),
 
     %% Delete any previous instances of the given entry, in case
@@ -317,7 +357,7 @@ register_single_service_(Service, DataLinkModule) ->
 
 
 unregister_single_service_(Service, DataLinkModule) ->
-    ?info("service_discovery_rpc:unregister_single_service_(): ~p:~p", 
+    ?info("svc_disc:unregister_single_service_(): ~p:~p", 
 	  [DataLinkModule, Service]),
 
 
@@ -352,7 +392,7 @@ get_modules_by_service_(Service) ->
 	
 
 
-    ?debug("service_discovery_rpc:get_modules_by_service_(): ~p -> ~p", [ Service, ModNames ]),
+    ?debug("svc_disc:get_modules_by_service_(): ~p -> ~p", [ Service, ModNames ]),
     ModNames.
 
 
@@ -370,27 +410,12 @@ get_services_by_module_(Module) ->
 	
 
 
-    ?debug("service_discovery_rpc:get_services_by_module_(): ~p -> ~p", [ Module, SvcNames ]),
+    ?debug("svc_disc:get_services_by_module_(): ~p -> ~p", [ Module, SvcNames ]),
     SvcNames.
 
 
 
 
-%% Convert services returned by get_services_ to JSON format
-convert_json_services(Services) ->
-    JSONServices = lists:foldl(fun({ ServiceName, ServiceAddr}, Acc) -> 
-				 [ {struct, 
-				    [ 
-				      {service, ServiceName }, 
-				      {address, ServiceAddr }
-				    ]
-				   } | Acc ] end, 
-			 [], Services),
-    ?debug("service_discovery_rpc:get_services_(): ~p", [ Services]),
-    JSONServices.
-
-
-%% jlr.com/abc
 notify_subscribers(_CompSpec, _Available, [], _DataLinkModule) -> 
     ok;
 

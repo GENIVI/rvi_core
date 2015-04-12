@@ -216,18 +216,18 @@ find_routes_(Routes, Service) ->
 %% { Protocol,            { DataLink, DOpts } -> { {Protocol, [] },   {DataLink, DOpts } },
 %% { { Protocol, POpts }, DataLink }          -> { {Protocol, POpts}, {DataLink, [] }},
 %% { { Protocol, POpts }, { DataLink, DOpts } -> { {Protocol, POpts}, {DataLink, DOpts }},
-normalize_routes_({ServicePrefix, []}, Acc) ->
-    { ServicePrefix, lists:reverse(Acc) };
+normalize_routes_([], Acc) ->
+     lists:reverse(Acc);
 
-normalize_routes_({ServicePrefix, [ {{ Pr, PrOp }, { DL, DLOp }} | Rem ]}, Acc) ->
-    normalize_routes_({ServicePrefix, Rem}, [ {{Pr, PrOp}, { DL, DLOp } } | Acc]);  
+normalize_routes_([ {{ Pr, PrOp }, { DL, DLOp }} | Rem ], Acc) ->
+    normalize_routes_( Rem, [ {{Pr, PrOp}, { DL, DLOp } } | Acc]);  
 
-normalize_routes_({ServicePrefix, [ { Pr, { DL, DLOp }} | Rem ]}, Acc) ->
-    normalize_routes_({ServicePrefix, Rem}, [ { {Pr, []}, { DL, DLOp } } | Acc]);  
+normalize_routes_([ { Pr, { DL, DLOp }} | Rem ], Acc) ->
+    normalize_routes_(Rem, [ { {Pr, []}, { DL, DLOp } } | Acc]);  
 
-normalize_routes_({ServicePrefix, [ {{ Pr, PrOp}, DL } | Rem ]}, Acc) ->
-    normalize_routes_({ServicePrefix, Rem}, [ { {Pr, PrOp}, { DL, [] } } | Acc]);  
+normalize_routes_([ {{ Pr, PrOp}, DL } | Rem ], Acc) ->
+    normalize_routes_(Rem, [ { {Pr, PrOp}, { DL, [] } } | Acc]);  
 
-normalize_routes_({ServicePrefix, [ {Pr, DL} | Rem ]}, Acc) ->
-    normalize_routes_({ServicePrefix, Rem}, [ { {Pr, []}, { DL, [] } } | Acc]).
+normalize_routes_([ {Pr, DL} | Rem ], Acc) ->
+    normalize_routes_(Rem, [ { {Pr, []}, { DL, [] } } | Acc]).
 

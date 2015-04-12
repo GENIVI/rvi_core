@@ -448,7 +448,7 @@ queue_message(SvcName,
 	    %% to indicate that the service is available for the given DL.
 	    %% 
 	    case DLMod:setup_data_link(NSt#st.cs, SvcName, DLOp) of
-		{ ok, DLTimeout } ->
+		[ ok, DLTimeout ] ->
 
 		    %% Setup a timeout that triggers on whatever
 		    %% comes first of the message's general timeout
@@ -472,11 +472,11 @@ queue_message(SvcName,
 			    },
 
 		    %% Add to ets table
-		    TransID = ets:insert(SvcRec#service.messages_tid, Msg),
+		    ets:insert(SvcRec#service.messages_tid, Msg),
 		    {ok, NSt};
 
 		%% We failed with this route. Try the next one
-		{ error, _Reason} ->
+		[ error, _Reason] ->
 		    queue_message(SvcName,
 				  TransID,
 				  Timeout,
@@ -495,7 +495,7 @@ queue_message(SvcName,
 %% The service is not available
 try_sending_messages(#service { 
 			key = { SvcName, _ },
-			available = false,
+			available = unavailable,
 			messages_tid = _Tid } = _SvcRec, St) ->
 
     ?info("schedule:try_send(): SvcName:   ~p: Not available", [SvcName]),
@@ -503,7 +503,7 @@ try_sending_messages(#service {
 
 try_sending_messages(#service { 
 			key = { SvcName, DataLinkMod },
-			available = true,
+			available = available,
 			messages_tid = Tid } = SvcRec, St) ->
 
     ?debug("schedule:try_send(): Service:         ~p:~p", [DataLinkMod, SvcName]),

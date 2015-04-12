@@ -315,22 +315,8 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 
     %% Send our own servide announcement to the remote server
     %% that just authorized to us.
-    %% First grab all our services.
-    [ ok, Services ] = service_discovery_rpc:get_local_services(CompSpec),
+    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
 	 
-    %% Covnert to JSON structured typles.
-    LocalServices = [ Service || { Service, _LocalAddress } <- Services ],
-	%% lists:foldl(fun({struct, JSONElem}, Acc) -> 
-	%% 		    [ proplists:get_value("service", JSONElem, undefined) | Acc];
-	%% 	       ({Service, _LocalAddress}, Acc) -> 
-	%% 			    [ Service | Acc ];
-	%% 		       (Elem, Acc) -> 
-	%% 			    [ Elem | Acc ]
-	%% 		    end,
-	%% 		    [], JSONSvc),
-
-    %% Grab our local address.
-    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
     %% Send an authorize back to the remote node
     ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
