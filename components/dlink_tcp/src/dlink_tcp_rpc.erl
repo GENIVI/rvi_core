@@ -24,8 +24,8 @@
 
 %% Invoked by service discovery
 %% FIXME: Should be rvi_service_discovery behavior
--export([service_available/4,
-	 service_unavailable/4]).
+-export([service_available/3,
+	 service_unavailable/3]).
 
 -export([setup_data_link/3,
 	 disconnect_data_link/2,
@@ -127,20 +127,18 @@ setup_persistent_connections_([ NetworkAddress | T], CompSpec) ->
     setup_persistent_connections_(T, CompSpec),
     ok.
 
-service_available(CompSpec, SvcName, DataLinkModule, Address) ->
+service_available(CompSpec, SvcName, DataLinkModule) ->
     rvi_common:notification(data_link, ?MODULE, 
 			    service_available, 
 			    [{ service, SvcName },
-			     { data_link_module, DataLinkModule },
-			     { address, Address }],
+			     { data_link_module, DataLinkModule }],
 			    CompSpec).
 
-service_unavailable(CompSpec, SvcName, DataLinkModule, Address) ->
+service_unavailable(CompSpec, SvcName, DataLinkModule) ->
     rvi_common:notification(data_link, ?MODULE, 
 			    service_unavailable, 
 			    [{ service, SvcName },
-			     { data_link_module, DataLinkModule },
-			     { address, Address }],
+			     { data_link_module, DataLinkModule }],
 			    CompSpec).
 
 
@@ -456,23 +454,19 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
 handle_notification("service_available", Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
-    {ok, Address} = rvi_common:get_json_element(["address"], Args),
 
     gen_server:cast(?SERVER, { rvi, service_available, 
 				      [ SvcName,
-					DataLinkModule,
-					Address ]}),
+					DataLinkModule ]}),
 
     ok;
 handle_notification("service_unavailable", Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
-    {ok, Address} = rvi_common:get_json_element(["address"], Args),
 
     gen_server:cast(?SERVER, { rvi, service_unavailable, 
 				      [ SvcName,
-					DataLinkModule,
-					Address ]}),
+					DataLinkModule ]}),
 
     ok;
 
@@ -507,13 +501,24 @@ handle_rpc(Other, _Args) ->
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
-handle_cast( {rvi, service_available, [SvcName, local, _Address]}, St) ->
+handle_cast( {rvi, service_available, [SvcName, local]}, St) ->
     announce_local_service_(St#st.cs, SvcName, available),
     {noreply, St};
 
 
-handle_cast( {rvi, service_unavailable, [SvcName, local, _Address]}, St) ->
+handle_cast( {rvi, service_available, [_SvcName, _]}, St) ->
+    %% We don't care about remote services available through
+    %% other data link modules
+    {noreply, St};
+
+
+handle_cast( {rvi, service_unavailable, [SvcName, local]}, St) ->
     announce_local_service_(St#st.cs, SvcName, unavailable),
+    {noreply, St};
+
+handle_cast( {rvi, service_unavailable, [_SvcName, _]}, St) ->
+    %% We don't care about remote services available through 
+    %% other data link modules
     {noreply, St};
 
 
