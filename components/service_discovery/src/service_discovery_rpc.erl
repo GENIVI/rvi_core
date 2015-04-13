@@ -21,8 +21,8 @@
 -export([get_all_services/1,
 	 get_services_by_module/2,
 	 get_modules_by_service/2,
-	 subscribe/3,
-	 unsubscribe/3,
+	 subscribe/2,
+	 unsubscribe/2,
 	 register_services/3,
 	 unregister_services/3]).
 
@@ -31,9 +31,9 @@
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
 
--define(SERVICE_TABLE, rvi_services).
--define(MODULE_TABLE, rvi_modules).
--define(NOTIFICATION_TABLE, rvi_notification_subs).
+-define(SERVICE_TABLE, rvi_svcdisc_services).
+-define(MODULE_TABLE, rvi_svcdisc_modules).
+-define(SUBSCRIBER_TABLE, rvi_svcdisc_subscribers).
 
 -record(service_entry, {
 	  service = [],             %% Servie handled by this entry.
@@ -41,9 +41,8 @@
 	 }).
 
 
--record(notification_subs, {
-	  service = [],
-	  modules = [] %% List of modules subscribing to this service
+-record(subscriber_entry, {
+	  module %% Module subscribing to service availability
 	 }).
 
 
@@ -65,8 +64,8 @@ init([]) ->
     ets:new(?MODULE_TABLE, [ duplicate_bag,  public, named_table, 
 			     { keypos, #service_entry.data_link_mod }]),
 
-    ets:new(?NOTIFICATION_TABLE, [set,  public, named_table, 
-				  { keypos, #notification_subs.service }]),
+    ets:new(?SUBSCRIBER_TABLE, [set,  public, named_table, 
+				  { keypos, #subscriber_entry.module }]),
 
     {ok, #st { cs = rvi_common:get_component_specification() } }.
 
@@ -103,16 +102,14 @@ unregister_services(CompSpec, Services, DataLinkModule) ->
 			     { services,  Services }],
 			     CompSpec).
 
-subscribe(CompSpec, Service, SubscribingMod) ->
+subscribe(CompSpec, SubscribingMod) ->
     rvi_common:notification(service_discovery, ?MODULE, subscribe, 
-			    [ { service, Service }, 
-			      { subscribing_module, SubscribingMod }], 
+			    [ { subscribing_module, SubscribingMod }], 
 			    CompSpec).
 
-unsubscribe(CompSpec, Service, SubscribingMod) ->
-    rvi_common:notification(service_discovery, ?MODULE, unsubscribe_from_service_availability, 
-			    [ { service, Service }, 
-			      { subscribing_module, SubscribingMod }], 
+unsubscribe(CompSpec, SubscribingMod) ->
+    rvi_common:notification(service_discovery, ?MODULE, unsubscribe, 
+			    [ { subscribing_module, SubscribingMod }], 
 			    CompSpec).
     
 
@@ -138,21 +135,17 @@ handle_notification("unregister_services", Args) ->
 
 
 handle_notification("subscribe", Args) ->
-    {ok, Service } = rvi_common:get_json_element(["service"], Args),
     {ok, Module } = rvi_common:get_json_element(["subscribing_module"], Args),
 
     %% De-register service
-    gen_server:cast(?SERVER, { rvi, subscribe, 
-			       [ Service, Module ]}),
+    gen_server:cast(?SERVER, { rvi, subscribe, [ Module ]}),
     ok;
 
 handle_notification("unsubscribe_from_service", Args) ->
-    {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Module } = rvi_common:get_json_element(["subscribing_module"], Args),
 
     %% De-register service
-    gen_server:cast(?SERVER, { rvi, unsubscribe_from_service, 
-			       [ Service, Module ]}),
+    gen_server:cast(?SERVER, { rvi, unsubscribe, [ Module ]}),
     ok;
 
 handle_notification( Other, _Args) ->
@@ -221,37 +214,17 @@ handle_call(Other, _From, St) ->
 
 
 
-handle_cast({rvi, subscribe, [Service, SubsMod] }, St) ->
-    case ets:lookup(?NOTIFICATION_TABLE, Service) of
-	[] ->
-	    %% Insert new entry.
-	    ets:insert(?NOTIFICATION_TABLE,
-		       #notification_subs { service = Service, 
-					    modules = [SubsMod] });
+handle_cast({rvi, subscribe, [ SubsMod] }, St) ->
+    %% Insert new entry, or replace existing one
+    ets:insert(?SUBSCRIBER_TABLE, #subscriber_entry { module = SubsMod}),
 
-	[#notification_subs { modules = SubsMods }] ->
-	    %% Replace existing entry
-	    ets:insert(?NOTIFICATION_TABLE,
-		       #notification_subs { service = Service, 
-					    modules = lists:usort([ SubsMod | SubsMods ]) })
-	    
-    end,
-    notify_on_existing_service(St#st.cs, Service, SubsMod),
+    initial_notification(St#st.cs, SubsMod),
+
     { noreply, St};
 
 
-handle_cast({rvi, unsubscribe, [Service, SubsMod] }, St) ->
-    case ets:lookup(?NOTIFICATION_TABLE, Service) of
-	[] ->
-	    %% No match.
-	    ok;
-
-	[#notification_subs { modules = SubsMods }] ->
-	    %% Replace existing entry
-	    ets:insert(?NOTIFICATION_TABLE,
-		       #notification_subs { service = Service, 
-					    modules = SubsMods -- SubsMod })
-    end,
+handle_cast({rvi, unsubscribe, [ SubsMod] }, St) ->
+    ets:delete(?SUBSCRIBER_TABLE, SubsMod),
     { noreply, St};
 
 
@@ -304,21 +277,6 @@ terminate(_Reason, _St) ->
     ok.
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
-
-
-%%
-%% INTERNAL SUPPORT FUNCTIONS
-%%
-%% dump_table(_Table, '$end_of_table') ->
-%%     true;
-
-%% dump_table(Table, Key) ->
-%%     Val = ets:lookup(Table, Key),
-%%     ?info("Table: ~p(~p) - ~p", [ Table, Key, Val ]),
-%%     dump_table(Table, ets:next(Table, Key)).
-
-%% dump_table(Table) ->
-%%     dump_table(Table, ets:first(Table)).
 
 
 register_single_service_(Service, DataLinkModule) ->
@@ -406,45 +364,61 @@ get_services_by_module_(Module) ->
 				 }, Acc) -> 
 				   [ Svc | Acc ]
 		end, [], SvcMatch),
-    
-	
-
 
     ?debug("svc_disc:get_services_by_module_(): ~p -> ~p", [ Module, SvcNames ]),
     SvcNames.
 
 
 
-
-notify_subscribers(_CompSpec, _Available, [], _DataLinkModule) -> 
+send_notification(_CompSpec, '$end_of_table', _SubsFun,
+		  _DataLinkModule, _Services, _Available) ->
     ok;
 
-notify_subscribers(CompSpec, Available, [ Service | Rem], DataLinkModule) -> 
-    %% ?NOTIFICATION_TABLE contains services that
-    %% should be matched against the given service.
-    %% If there is a match, we notify the associated module
+send_notification(CompSpec, SubsModule, SubsFun, 
+		  DataLinkModule, Services, Available) ->
 
+
+    %% Invoke subscriber for each service that has been updated.
+    [ SubsModule:SubsFun(CompSpec, SvcName, DataLinkModule) || SvcName <- Services],
+
+    %% Move on to the next subscribing module
+    send_notification(CompSpec, 
+		      ets:next(?SUBSCRIBER_TABLE, SubsModule), SubsFun,
+		      DataLinkModule, Services, Available).
+    
+notify_subscribers(CompSpec, Available, Services, DataLinkModule) -> 
+
+    %% Figure out the function to invoke
     Fun = case Available of
 	      available -> service_available;
 	      unavailable -> service_unavailable
 	  end,
 
-    %% Retrieve all modules subscribing to a specific service.
-    case ets:lookup(?NOTIFICATION_TABLE, Service) of
-	[] ->
+    %% Initiate with the first module
+    send_notification(CompSpec, 
+		      ets:first(?SUBSCRIBER_TABLE), 
+		      Fun, 
+		      DataLinkModule, 
+		      Services,
+		      Available).
+
+
+
+%% Send all available services to the newly subscribing module
+initial_notification(CompSpec, SubsMod, Service) ->
+    case ets:lookup(?SERVICE_TABLE, Service) of
+	[] -> %% Yanked
 	    ok;
-	
-	[#notification_subs { modules = Modules }] ->
-	    %% Notify each subscriber of the given service.
-	    [ Module:Fun(CompSpec, Service, DataLinkModule) || Module <- Modules],
-	    ok
+
+	[#service_entry { data_link_mod = DataLinkMod }] -> 
+	    SubsMod:service_available(CompSpec, Service, DataLinkMod)
     end,
+
+    %% Move on to the next service
+    initial_notification(CompSpec, SubsMod,
+			 ets:next(?SERVICE_TABLE, Service)).
+	    
     
-    %% Move on to remaining subscribers.
-    notify_subscribers(CompSpec, Available, Rem, DataLinkModule).
-
-
-notify_on_existing_service(CompSpec, Service, SubsMod) ->
-    Modules = ets:lookup(?SERVICE_TABLE, Service),
-    [ SubsMod:service_available(CompSpec, Service, Mod) || Mod <- Modules],
+initial_notification(CompSpec, SubsMod) ->
+    initial_notification(CompSpec, SubsMod, ets:first(?SERVICE_TABLE)),
     ok.

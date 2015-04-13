@@ -221,37 +221,30 @@ connect_and_retry_remote( IP, Port, CompSpec) ->
     end.
 
 
+announce_local_service_(_CompSpec, '$end_of_table', _Service, _Availability) ->
+    ok;
+
+announce_local_service_(CompSpec, 
+			ConnPid,
+			Service, Availability) ->
+    
+    Res = connection:send(ConnPid, 
+			  {service_announce, 3, Availability, 
+			   [Service], { signature, {}}}),
+
+    ?debug("dlink_tcp:announce_local_service(~p: ~p) -> ~p  Res: ~p", 
+	   [ Availability, Service, ConnPid, Res]),
+
+    %% Move on to next connection.
+    announce_local_service_(CompSpec, 
+			    ets:next(?CONNECTION_TABLE, ConnPid),
+			    Service, Availability).
+
 announce_local_service_(CompSpec, Service, Availability) ->
-    ?debug("dlink_tcp:announce_local_service(~p): Service: ~p",  [Availability, Service]),
-    %% Grab our local address.
-    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+    announce_local_service_(CompSpec, 
+			    ets:first(?CONNECTION_TABLE),
+			    Service, Availability).
 
-    %% Grab all remote addresses we are currently connected to.
-    %% We will get the data link address of all remote nodes that
-    %% we currently have a conneciton to.
-    [ ok, Addresses ] = service_discovery_rpc:get_remote_network_addresses(CompSpec),
-
-    %% Grab our local address.
-    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
-
-    %% Loop over all returned addresses
-    lists:map(
-      fun(Address) ->
-	      ?info("dlink_tcp:announce_local_service(~p): Announcing ~p to ~p", 
-		    [ Availability, Service, Address]),
-
-	      %% Split the address into host and port
-	      [ RemoteAddress, RemotePort] =  string:tokens(Address, ":"),
-
-	      %% Announce the new service to the remote 
-	      %% RVI node
-	      Res = connection:send(RemoteAddress, list_to_integer(RemotePort), 
-				    {service_announce, 3, Availability, 
-				     [Service], { signature, {}}}),
-	      ?debug("dlink_tcp:announce_local_service(~p): Res      ~p", 
-		     [ Availability, Res])
-      end, Addresses),
-    ok.
 
 handle_socket(_FromPid, PeerIP, PeerPort, data, ping, [_CompSpec]) ->
     ?info("dlink_tcp:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),

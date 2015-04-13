@@ -108,8 +108,12 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     %% Setup the relevant ets tables.
+    %% Unsubscribe from service availablility notifications
+    CS = rvi_common:get_component_specification(),
+
+    service_discovery_rpc:subscribe(CS, ?MODULE),
     {ok, #st{ 
-	    cs = rvi_common:get_component_specification(),
+	    cs = CS,
 	    services_tid = ets:new(rvi_schedule_services, 
 				     [  set, private, 
 					{ keypos, #service.key } ])}}.
@@ -258,7 +262,8 @@ handle_cast( {rvi, service_available, [SvcName, DataLinkModule]}, St) ->
 
     %% Find or create the service.
     ?debug("sched:service_available(): ~p:~p", [ DataLinkModule, SvcName ]),
-
+    
+    %% Create a new or update an existing service.
     SvcRec = update_service(SvcName, DataLinkModule, available, St),
 
     %% Try to send any pending messages.
@@ -600,7 +605,7 @@ find_or_create_service(SvcName, DataLinkMod, #st { services_tid = SvcTid } = St)
 %% revord.
 %%
 update_service(SvcName, DataLinkMod, Available, 
-	       #st { services_tid = SvcsTid, cs = CS }) ->
+	       #st { services_tid = SvcsTid }) ->
     %% Return new service and existing state.
     ?debug("sched:create_service():  ~p:~s ", [ DataLinkMod, SvcName]),
     SvcRec = #service { 
@@ -613,10 +618,6 @@ update_service(SvcName, DataLinkMod, Available,
 
     %% Insert new service to ets table.
     ets:insert(SvcsTid, SvcRec),
-
-    %% Subscribe to updates on the availbility of this service.
-    service_discovery_rpc:subscribe(CS, SvcName, DataLinkMod),
-
     SvcRec. 
 
 
@@ -672,10 +673,6 @@ delete_unused_service(SvcTid, SvcRec) ->
 	    ets:delete(SvcRec#service.messages_tid),
 	    ets:delete(SvcTid, SvcRec#service.key),
 
-	    { SvcName, DataLinkMod} = SvcRec#service.key,
-	    %% Unsubscribe from service availablility notifications
-	    service_discovery_rpc:
-		unsubscribe_to_service_availability(SvcName, DataLinkMod, ?MODULE),
 	    %% Update the network address, if it differs, and return
 	    %% the new service / State as {ok, NSvcRec, false, NSt}
 	    ?debug("sched:service_unavailable(): Service ~p:~p now has no address.", 
