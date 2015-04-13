@@ -192,16 +192,16 @@ handle_notification("service_available", Args) ->
 
     gen_server:cast(?SERVER, { rvi, service_available, 
 				      [ SvcName,
-					DataLinkModule ]}),
-
+					list_to_atom(DataLinkModule) ]}),
     ok;
+
 handle_notification("service_unavailable", Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_mod"], Args),
 
     gen_server:cast(?SERVER, { rvi, service_unavailable, 
 				      [ SvcName,
-					DataLinkModule ]}),
+					list_to_atom(DataLinkModule) ]}),
 
     ok;
 

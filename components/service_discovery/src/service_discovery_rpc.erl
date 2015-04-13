@@ -57,7 +57,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-    ?debug("svc_disc:init(): called."),
+    ?info("svc_disc:init(): called."),
     ets:new(?SERVICE_TABLE, [ duplicate_bag,  public, named_table, 
 			     { keypos, #service_entry.service }]),
 
@@ -93,12 +93,12 @@ get_modules_by_service(CompSpec, Service) ->
 register_services(CompSpec, Services, DataLinkModule) ->
     rvi_common:notification(service_discovery, ?MODULE, register_services, 
 			    [{ services, Services },
-			     { data_link_module, atom_to_list(DataLinkModule) }],
+			     { data_link_module, DataLinkModule }],
 			    CompSpec).
 
 unregister_services(CompSpec, Services, DataLinkModule) ->
     rvi_common:notification(service_discovery, ?MODULE, unregister_service, 
-			    [{ data_link_module, atom_to_list(DataLinkModule)},
+			    [{ data_link_module, DataLinkModule},
 			     { services,  Services }],
 			     CompSpec).
 
@@ -138,14 +138,14 @@ handle_notification("subscribe", Args) ->
     {ok, Module } = rvi_common:get_json_element(["subscribing_module"], Args),
 
     %% De-register service
-    gen_server:cast(?SERVER, { rvi, subscribe, [ Module ]}),
+    gen_server:cast(?SERVER, { rvi, subscribe, [ list_to_atom(Module) ]}),
     ok;
 
 handle_notification("unsubscribe_from_service", Args) ->
     {ok, Module } = rvi_common:get_json_element(["subscribing_module"], Args),
 
     %% De-register service
-    gen_server:cast(?SERVER, { rvi, unsubscribe, [ Module ]}),
+    gen_server:cast(?SERVER, { rvi, unsubscribe, [ list_to_atom(Module) ]}),
     ok;
 
 handle_notification( Other, _Args) ->
@@ -371,22 +371,24 @@ get_services_by_module_(Module) ->
 
 
 send_notification(_CompSpec, '$end_of_table', _SubsFun,
-		  _DataLinkModule, _Services, _Available) ->
+		  _DataLinkModule, _Services) ->
     ok;
 
 send_notification(CompSpec, SubsModule, SubsFun, 
-		  DataLinkModule, Services, Available) ->
-
+		  DataLinkModule, Services) ->
 
     %% Invoke subscriber for each service that has been updated.
+    ?debug("notify_subscribers(~p:~p) ~p:~p()", [ DataLinkModule, Services, SubsModule, SubsFun]),
     [ SubsModule:SubsFun(CompSpec, SvcName, DataLinkModule) || SvcName <- Services],
 
     %% Move on to the next subscribing module
     send_notification(CompSpec, 
 		      ets:next(?SUBSCRIBER_TABLE, SubsModule), SubsFun,
-		      DataLinkModule, Services, Available).
+		      DataLinkModule, Services).
     
 notify_subscribers(CompSpec, Available, Services, DataLinkModule) -> 
+    
+    ?debug("notify_subscribers(~p:~p) ~p", [ DataLinkModule, Services, Available]),
 
     %% Figure out the function to invoke
     Fun = case Available of
@@ -399,8 +401,7 @@ notify_subscribers(CompSpec, Available, Services, DataLinkModule) ->
 		      ets:first(?SUBSCRIBER_TABLE), 
 		      Fun, 
 		      DataLinkModule, 
-		      Services,
-		      Available).
+		      Services).
 
 
 

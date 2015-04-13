@@ -147,6 +147,9 @@ get_request_result(Other)->
 json_argument([], [], Acc) ->
     Acc;
 
+json_argument([Arg | AT], [Spec | ST], Acc) when is_atom(Arg)->
+    json_argument(AT, ST, [ { Spec, atom_to_list(Arg) } | Acc]);
+
 json_argument([Arg | AT], [Spec | ST], Acc) ->
     json_argument(AT, ST, [ { Spec, Arg } | Acc]).
 
