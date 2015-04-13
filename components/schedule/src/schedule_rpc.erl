@@ -140,6 +140,7 @@ schedule_message(CompSpec,
 
 
 service_available(CompSpec, SvcName, DataLinkModule) ->
+
     rvi_common:notification(schedule, ?MODULE, 
 			    service_available, 
 			    [{ service, SvcName },
@@ -261,7 +262,7 @@ handle_call(Other, _From, St) ->
 handle_cast( {rvi, service_available, [SvcName, DataLinkModule]}, St) ->
 
     %% Find or create the service.
-    ?debug("sched:service_available(): ~p:~p", [ DataLinkModule, SvcName ]),
+    ?debug("sched:service_available(): ~p:~s", [ DataLinkModule, SvcName ]),
     
     %% Create a new or update an existing service.
     SvcRec = update_service(SvcName, DataLinkModule, available, St),
@@ -518,7 +519,7 @@ try_sending_messages(#service {
 			available = available,
 			messages_tid = Tid } = SvcRec, St) ->
 
-    ?debug("sched:try_send(): Service:         ~p:~p", [DataLinkMod, SvcName]),
+    ?debug("sched:try_send(): Service:    ~p:~p", [DataLinkMod, SvcName]),
 
     %% Extract the first message of the queue.
     case first_service_message(SvcRec) of
@@ -538,7 +539,10 @@ try_sending_messages(#service {
 	    erlang:cancel_timer(Msg#message.timeout_tref),
 
 	    %% Forward to protocol.
+	    ?debug("sched:try_send(): DataLink:  ~p", [Msg#message.data_link]),	    
 	    { _, DataLinkOpts } = Msg#message.data_link,
+
+	    ?debug("sched:try_send(): Proto:     ~p", [Msg#message.protocol]),
 	    { ProtoMod, ProtoOpts } = Msg#message.protocol,
 
 	    %% Send off message to the correct protocol module
@@ -600,25 +604,42 @@ find_or_create_service(SvcName, DataLinkMod, #st { services_tid = SvcTid } = St)
 
 
 
-%% Create a new service, or update an existing one, and return the new
-%% state (not currently modified) and the newly initialized service
-%% revord.
-%%
+%% Create a new service.
+%% Warning: Will overwrite existing service (and its message table reference).
+%%         
 update_service(SvcName, DataLinkMod, Available, 
-	       #st { services_tid = SvcsTid }) ->
-    %% Return new service and existing state.
-    ?debug("sched:create_service():  ~p:~s ", [ DataLinkMod, SvcName]),
+	       #st { services_tid = SvcsTid, cs = CS }) ->
+
+    MsgTID  = 
+	case ets:lookup(SvcsTid, { SvcName, DataLinkMod }) of
+	    [] ->  %% The given service does not exist, create a new message TID
+		?debug("sched:update_service(~p:~p): ~p - Creating new", 
+		       [ DataLinkMod, SvcName, Available]),
+		ets:new(rvi_messages, 
+			[ ordered_set, private, 
+			  { keypos, #message.transaction_id } ]);
+
+	    [ TmpSvcRec ] -> 
+		%% Grab the existing messagae table ID
+		?debug("sched:update_service(~p:~p): ~p - Updating existing", 
+		       [ DataLinkMod, SvcName, Available]),
+
+		#service { messages_tid = TID } = TmpSvcRec,
+		TID
+	end,
+
+
+    %% Insert new service to ets table.
     SvcRec = #service { 
 		key = { SvcName, DataLinkMod },
 		available = Available, 
-		messages_tid = ets:new(rvi_messages, 
-				       [ ordered_set, private, 
-					 { keypos, #message.transaction_id } ])
+		messages_tid = MsgTID,
+		cs = CS
 	       },
 
-    %% Insert new service to ets table.
     ets:insert(SvcsTid, SvcRec),
     SvcRec. 
+
 
 
 %% Create a new and unique transaction id
