@@ -212,33 +212,33 @@ handle_call( { rvi, schedule_message,
 		Signature,
 		Certificate] }, _From, St) ->
 
-    ?debug("schedule:sched_msg(): service:     ~p", [SvcName]),
-    ?debug("schedule:sched_msg(): timeout:     ~p", [Timeout]),
-    ?debug("schedule:sched_msg(): parameters:  ~p", [Parameters]),
-    ?debug("schedule:sched_msg(): signature:   ~p", [Signature]),
-    ?debug("schedule:sched_msg(): certificate  ~p", [Certificate]),
-    %%?debug("schedule:sched_msg(): St:          ~p", [St]),
+    ?debug("sched:sched_msg(): service:     ~p", [SvcName]),
+    ?debug("sched:sched_msg(): timeout:     ~p", [Timeout]),
+    ?debug("sched:sched_msg(): parameters:  ~p", [Parameters]),
+    ?debug("sched:sched_msg(): signature:   ~p", [Signature]),
+    ?debug("sched:sched_msg(): certificate  ~p", [Certificate]),
+    %%?debug("sched:sched_msg(): St:          ~p", [St]),
 
     %% Create a transaction ID
     { TransID, NSt1} = create_transaction_id(St),
 
     %% Queue the message
-    NSt2 = queue_message(SvcName, 
-			 TransID, 
-			 rvi_routing:get_service_routes(SvcName), %% Can be no_route
-			 Timeout, 
-			 calc_relative_tout(Timeout),
-			 Parameters, 
-			 Signature, 
-			 Certificate,
-			 NSt1),
+    {_, NSt2 }= queue_message(SvcName, 
+			      TransID, 
+			      rvi_routing:get_service_routes(SvcName), %% Can be no_route
+			      Timeout, 
+			      calc_relative_tout(Timeout),
+			      Parameters, 
+			      Signature, 
+			      Certificate,
+			      NSt1),
 
     { reply, [ok, TransID], NSt2 };
 
 
 
 handle_call(Other, _From, St) ->
-    ?warning("schedule:handle_call(~p): unknown", [ Other ]),
+    ?warning("sched:handle_call(~p): unknown", [ Other ]),
     { reply,  [unknown_command] , St}.
 
 
@@ -257,7 +257,7 @@ handle_call(Other, _From, St) ->
 handle_cast( {rvi, service_available, [SvcName, DataLinkModule]}, St) ->
 
     %% Find or create the service.
-    ?debug("schedule:service_available(): ~p:~p", [ DataLinkModule, SvcName ]),
+    ?debug("sched:service_available(): ~p:~p", [ DataLinkModule, SvcName ]),
 
     SvcRec = update_service(SvcName, DataLinkModule, available, St),
 
@@ -290,7 +290,7 @@ handle_cast( {rvi, service_unavailable, [SvcName, DataLinkModule]},
 
 
 handle_cast(Other, St) ->
-    ?warning("schedule:handle_cast(~p): unknown", [ Other ]),
+    ?warning("sched:handle_cast(~p): unknown", [ Other ]),
     {noreply, St}.
 
 %%--------------------------------------------------------------------
@@ -305,9 +305,10 @@ handle_cast(Other, St) ->
 %%--------------------------------------------------------------------
 
 %% Handle timeouts
-handle_info({ rvi_message_timeout, SvcName, DLMod, TransID}, 
+handle_info({ rvi_message_timeout, SvcName, DLMod,TransID}, 
 	    #st { services_tid = SvcTid } = St) ->
 
+    ?info("sched:timeout(~p:~p): trans_id: ~p", [ DLMod, SvcName, TransID]),
     %% Look up the service / DataLink mod
     case  ets:lookup(SvcTid, {SvcName, DLMod}) of
 	[ SvcRec ] -> %% Found service for specific data link
@@ -315,7 +316,7 @@ handle_info({ rvi_message_timeout, SvcName, DLMod, TransID},
 	    %% Delete message from service queue
 	    case ets:lookup(SvcRec#service.messages_tid, TransID) of
 		[ Msg ] ->
-		    ?info("schedule:timeout(): trans_id(~p) service(~p)", [ TransID, SvcName]),
+		    ?debug("sched:timeout(~p:~p): Rescheduling", [ DLMod, SvcName]),
 		    ets:delete(SvcRec#service.messages_tid, TransID),
 
 		    %% Try to requeue message
@@ -332,18 +333,22 @@ handle_info({ rvi_message_timeout, SvcName, DLMod, TransID},
 		    {noreply, NSt};
 
 		_ -> 
-		    ?info("schedule:timeout(): trans_id(~p) service(~p): Yanked while processing", 
+		    ?info("sched:timeout(): trans_id(~p) service(~p): Yanked while processing", 
 			  [ TransID, SvcName]),
 
 		    {noreply, St}
 
 	    end;
-	_ -> {noreply, St}
+	_ ->
+	    ?debug("sched:timeout(~p:~p): Unknown service", [ DLMod, SvcName]),
+	    {noreply, St}
 
     end;
 
 
-handle_info(_Info, St) ->
+handle_info(Info, St) ->
+    ?notice("sched:handle_info(): Unknown: ~p", [Info]),
+
     {noreply, St}.
 
 %%--------------------------------------------------------------------
@@ -410,7 +415,7 @@ queue_message(SvcName,
 	      _Certificate, St) ->
 
     %% FIXME: Handle route failure
-    ?notice("schedule:queue_message(): Ran out of routes to try for ~p", [SvcName]),
+    ?notice("sched:queue_message(): Ran out of routes to try for ~p", [SvcName]),
     { route_failed, St };
 
     
@@ -425,17 +430,15 @@ queue_message(SvcName,
 	      Certificate, 
 	      St) ->
 
-%%    ?info("schedule:sched_msg(): service(~p)    timeout(~p)", [SvcName, Timeout]),
-%%    ?info("schedule:sched_msg(): timeout (~p)", [Timeout]),
-%%    ?info("schedule:sched_msg(): parameters:   ~p", [Parameters]),
-%%    ?info("schedule:sched_msg(): signature:    ~p", [Signature]),
-%%    ?info("schedule:sched_msg(): certificate:  ~p", [Certificate]),
+    ?debug("sched:q(~p:~s): timeout:      ~p", [DLMod, SvcName, Timeout]),
+    %%?debug("sched:q(~p:~s): parameters:   ~p", [DLMod, SvcName, Parameters]),
+    %%?debug("sched:q(~p:~s): signature:    ~p", [DLMod, SvcName, Signature]),
+    %%?debug("sched:q(~p:~s): certificate:  ~p", [DLMod, SvcName, Certificate]),
 
     SvcRec = find_or_create_service(SvcName, DLMod, St),
     
     %% The service may already be available, give it a shot.
     case try_sending_messages(SvcRec, St) of
-
 	{ ok, NSt } -> %% We managed to send the message. Done.
 	    { ok, NSt };
 
@@ -450,12 +453,15 @@ queue_message(SvcName,
 	    case DLMod:setup_data_link(NSt#st.cs, SvcName, DLOp) of
 		[ ok, DLTimeout ] ->
 
+		    TOut = select_timeout(RelativeTimeout, DLTimeout),
 		    %% Setup a timeout that triggers on whatever
 		    %% comes first of the message's general timeout
 		    %% or the timeout of the data link bringup
 		    %%
-		    TRef = erlang:send_after(select_timeout(RelativeTimeout, DLTimeout),
-					     self(), 
+		    ?debug("sched:q(~p:~s): ~p seconds for link up.", 
+			   [ DLMod, SvcName, DLTimeout / 1000.0]),         
+
+		    TRef = erlang:send_after(TOut, self(), 
 					     { rvi_message_timeout, SvcName, DLMod, TransID }),
 
 
@@ -477,6 +483,7 @@ queue_message(SvcName,
 
 		%% We failed with this route. Try the next one
 		[ error, _Reason] ->
+		    ?debug("sched:q(~p:~s): failed to setup.", [ DLMod, SvcName]),         
 		    queue_message(SvcName,
 				  TransID,
 				  Timeout,
@@ -498,7 +505,7 @@ try_sending_messages(#service {
 			available = unavailable,
 			messages_tid = _Tid } = _SvcRec, St) ->
 
-    ?info("schedule:try_send(): SvcName:   ~p: Not available", [SvcName]),
+    ?info("sched:try_send(): SvcName:   ~p: Not available", [SvcName]),
     { not_available, St };
 
 try_sending_messages(#service { 
@@ -506,16 +513,16 @@ try_sending_messages(#service {
 			available = available,
 			messages_tid = Tid } = SvcRec, St) ->
 
-    ?debug("schedule:try_send(): Service:         ~p:~p", [DataLinkMod, SvcName]),
+    ?debug("sched:try_send(): Service:         ~p:~p", [DataLinkMod, SvcName]),
 
     %% Extract the first message of the queue.
     case first_service_message(SvcRec) of
 	empty ->
-	    ?debug("schedule:try_send(): Nothing to send"),
+	    ?debug("sched:try_send(): Nothing to send"),
 	    { ok, St };
 
 	yanked -> 
-	    ?info("schedule:try_send(): Message was yanked while trying to send: ~p", 
+	    ?info("sched:try_send(): Message was yanked while trying to send: ~p", 
 		  [SvcRec#service.key]),
 	    { ok, St};
 
@@ -548,7 +555,7 @@ try_sending_messages(#service {
 
 		%% Failed
 		[Err] ->
-		    ?info("schedule:try_send(): No send: ~p:~p:~p -> ~p : ~p", 
+		    ?info("sched:try_send(): No send: ~p:~p:~p -> ~p : ~p", 
 			  [ProtoMod, DataLinkMod, SvcName, Err]),
 
 		    %% Requeue this message with the next route
@@ -572,17 +579,17 @@ try_sending_messages(#service {
 
 
 find_or_create_service(SvcName, DataLinkMod, #st { services_tid = SvcTid } = St) ->
-    ?debug("schedule:find_or_create_service(): ~p:~p", [ DataLinkMod, SvcName]),
+    ?debug("sched:find_or_create_service(): ~p:~p", [ DataLinkMod, SvcName]),
 
     case ets:lookup(SvcTid, { SvcName, DataLinkMod }) of
 	[] ->  %% The given service does not exist, create it.
-	    ?debug("schedule:find_or_create_service(): Creating new ~p", [ SvcName]),
+	    ?debug("sched:find_or_create_service(): Creating new ~p", [ SvcName]),
 	    update_service(SvcName, DataLinkMod, unavailable, St);
 
 	[ SvcRec ] -> 
 	    %% Update the network address, if it differs, and return
 	    %% the new service / State as {ok, NSvcRec, false, NSt}
-	    ?debug("schedule:find_or_create_service(): Updating existing ~p", [ SvcName]),
+	    ?debug("sched:find_or_create_service(): Updating existing ~p", [ SvcName]),
 	    SvcRec
     end.
 
@@ -595,7 +602,7 @@ find_or_create_service(SvcName, DataLinkMod, #st { services_tid = SvcTid } = St)
 update_service(SvcName, DataLinkMod, Available, 
 	       #st { services_tid = SvcsTid, cs = CS }) ->
     %% Return new service and existing state.
-    ?debug("schedule:create_service():  ~p:~p ", [ DataLinkMod, SvcName]),
+    ?debug("sched:create_service():  ~p:~s ", [ DataLinkMod, SvcName]),
     SvcRec = #service { 
 		key = { SvcName, DataLinkMod },
 		available = Available, 
@@ -615,7 +622,7 @@ update_service(SvcName, DataLinkMod, Available,
 
 %% Create a new and unique transaction id
 create_transaction_id(St) ->
-    ?debug("schedule:create_transaction_id(): St:     ~p", [  St ]),
+    ?debug("sched:create_transaction_id(~p): ", [  St#st.next_transaction_id ]),
     ID = St#st.next_transaction_id,
 
     %% FIXME: Maybe interate pid into transaction to handle multiple
@@ -626,13 +633,13 @@ create_transaction_id(St) ->
 calc_relative_tout(UnixTime) ->
     { Mega, Sec, _Micro } = now(),
     Now = Mega * 1000000 + Sec,
-    ?debug("schedule:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p", [ UnixTime, Now, UnixTime - Now ]),
+    ?debug("sched:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p", [ UnixTime, Now, UnixTime - Now ]),
 
     %% Cap the timeout value at something reasonable
     TOut = 
 	case UnixTime - Now >= 4294967295 of
 	    true -> 
-		?info("schedule:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p: "
+		?info("sched:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p: "
 		      "Truncated to 4294967295", [ UnixTime, Now, UnixTime - Now ]),
 		4294967295;
 
@@ -671,7 +678,7 @@ delete_unused_service(SvcTid, SvcRec) ->
 		unsubscribe_to_service_availability(SvcName, DataLinkMod, ?MODULE),
 	    %% Update the network address, if it differs, and return
 	    %% the new service / State as {ok, NSvcRec, false, NSt}
-	    ?debug("schedule:service_unavailable(): Service ~p:~p now has no address.", 
+	    ?debug("sched:service_unavailable(): Service ~p:~p now has no address.", 
 		   [ SvcRec#service.key ]),
 	    true;
 

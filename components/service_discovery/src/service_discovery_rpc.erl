@@ -258,7 +258,7 @@ handle_cast({rvi, unsubscribe, [Service, SubsMod] }, St) ->
 %% Handle calls received through regular gen_server calls, routed by
 %% rvi_common:request()
 handle_cast({rvi, register_services, [Services, DataLinkModule] }, St) ->
-    ?info("svc_disc:register_service(): ~p:~p",
+    ?info("svc_disc:register_services(): ~p:~p",
 	  [DataLinkModule, Services]),
 
     [ register_single_service_(SvcName, DataLinkModule) || SvcName <- Services],
@@ -277,7 +277,7 @@ handle_cast({rvi, register_services, [Services, DataLinkModule] }, St) ->
 %% rvi_common:request()
 handle_cast({rvi, unregister_services, [Services, DataLinkModule] }, St) ->
 
-    ?info("svc_disc:unregister_service(): ~p:~p",
+    ?info("svc_disc:unregister_services(): ~p:~p",
 	  [DataLinkModule, Services]),
 
     [ unregister_single_service_(SvcName, DataLinkModule) || SvcName <- Services],
