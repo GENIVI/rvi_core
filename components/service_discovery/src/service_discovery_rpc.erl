@@ -93,12 +93,12 @@ get_modules_by_service(CompSpec, Service) ->
 register_services(CompSpec, Services, DataLinkModule) ->
     rvi_common:notification(service_discovery, ?MODULE, register_services, 
 			    [{ services, Services },
-			     { data_link_module, DataLinkModule }],
+			     { data_link_module, atom_to_list(DataLinkModule) }],
 			    CompSpec).
 
 unregister_services(CompSpec, Services, DataLinkModule) ->
     rvi_common:notification(service_discovery, ?MODULE, unregister_service, 
-			    [{ data_link_module, DataLinkModule},
+			    [{ data_link_module, atom_to_list(DataLinkModule)},
 			     { services,  Services }],
 			     CompSpec).
 
@@ -122,7 +122,7 @@ handle_notification("register_services", Args) ->
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
 
     gen_server:cast(?SERVER, { rvi, register_services, 
-			       [ Services, DataLinkModule ]}),
+			       [ Services, list_to_atom(DataLinkModule) ]}),
     ok;
 
 
@@ -130,7 +130,7 @@ handle_notification("unregister_services", Args) ->
     {ok, Services} = rvi_common:get_json_element(["services"], Args),
     {ok, DataLinkModule } = rvi_common:get_json_element(["data_link_module"], Args),
     gen_server:cast(?SERVER, { rvi, unregister_services, 
-			       [ Services, DataLinkModule ]}),
+			       [ Services, list_to_atom(DataLinkModule) ]}),
     ok;
 
 
