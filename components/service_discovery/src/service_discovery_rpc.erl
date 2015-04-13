@@ -404,6 +404,9 @@ notify_subscribers(CompSpec, Available, Services, DataLinkModule) ->
 
 
 
+initial_notification(_CompSpec, _SubsMod, '$end_of_table') ->
+    ok;
+
 %% Send all available services to the newly subscribing module
 initial_notification(CompSpec, SubsMod, Service) ->
     case ets:lookup(?SERVICE_TABLE, Service) of

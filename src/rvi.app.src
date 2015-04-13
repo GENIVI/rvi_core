@@ -17,10 +17,10 @@
                   kernel,
                   stdlib,
 		  rvi_common,
+		  service_discovery,
 		  schedule,
 		  lager,
 		  service_edge,
-		  service_discovery,
 		  authorize,
 		  dlink_tcp,
 		  proto_bert
