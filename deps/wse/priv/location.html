@@ -1,0 +1,30 @@
+<html>
+<head>
+<title>Location demo page</title>
+<script src='ej.js'></script>
+<script src='wse.js'></script>
+<script>
+
+window.onload = function() {
+   if (Wse.open("ws://"+(location.hostname||"localhost")+":1234/websession")) {
+      Wse.start('wse_location_demo', 'run', ["location"]);
+   }
+   else
+     alert("WebSockets not supported");
+};
+
+</script>
+</head>
+<body style="background: #333">
+  <input name="webpage" placeholder="webpage" type="text" id="webpage"/>
+  <button onclick="goto()">Goto</button>
+<script>
+  function goto() {
+  var location = document.getElementById("webpage").value;
+  window.console.debug("Goto " +location);
+  Wse.call('wse_location_demo', 'goto', [location]);
+}
+</script>
+
+</body>
+</html>

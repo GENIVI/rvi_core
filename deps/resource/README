@@ -1,0 +1,13 @@
+Resource tracking 
+=================
+
+resource:notify_when_destroyed(Pid, Message) -> NifRef.
+
+notify_when_destroyed creates a nif resource that can be used as a reference
+to any kind of external data. When resource is destroyed, 
+beacuse it is not referenced any where, the destructor callback will
+send the message to Pid.
+
+For example, it could be used for wrapping
+file handles. The file is then closed automatically when there are no one
+referencing the file, thereby garbage collect files.
