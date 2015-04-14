@@ -1,0 +1,141 @@
+Turn off echo 
+=============
+    ATE
+    |
+    | OK
+
+Check if pin code is needed
+===========================
+    AT+CPIN?
+    | 
+    | +CPIN: READY
+    | 
+    | OK
+
+Set pin code if not ready
+=========================
+    AT+CPIN="1234"
+    | ERROR
+
+Disable pin code when ready
+===========================
+    AT+CLCK="SC",0,"1234"
+    |
+
+Register in network
+===================
+    AT+CREG=1
+    | OK
+
+Check SMS capability
+====================
+    AT+CSMS=0
+    | +CSMS: 1,1,1
+    | ERROR
+
+Write message to storage
+========================
+    AT+CMGW="+46702575687"
+    > Hej <ctl-z>
+    | +CMGW: 1
+
+Send message from storage (1)
+=============================
+    AT+CMSS=1
+    | +CMS ERROR: 331 (network not available)
+    | +CMS ERROR: 303 (....)
+
+Service center
+==============
+    AT+CSCA?
+    | +CSCA: "+46705008999",145
+
+Text/Pdu mode
+=============
+    AT+CMGF=1    text mode
+    AT+CMGF=0    pdu mode
+ 
+Receive SMS notification
+========================
+    AT+CNMI=1,1   - New incoming SMS is displayed like
+ 
+    | +CMTI: "SM",<x>   (x = counter)
+ 
+    AT+CNMI=1,2   - Display incoming messages on arrival (unsolicited)
+
+List SMS
+========
+    AT+CMGL
+    | +CMGL:<x>,"REC UNREAD","+number"
+    |    message
+ 
+    AT+CMGL="ALL"
+
+    AT+CMGL=1   (pdu mode)
+    | +CMGL: <x>,<y>,<str>,<len>
+    |  <PDU>
+    |
+ 
+Read SMS
+========
+    AT+CMGR=<x>
+
+Delete SMS
+==========
+    AT+CMGD=<x>(,<x>)*
+ 
+
+Send SMS in PDU mode
+====================
+
+
+    AT+CMGS=23  //Send message, 23 octets (excluding the two initial zeros)
+%% >0011000B916407281553F80000AA0AE8329BFD4697D9EC37<ctrl-z>
+%%)
+%% There are 23 octets in this message (46 'characters'). The first octet ("00")
+%% doesn't count, it is only an indicator of the length of the SMSC information
+%% supplied (0).
+%%
+%%
+
+Sigal quality
+	
+AT+CSQ?
++CSQ:18,99
+
+AT+CSQ
+
++CSQ: 4,0
+
+OK
+
+Value	RSSI dBm	Condition
+2	-109	Marginal
+3	-107	Marginal
+4	-105	Marginal
+5	-103	Marginal
+6	-101	Marginal
+7	-99	Marginal
+8	-97	Marginal
+9	-95	Marginal
+10	-93	OK
+11	-91	OK
+12	-89	OK
+13	-87	OK
+14	-85	OK
+15	-83	Good
+16	-81	Good
+17	-79	Good
+18	-77	Good
+19	-75	Good
+20	-73	Excellent
+21	-71	Excellent
+22	-69	Excellent
+23	-67	Excellent
+24	-65	Excellent
+25	-63	Excellent
+26	-61	Excellent
+27	-59	Excellent
+28	-57	Excellent
+29	-55	Excellent
+30	-53	Excellent
