@@ -19,7 +19,9 @@ RVI Node running on Tizen. Needs erlang. See README.md
 %setup -c rvi-$RPM_PACKAGE_VERSION
 
 %build
-make deps
+for i in $(find deps -name '*.app.src'); do sed 's/git/"1.0"/' < $i > $i.tmp; mv $i.tmp $i; done
+
+
 make compile
 # Create a tizen node if that is what we have.
 ./scripts/setup_rvi_node.sh -n rvi-$RPM_PACKAGE_VERSION -c tizen.config
