@@ -1,0 +1,12 @@
+{application, exo,
+ [
+  {description, ""},
+  {vsn, git},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { exo_app, []}},
+  {env, []}
+ ]}.

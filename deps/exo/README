@@ -1,0 +1,4 @@
+exo socket library
+handles tcp,ssl and http connections.
+support ssl probed upgrades and normal ssl upgrades.
+exo_socket_server allow simple server implementations
