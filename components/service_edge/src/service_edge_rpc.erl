@@ -79,6 +79,7 @@ init([]) ->
     ets:new(?SERVICE_TABLE, [ set, public, named_table, 
 			     { keypos, #service_entry.service }]),
 
+    service_discovery_rpc:subscribe(CompSpec, ?MODULE),
     {ok, #st {
 	    cs = CompSpec
 	   }}.
@@ -130,27 +131,26 @@ start_websocket() ->
 %% Must be handled either as a JSON-RPC call or a gen_server call.
 
 service_available(CompSpec, SvcName, DataLinkModule) ->
-    rvi_common:notify(service_edge, ?MODULE, 
-		       service_available, 
-		       [{ service, SvcName }, 
-			{ data_link_module, DataLinkModule }], CompSpec).
+    rvi_common:notification(service_edge, ?MODULE, 
+			    service_available, 
+			    [{ service, SvcName }, 
+			     { data_link_module, DataLinkModule }], CompSpec).
 
 
 service_unavailable(CompSpec, SvcName, DataLinkModule) ->
-    rvi_common:notify(service_edge, ?MODULE, 
-		       service_unavailable, 
-		       [{ service, SvcName }, 
-			{ data_link_module, DataLinkModule }], CompSpec).
+    rvi_common:notification(service_edge, ?MODULE, 
+			    service_unavailable, 
+			    [{ service, SvcName }, 
+			     { data_link_module, DataLinkModule }], CompSpec).
 
 handle_remote_message(CompSpec, SvcName, Timeout, Parameters, Signature, Certificate) ->
-    rvi_common:notify(service_edge, ?MODULE, 
-		       handle_remote_message, 
-		       [{ service, SvcName }, 
-			{ timeout, Timeout },
-			{ parameters, Parameters },
-			{ signature, Signature },
-			{ certificate, Certificate }], CompSpec).
-
+    rvi_common:notification(service_edge, ?MODULE, 
+			    handle_remote_message, 
+			    [{ service, SvcName }, 
+			     { timeout, Timeout },
+			     { parameters, Parameters },
+			     { signature, Signature },
+			     { certificate, Certificate }], CompSpec).
 
 
 %% Invoked by schedule_rpc.
