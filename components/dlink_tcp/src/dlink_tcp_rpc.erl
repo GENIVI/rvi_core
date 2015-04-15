@@ -45,9 +45,16 @@
 -define(CONNECTION_TABLE, rvi_dlink_tcp_connections).
 -define(SERVICE_TABLE, rvi_dlink_tcp_services).
 
+%% Multiple registrations of the same service, each with a different connection,
+%% is possible.
 -record(service_entry, {
 	  service = [],           %% Name of service
-	  connection = undefined  %% PID of connection that can reach this service
+	  connections = undefined  %% PID of connection that can reach this service
+	 }).
+
+-record(connection_entry, {
+	  connection = undefined, %% PID of connection that has a set of services.
+	  services = []     %% List of service names available through this connection
 	 }).
 
 -record(st, { 
@@ -62,14 +69,17 @@ init([]) ->
     ?info("dlink_tcp:init(): Called"),
     %% Dig out the bert rpc server setup
 
-    ets:new(?SERVICE_TABLE, [ duplicate_bag,  public, named_table, 
+    ets:new(?SERVICE_TABLE, [ set, public, named_table, 
 			     { keypos, #service_entry.service }]),
 
-    ets:new(?CONNECTION_TABLE, [ duplicate_bag,  public, named_table, 
-				 { keypos, #service_entry.connection }]),
+    ets:new(?CONNECTION_TABLE, [ set, public, named_table, 
+				 { keypos, #connection_entry.connection }]),
+
+    CS = rvi_common:get_component_specification(),
+    service_discovery_rpc:subscribe(CS, ?MODULE),
 
     {ok, #st { 
-	    cs = rvi_common:get_component_specification()
+	    cs = CS
 	   }
     }.
 
@@ -224,11 +234,11 @@ connect_and_retry_remote( IP, Port, CompSpec) ->
     end.
 
 
-announce_local_service_(_CompSpec, '$end_of_table', _Service, _Availability) ->
+announce_local_service_(_CompSpec, [], _Service, _Availability) ->
     ok;
 
 announce_local_service_(CompSpec, 
-			ConnPid,
+			[ConnPid | T],
 			Service, Availability) ->
     
     Res = connection:send(ConnPid, 
@@ -240,12 +250,12 @@ announce_local_service_(CompSpec,
 
     %% Move on to next connection.
     announce_local_service_(CompSpec, 
-			    ets:next(?CONNECTION_TABLE, ConnPid),
+			    T,
 			    Service, Availability).
 
 announce_local_service_(CompSpec, Service, Availability) ->
     announce_local_service_(CompSpec, 
-			    ets:first(?CONNECTION_TABLE),
+			    get_connections(),
 			    Service, Availability).
 
 
@@ -337,16 +347,7 @@ handle_socket(FromPid, RemoteIP, RemotePort, data,
     ?debug("dlink_tcp:service_announce(available): Service:       ~p", [ Services ]),
 
     
-    %% Insert into our own tables
-    [ ets:insert(?SERVICE_TABLE, 
-		 #service_entry { 
-		    service = SvcName,
-		    connection = FromPid })  || SvcName <- Services ],
-
-    [ ets:insert(?CONNECTION_TABLE, 
-		 #service_entry { 
-		    service = SvcName,
-		    connection = FromPid }) || SvcName <- Services ],
+    add_services(Services, FromPid),
     
     service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
     ok;
@@ -369,13 +370,7 @@ handle_socket(FromPid, RemoteIP, RemotePort, data,
     
     %% Delete from our own tables.
     
-    [ ets:delete(?SERVICE_TABLE, SvcName ) || SvcName <- Services ],
-    
-    [ ets:match_delete(?CONNECTION_TABLE, 
-		       #service_entry { 
-			  service = SvcName,
-			  connection = FromPid }) || SvcName <- Services ],
-
+    delete_services(FromPid, Services),
     service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
     ok;
 
@@ -406,21 +401,10 @@ handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
     %
 
 
-    Services = [ SvcName || #service_entry { service = SvcName } <- 
-				ets:lookup(?CONNECTION_TABLE, FromPid) ],
-    ?debug("dlink_tcp:close(): Deleting ~p", [ Services]),
+    ?debug("dlink_tcp:close(): Deleting ~p", 
+	   [ get_services_by_connection(FromPid) ]),
 
-    %% Step through all services and delete their corresponding record
-    %% from the service table.
-    %% We do this instead of match_delete because it is much faster since
-    %% service is the key in ?SERVICE_TABLE. No linear search and delete
-    %% needed.
-    [ ets:delete(?SERVICE_TABLE, SvcName) || SvcName <- Services ],
-
-    %% Delete all entries in the connection table that matches the closed
-    %% connection.
-    ets:delete(?CONNECTION_TABLE, FromPid),
-
+    delete_connection(FromPid),
 
     {ok, PersistentConnections } = rvi_common:get_module_config(data_link, 
 								?MODULE, 
@@ -500,11 +484,13 @@ handle_rpc(Other, _Args) ->
 
 
 handle_cast( {rvi, service_available, [SvcName, local]}, St) ->
+    ?debug("dlink_tcp:service_available(): ~p (local)", [ SvcName ]),
     announce_local_service_(St#st.cs, SvcName, available),
     {noreply, St};
 
 
-handle_cast( {rvi, service_available, [_SvcName, _]}, St) ->
+handle_cast( {rvi, service_available, [SvcName, Mod]}, St) ->
+    ?debug("dlink_tcp:service_available(): ~p (~p) ignored", [ SvcName, Mod ]),
     %% We don't care about remote services available through
     %% other data link modules
     {noreply, St};
@@ -540,7 +526,7 @@ handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
 		    { reply, [ok, 2000], St };  %% 2 second timeout
 
 		already_connected ->
-		    { reply, [ok, 2000], St };  %% 2 second timeout to send message
+		    { reply, [already_connected, 2000], St };  %% 2 second timeout to send message
 		    
 		Err ->
 		    { reply, [Err, 0], St }
@@ -557,14 +543,14 @@ handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
 handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, St) ->
 
     %% Resolve connection pid from service
-    case ets:lookup(?SERVICE_TABLE, Service) of
-	[ #service_entry { connection = ConnPid } ] ->
-	    ?debug("dlink_tcp:send_data(): ~p -> ~p", [ Service, ConnPid]),
-	    Res = connection:send(ConnPid, {receive_data, ProtoMod, Data}),
-	    { reply, [ Res ], St};
+    case get_connections_by_service(Service) of
+	[] ->
+	    { reply, [ no_route ], St};
 
-	[] -> %% Service disappeared during send.
-	    { reply, [ no_route ], St}
+	%% FIXME: What to do if we have multiple connections to the same service?
+	[ConnPid | _T] -> 
+	    Res = connection:send(ConnPid, {receive_data, ProtoMod, Data}),
+	    { reply, [ Res ], St}
     end;
 	    
 
@@ -629,4 +615,83 @@ setup_reconnect_timer(MSec, IP, Port, CompSpec) ->
     ok.
 
 
+get_services_by_connection(ConnPid) ->
+    case ets:lookup(?CONNECTION_TABLE, ConnPid) of
+	[ #connection_entry { services = SvcNames } ] ->
+	    SvcNames;
+	[] -> []
+    end.
+
+
+get_connections_by_service(Service) ->
+    case ets:lookup(?SERVICE_TABLE, Service) of
+	[ #service_entry { connections = Connections } ] ->
+	    Connections;
+	[] -> []
+    end.
+		 
+
+add_services(SvcNameList, ConnPid) ->
+    %% Create or replace existing connection table entry
+    %% with the sum of new and old services.
+    ets:insert(?CONNECTION_TABLE, 
+	       #connection_entry {
+		  connection = ConnPid,
+		  services = SvcNameList ++ get_services_by_connection(ConnPid)
+	      }),
+
+    %% Add the connection to the service entry for each servic.
+    [ ets:insert(?SERVICE_TABLE, 
+	       #service_entry {
+		  service = SvcName,
+		  connections = [ConnPid | get_connections_by_service(SvcName)]
+		 }) || SvcName <- SvcNameList ],
+    ok.
+
+
+delete_services(ConnPid, SvcNameList) ->
+    ets:insert(?CONNECTION_TABLE, {
+		  connection = ConnPid,
+		  services = get_services_by_connection(ConnPid) -- SvcNameList
+		 }),
     
+    %% Loop through all services and update the conn table
+    %% Update them with a new version where ConnPid has been removed
+    [ ets:insert(?SERVICE_TABLE, {
+		  service = SvcName,
+		  connections = get_connections_by_service(SvcName) -- [ConnPid]
+		 }) || SvcName <- SvcNameList ],
+    ok.
+
+
+
+delete_connection(Conn) ->
+    %% Create or replace existing connection table entry
+    %% with the sum of new and old services.
+    SvcNameList = get_services_by_connection(Conn),
+
+    %% Replace each existing connection entry that has 
+    %% SvcName with a new one where the SvcName is removed.
+    lists:map(fun(SvcName) ->
+		      Existing = get_connections_by_service(SvcName),
+		      ets:insert(?SERVICE_TABLE, {
+				    service = SvcName,
+				    connections = Existing -- [ Conn ]
+				   })
+	      end, SvcNameList),
+    
+    %% Delete the connection
+    ets:delete(?CONNECTION_TABLE, Conn),
+    ok.
+
+		 
+
+get_connections('$end_of_table', Acc) ->
+    Acc;
+
+get_connections(Key, Acc) ->
+    get_connections(ets:next(?CONNECTION_TABLE, Key), [ Key | Acc ]).
+
+	    
+get_connections() ->
+    get_connections(ets:first(?CONNECTION_TABLE), []).

@@ -483,6 +483,8 @@ queue_message(SvcName,
 
 	[ already_connected, DLTimeout] ->
 	    %% The service may already be available, give it a shot.
+	    ?debug("sched:q(~p:~s): already up ~p seconds to send.", 
+		   [ DLMod, SvcName, DLTimeout / 1000.0]),         
 
 	    TOut = select_timeout(RelativeTimeout, DLTimeout),
 
