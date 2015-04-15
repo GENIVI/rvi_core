@@ -550,15 +550,15 @@ forward_message_to_local_service(URL,SvcName, Parameters, _CompSpec) ->
     %% a service_name that is identical to the service name
     %% it registered with.
     %%
-    SvcName = string:substr(SvcName, 
-			    length(rvi_common:local_service_prefix())),
+    LocalSvcName = string:substr(SvcName, 
+				 length(rvi_common:local_service_prefix())),
 
     %% Deliver the message to the local service, which can
     %% be either a wse websocket, or a regular HTTP JSON-RPC call
     case rvi_common:get_request_result(
 	   dispatch_to_local_service(URL, 
 				     message, 
-				     {struct, [ { service_name, SvcName },
+				     {struct, [ { service_name, LocalSvcName },
 						{ parameters, Parameters }]})) of
 
 	%% Request delivered.
