@@ -451,6 +451,7 @@ queue_message(SvcName,
     case DLMod:setup_data_link(St#st.cs, SvcName, DLOp) of
 	[ ok, DLTimeout ] ->
 
+
 	    TOut = select_timeout(RelativeTimeout, DLTimeout),
 	    %% Setup a timeout that triggers on whatever
 	    %% comes first of the message's general timeout
@@ -480,8 +481,29 @@ queue_message(SvcName,
 	    ets:insert(SvcRec#service.messages_tid, Msg),
 	    {ok, St};
 
-	[ already_connected, _] ->
+	[ already_connected, DLTimeout] ->
 	    %% The service may already be available, give it a shot.
+
+	    TOut = select_timeout(RelativeTimeout, DLTimeout),
+
+	    TRef = erlang:send_after(TOut, self(), 
+				     { rvi_message_timeout, SvcName, DLMod, TransID }),
+
+
+	    Msg = #message { 
+		     transaction_id = TransID,
+		     data_link = { DLMod, DLOp },
+		     routes = RemainingRoutes,
+		     protocol = { ProtoMod, ProtoOpt },
+		     timeout = Timeout,
+		     timeout_tref = TRef,
+		     parameters = Parameters, 
+		     signature = Signature,
+		     certificate = Certificate
+		    },
+
+	    %% Add to ets table
+	    ets:insert(SvcRec#service.messages_tid, Msg),
 	    { _, NSt } = try_sending_messages(SvcRec, St) ,
 	    { ok, NSt };
 
@@ -518,7 +540,7 @@ try_sending_messages(#service {
 			available = available,
 			messages_tid = Tid } = SvcRec, St) ->
 
-    ?debug("sched:try_send(): Service:    ~p:~p", [DataLinkMod, SvcName]),
+    ?debug("sched:try_send(): Service:    ~p:~s", [DataLinkMod, SvcName]),
 
     %% Extract the first message of the queue.
     case first_service_message(SvcRec) of

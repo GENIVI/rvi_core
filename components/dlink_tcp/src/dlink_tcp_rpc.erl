@@ -539,6 +539,9 @@ handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
 		ok  ->
 		    { reply, [ok, 2000], St };  %% 2 second timeout
 
+		already_connected ->
+		    { reply, [ok, 2000], St };  %% 2 second timeout to send message
+		    
 		Err ->
 		    { reply, [Err, 0], St }
 	    end
