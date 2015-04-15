@@ -129,7 +129,7 @@ handle_call({rvi, send_message,
     
     Data = term_to_binary({ ServiceName, Timeout, Parameters, Signature, Certificate }),
 
-    Res = DataLinkMod:send_data(St#st.cs, ServiceName, DataLinkOpts, Data),
+    Res = DataLinkMod:send_data(St#st.cs, ?MODULE, ServiceName, DataLinkOpts, Data),
 
     { reply, Res, St };
 

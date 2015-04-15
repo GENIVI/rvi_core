@@ -29,7 +29,7 @@
 
 -export([setup_data_link/3,
 	 disconnect_data_link/2,
-	 send_data/3]).
+	 send_data/5]).
 
 
 -include_lib("lager/include/log.hrl").
@@ -154,10 +154,13 @@ disconnect_data_link(CompSpec, NetworkAddress) ->
 		       [status], CompSpec).
 
 
-send_data(CompSpec, Service, Data) ->
+send_data(CompSpec, ProtoMod, Service, DataLinkOpts, Data) ->
     rvi_common:request(data_link, ?MODULE, send_data,
-			    [ { service, Service }, 
-			      { data, Data } ], 
+			    [ { proto_mod, ProtoMod }, 
+			      { service, Service }, 
+			      { data, Data },
+			      { opts, DataLinkOpts }
+			     ], 
 		       [status], CompSpec).
 
 
@@ -378,10 +381,10 @@ handle_socket(FromPid, RemoteIP, RemotePort, data,
 
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
-	      { receive_data, Data}, [CompSpec]) ->
+	      { receive_data, ProtocolMod, Data}, [CompSpec]) ->
 %%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
     ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    protocol_rpc:receive_message(CompSpec, Data),
+    ProtocolMod:receive_message(CompSpec, Data),
     ok;
 
 
@@ -483,9 +486,11 @@ handle_rpc("disconenct_data_link", Args) ->
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
 
 handle_rpc("send_data", Args) ->
+    { ok, ProtoMod } = rvi_common:get_json_element(["proto_mod"], Args),
     { ok, Service } = rvi_common:get_json_element(["service"], Args),
     { ok,  Data } = rvi_common:get_json_element(["data"], Args),
-    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [Service, Data]}),
+    { ok,  DataLinkOpts } = rvi_common:get_json_element(["opts"], Args),
+    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
     
 
@@ -546,13 +551,13 @@ handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
     { reply, [ Res ], St };
 
 
-handle_call({rvi, send_data, [Service, Data]}, _From, St) ->
+handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, St) ->
 
     %% Resolve connection pid from service
     case ets:lookup(?SERVICE_TABLE, Service) of
 	[ #service_entry { connection = ConnPid } ] ->
 	    ?debug("dlink_tcp:send_data(): ~p -> ~p", [ Service, ConnPid]),
-	    Res = connection:send(ConnPid, {receive_data, Data}),
+	    Res = connection:send(ConnPid, {receive_data, ProtoMod, Data}),
 	    { reply, [ Res ], St};
 
 	[] -> %% Service disappeared during send.
