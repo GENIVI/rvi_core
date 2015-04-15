@@ -442,65 +442,63 @@ queue_message(SvcName,
     %%?debug("sched:q(~p:~s): certificate:  ~p", [DLMod, SvcName, Certificate]),
 
     SvcRec = find_or_create_service(SvcName, DLMod, St),
-    
-    %% The service may already be available, give it a shot.
-    case try_sending_messages(SvcRec, St) of
-	{ ok, NSt } -> %% We managed to send the message. Done.
+
+    %%
+    %% Bring up the relevant data link for the given route.
+    %% Once up, the data link will invoke service_availble()
+    %% to indicate that the service is available for the given DL.
+    %% 
+    case DLMod:setup_data_link(St#st.cs, SvcName, DLOp) of
+	[ ok, DLTimeout ] ->
+
+	    TOut = select_timeout(RelativeTimeout, DLTimeout),
+	    %% Setup a timeout that triggers on whatever
+	    %% comes first of the message's general timeout
+	    %% or the timeout of the data link bringup
+	    %%
+	    ?debug("sched:q(~p:~s): ~p seconds for link up.", 
+		   [ DLMod, SvcName, DLTimeout / 1000.0]),         
+
+	    TRef = erlang:send_after(TOut, self(), 
+				     { rvi_message_timeout, SvcName, DLMod, TransID }),
+
+
+	    %% Setup a message to be added to the service / dl table.
+	    Msg = #message { 
+		     transaction_id = TransID,
+		     data_link = { DLMod, DLOp },
+		     routes = RemainingRoutes,
+		     timeout = Timeout,
+		     timeout_tref = TRef,
+		     parameters = Parameters, 
+		     signature = Signature,
+		     certificate = Certificate
+		    },
+
+	    %% Add to ets table
+	    ets:insert(SvcRec#service.messages_tid, Msg),
+	    {ok, St};
+
+	[ already_connected, _] ->
+	    %% The service may already be available, give it a shot.
+	    { _, NSt } = try_sending_messages(SvcRec, St) ,
 	    { ok, NSt };
 
-	{ _ , NSt } -> %% Failed to send message. Setup data link
-	
 
-	    %%
-	    %% Bring up the relevant data link for the given route.
-	    %% Once up, the data link will invoke service_availble()
-	    %% to indicate that the service is available for the given DL.
-	    %% 
-	    case DLMod:setup_data_link(NSt#st.cs, SvcName, DLOp) of
-		[ ok, DLTimeout ] ->
-
-		    TOut = select_timeout(RelativeTimeout, DLTimeout),
-		    %% Setup a timeout that triggers on whatever
-		    %% comes first of the message's general timeout
-		    %% or the timeout of the data link bringup
-		    %%
-		    ?debug("sched:q(~p:~s): ~p seconds for link up.", 
-			   [ DLMod, SvcName, DLTimeout / 1000.0]),         
-
-		    TRef = erlang:send_after(TOut, self(), 
-					     { rvi_message_timeout, SvcName, DLMod, TransID }),
-
-
-		    %% Setup a message to be added to the service / dl table.
-		    Msg = #message { 
-			     transaction_id = TransID,
-			     data_link = { DLMod, DLOp },
-			     routes = RemainingRoutes,
-			     timeout = Timeout,
-			     timeout_tref = TRef,
-			     parameters = Parameters, 
-			     signature = Signature,
-			     certificate = Certificate
-			    },
-
-		    %% Add to ets table
-		    ets:insert(SvcRec#service.messages_tid, Msg),
-		    {ok, NSt};
-
-		%% We failed with this route. Try the next one
-		[ error, _Reason] ->
-		    ?debug("sched:q(~p:~s): failed to setup.", [ DLMod, SvcName]),         
-		    queue_message(SvcName,
-				  TransID,
-				  Timeout,
-				  calc_relative_tout(Timeout), 
-				  RemainingRoutes,
-				  Parameters,
-				  Signature,
-				  Certificate, 
-				  NSt)
-	    end
+	%% We failed with this route. Try the next one
+	[ error, _Reason] ->
+	    ?debug("sched:q(~p:~s): failed to setup.", [ DLMod, SvcName]),         
+	    queue_message(SvcName,
+			  TransID,
+			  Timeout,
+			  calc_relative_tout(Timeout), 
+			  RemainingRoutes,
+			  Parameters,
+			  Signature,
+			  Certificate, 
+			  St)
     end.
+    
 
 
 
