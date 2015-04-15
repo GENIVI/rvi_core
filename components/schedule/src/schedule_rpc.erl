@@ -719,7 +719,7 @@ delete_unused_service(SvcTid, SvcRec) ->
 
 	    %% Update the network address, if it differs, and return
 	    %% the new service / State as {ok, NSvcRec, false, NSt}
-	    ?debug("sched:service_unavailable(): Service ~p:~p now has no address.", 
+	    ?debug("sched:service_unavailable(): Service ~p now has no address.", 
 		   [ SvcRec#service.key ]),
 	    true;
 

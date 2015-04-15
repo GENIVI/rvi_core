@@ -97,9 +97,9 @@ register_services(CompSpec, Services, DataLinkModule) ->
 			    CompSpec).
 
 unregister_services(CompSpec, Services, DataLinkModule) ->
-    rvi_common:notification(service_discovery, ?MODULE, unregister_service, 
-			    [{ data_link_module, DataLinkModule},
-			     { services,  Services }],
+    rvi_common:notification(service_discovery, ?MODULE, unregister_services, 
+			    [{ services,  Services },
+			     { data_link_module, DataLinkModule}],
 			     CompSpec).
 
 subscribe(CompSpec, SubscribingMod) ->

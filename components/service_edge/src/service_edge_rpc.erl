@@ -345,7 +345,7 @@ handle_call({ rvi, unregister_local_service, [SvcName] }, _From, St) ->
 
 handle_call({rvi, get_available_services, []}, _From, St) ->
     ?debug("service_edge_rpc:get_available_services()"),
-    {reply, service_discovery_rpc:get_services(St#st.cs), St};
+    {reply, service_discovery_rpc:get_all_services(St#st.cs), St};
 
 handle_call({ rvi, handle_local_message, 
 	      [SvcName, Timeout, Parameters] }, _From, St) ->

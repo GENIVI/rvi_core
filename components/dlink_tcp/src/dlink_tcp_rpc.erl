@@ -392,19 +392,27 @@ handle_socket(_FromPid, SetupIP, SetupPort, data, Data, [_CompSpec]) ->
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
 handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
-    ?info("dlink_tcp:socket_closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?info("dlink_tcp:closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
 
     NetworkAddress = SetupIP  ++ ":" ++ integer_to_list(SetupPort),
 
-    %% Get all service records associated with the given connection and
-    %% extract the service name from them
-    %
-
-
-    ?debug("dlink_tcp:close(): Deleting ~p", 
-	   [ get_services_by_connection(FromPid) ]),
+    %% Get all service records associated with the given connection
+    LostSvcNameList = get_services_by_connection(FromPid),
 
     delete_connection(FromPid),
+
+    %% Check if this was our last connection supporting each given service.
+    lists:map(
+      fun(SvcName) ->
+	      case get_connections_by_service(SvcName) of
+		  [] ->
+		      service_discovery_rpc:
+			  unregister_services(CompSpec, 
+					      [SvcName], 
+					      ?MODULE);
+		  _ -> ok
+	      end
+      end, LostSvcNameList),
 
     {ok, PersistentConnections } = rvi_common:get_module_config(data_link, 
 								?MODULE, 
@@ -414,8 +422,8 @@ handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
     %% Check if this is a static node. If so, setup a timer for a reconnect
     case lists:member(NetworkAddress, PersistentConnections) of
 	true ->
-	    ?info("dlink_tcp:socket_closed(): Reconnect address:  ~p", [ NetworkAddress ]),
-	    ?info("dlink_tcp:socket_closed(): Reconnect interval: ~p", [ ?DEFAULT_RECONNECT_INTERVAL ]),
+	    ?info("dlink_tcp:closed(): Reconnect address:  ~p", [ NetworkAddress ]),
+	    ?info("dlink_tcp:closed(): Reconnect interval: ~p", [ ?DEFAULT_RECONNECT_INTERVAL ]),
 	    [ IP, Port] = string:tokens(NetworkAddress, ":"),
 
 	    setup_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, 
@@ -650,14 +658,16 @@ add_services(SvcNameList, ConnPid) ->
 
 
 delete_services(ConnPid, SvcNameList) ->
-    ets:insert(?CONNECTION_TABLE, {
+    ets:insert(?CONNECTION_TABLE, 
+	       #connection_entry {
 		  connection = ConnPid,
 		  services = get_services_by_connection(ConnPid) -- SvcNameList
 		 }),
     
     %% Loop through all services and update the conn table
     %% Update them with a new version where ConnPid has been removed
-    [ ets:insert(?SERVICE_TABLE, {
+    [ ets:insert(?SERVICE_TABLE, 
+		 #service_entry {
 		  service = SvcName,
 		  connections = get_connections_by_service(SvcName) -- [ConnPid]
 		 }) || SvcName <- SvcNameList ],
@@ -674,10 +684,11 @@ delete_connection(Conn) ->
     %% SvcName with a new one where the SvcName is removed.
     lists:map(fun(SvcName) ->
 		      Existing = get_connections_by_service(SvcName),
-		      ets:insert(?SERVICE_TABLE, {
-				    service = SvcName,
-				    connections = Existing -- [ Conn ]
-				   })
+		      ets:insert(?SERVICE_TABLE, #
+				     service_entry {
+				       service = SvcName,
+				       connections = Existing -- [ Conn ]
+				      })
 	      end, SvcNameList),
     
     %% Delete the connection
