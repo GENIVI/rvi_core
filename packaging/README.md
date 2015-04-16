@@ -82,18 +82,6 @@ resolv.conf file into the /etc directory of buildroot:
 
 *Please note that your path to the build root may differ.*
 
-## Certificates fix 
-Since the chrooted build environment does not have a /etc/ssl/certs
-directory, the git SSL session will fail when it cannot authenticate
-any certificates delivered by git's https sessions. 
-
-This is fixed by copying the certificate repo from your local machine
-to the /etc directory of buildroot:
-
-    sudo cp -rL /etc/ssl/ ~/GBS-ROOT/local/BUILD-ROOTS/scratch.i586.0/etc
-
-*Please note that your path to the build root may differ.*
-
 # BUILDING
 Go to the top directory of RVI and execute:
 
@@ -102,7 +90,7 @@ Go to the top directory of RVI and execute:
 An RPM file will be generated at the end of the build which can be
 installed on a Tizen box. The RPM can be found at:
 
-    ~/GBS-ROOT/local/repos/tizen/i586/RPMS/rvi-0.3.1-1.i686.rpm
+    ~/GBS-ROOT/local/repos/tizen/i586/RPMS/rvi-0.3.2-1.i686.rpm
 
 
 
