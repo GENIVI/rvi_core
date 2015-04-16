@@ -1,0 +1,34 @@
+#
+# Makefile for Mingw
+#
+OSNAME := $(shell uname -s)
+MACHINE := $(shell uname -m)
+ERLDIR	:= $(shell erl -noshell -eval "io:format([126,115,126,110],[code:root_dir()])" -s erlang halt)
+ERL_C_INCLUDE_DIR := $(ERLDIR)/usr/include
+CC = gcc
+PRIVDIR=../priv
+
+CFLAGS += -D__WIN32__ -DWIN32
+CFLAGS += -Wall -Wextra -Wswitch-default -Wswitch-enum -D_THREAD_SAFE -D_REENTRANT -fno-common
+CFLAGS += -I$(ERL_C_INCLUDE_DIR)
+LDFLAGS += -Wl--enable-stdcall-fixup
+
+EXT = dll
+LD_SHARED	:= $(CC) -shared
+
+debug: CFLAGS += -g
+debug: LDFLAGS += -g
+
+
+DTHREAD_DRV = $(PRIVDIR)/dthread_drv.$(EXT)
+
+DTHREAD_DRV_OBJS = dlib.obj dterm.obj dthread.obj dthread_drv.obj
+
+debug release all: $(DTHREAD_DRV)
+
+
+$(DTHREAD_DRV): $(DTHREAD_DRV_OBJS) 
+	$(LD_SHARED) -o $@ $(DTHREAD_DRV_OBJS) $(LDFLAGS)
+
+%.obj: %.c
+	$(CC) -c -o $@ $(CFLAGS) $<

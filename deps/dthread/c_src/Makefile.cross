@@ -1,0 +1,40 @@
+#
+# Make the dthread files
+# example usage: TARGET=arm-none-linux-gnueabi make -f Makefile.cross
+#
+
+OSNAME := $(shell uname -s)
+MACHINE := $(shell uname -m)
+ERLDIR	:= $(shell erl -noshell -eval "io:format([126,115,126,110],[code:root_dir()])" -s erlang halt)
+ERL_C_INCLUDE_DIR := $(ERLDIR)/usr/include
+CC = $(TARGET)-gcc
+LD = $(TARGET)-ld
+PRIVDIR=../priv/$(TARGET)
+OBJDIR=$(TARGET)
+
+OBJS = \
+     $(OBJDIR)/dlib.o \
+     $(OBJDIR)/dterm.o \
+     $(OBJDIR)/dthread.o \
+     $(OBJDIR)/dthread_drv.o
+
+LDFLAGS = -shared -fpic
+
+all : $(OBJDIR) $(PRIVDIR) $(OBJS) $(PRIVDIR)/dthread_drv.so
+
+override CFLAGS += -Wall -Wextra -Wswitch-default -Wswitch-enum -I$(ERL_C_INCLUDE_DIR) -DDLOG_DEFAULT=DLOG_NONE
+
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
+
+$(PRIVDIR):
+	@mkdir -p $(PRIVDIR)
+
+$(PRIVDIR)/dthread_drv.so : $(OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^
+
+$(OBJDIR)/%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+lean:
+	$(RM) -f $(PRIVDIR)/dthread_drv.so $(OBJS)

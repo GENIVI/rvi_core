@@ -1,0 +1,75 @@
+#!/usr/bin/env escript
+
+%% GPIO map
+-define(NRST,   22).   %% output pin 15
+-define(PWRKEY, 27).   %% output pin 13
+
+main([]) ->
+    usage(0);
+main(["help"|_Options]) ->
+    usage(0);
+main(["-h"|_Options]) ->
+    usage(0);
+main(Options) ->
+    case string:to_integer(os:cmd("id -u")) of
+	{0, _} ->
+	    %% require root access
+	    application:start(gpio),
+	    command(Options),
+	    halt(0);
+	{_,_} ->
+	    io:fwrite(escript:script_name() ++ " need root privileges\n"),
+	    halt(1)
+    end.
+
+command(["init"|Cmds]) -> %% init only
+    gpio:init(?PWRKEY),
+    gpio:set_direction(?PWRKEY,low),
+    gpio:init(?NRST),
+    gpio:set_direction(?NRST,low),
+    command(Cmds);
+command(["pwron"|Cmds]) ->
+    gpio:init(?PWRKEY),
+    gpio:set_direction(?PWRKEY,out),
+    gpio:set(?PWRKEY),
+    timer:sleep(1000+10),  %% >1s
+    gpio:clr(?PWRKEY),
+    timer:sleep(2200+10),
+    command(Cmds);
+command(["pwroff"|Cmds]) ->
+    gpio:init(?PWRKEY),
+    gpio:set_direction(?PWRKEY,out),
+    gpio:set(?PWRKEY),
+    timer:sleep(1000+10),  %% >1s
+    gpio:clr(?PWRKEY),
+    timer:sleep(1700+10),
+    command(Cmds);
+command(["pwrrst"|Cmds]) -> %% combined pwr
+    command(["pwroff"]),
+    timer:sleep(500+10),   %% >500ms
+    command(["pwron"]),
+    command(Cmds);
+command(["rst"|Cmds]) ->
+    gpio:init(?NRST),
+    gpio:set_direction(?NRST, out),
+    gpio:set(?NRST),
+    timer:sleep(1000+10),  %% >1s
+    gpio:clr(?NRST),
+    timer:sleep(1700+10),
+    command(Cmds);
+command(["help"|_Cmds]) ->
+    usage(0);
+command(["-h"|_Cmds]) ->
+    usage(0);
+command([_|_Cmds]) ->
+    usage(1);
+command([]) ->
+    ok.
+
+help() ->
+    io:fwrite("usage: "++ escript:script_name() ++ 
+		  " [-h] help|init|pwron|pwroff|pwrrst|rst\n").
+
+usage(N) ->
+    help(),
+    halt(N).
