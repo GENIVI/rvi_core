@@ -13,7 +13,7 @@
 .PHONY:	all deps compile clean rpm rpmclean
 
 
-VERSION=0.3.1
+VERSION=0.3.2
 
 all: deps compile
 
@@ -39,7 +39,7 @@ rpmclean:
 # Create a SOURCES tarball for RPM
 rpm_tarball: rpmclean clean
 	tar czf /tmp/rvi-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
-		hvac_demo LICENSE Makefile README.md rebar rebar.config rel \
+		LICENSE Makefile README.md rebar rebar.config rel \
 		RELEASE.md rpm scripts/setup_gen scripts/rvi \
 		scripts/rvi.service scripts/rvi_node.sh  components \
 		rvi_sample.config scripts/setup_rvi_node.sh src \

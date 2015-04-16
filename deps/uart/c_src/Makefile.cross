@@ -1,0 +1,51 @@
+#
+# Make the uart_drv
+# example usage: TARGET=arm-none-linux-gnueabi make -f Makefile.cross
+#
+
+OSNAME := $(shell uname -s)
+MACHINE := $(shell uname -m)
+ERLDIR	:= $(shell erl -noshell -eval "io:format([126,115,126,110],[code:root_dir()])" -s erlang halt)
+ERL_C_INCLUDE_DIR := $(ERLDIR)/usr/include
+CC = $(TARGET)-gcc
+LD = $(TARGET)-ld
+PRIVDIR=../priv/$(TARGET)
+OBJDIR=$(TARGET)
+DTHREAD=../../dthread
+
+OBJS = \
+     $(OBJDIR)/uart_drv.o \
+     $(OBJDIR)/uart_buf.o \
+     $(OBJDIR)/uart_queue.o \
+     $(OBJDIR)/uart_com_state.o \
+     $(OBJDIR)/uart_modem_state.o \
+     $(OBJDIR)/uart_options.o \
+     $(OBJDIR)/uart_message.o \
+     $(OBJDIR)/uart_unix.o
+
+# fixme: make library
+DTHREAD_DRV_OBJS = \
+		 $(DTHREAD)/c_src/$(TARGET)/dlib.o \
+		 $(DTHREAD)/c_src/$(TARGET)/dterm.o \
+		 $(DTHREAD)/c_src/$(TARGET)/dthread.o
+
+LDFLAGS = -shared -fpic -lutil
+
+all : $(OBJDIR) $(PRIVDIR) $(PRIVDIR)/uart_drv.so
+
+override CFLAGS += -Wall -Wextra -Wswitch-default -Wswitch-enum -I$(ERL_C_INCLUDE_DIR) -I $(DTHREAD)/include -DDLOG_DEFAULT=DLOG_NONE
+
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
+
+$(PRIVDIR):
+	@mkdir -p $(PRIVDIR)
+
+$(PRIVDIR)/uart_drv.so : $(OBJS)
+	$(CC) $(LDFLAGS) $(DTHREAD_DRV_OBJS) -o $@ $^
+
+$(OBJDIR)/%.o: %.c
+	$(CC) -c -o $@ $(CFLAGS) $<
+
+lean:
+	$(RM) -f $(PRIVDIR)/uart_drv.so $(OBJS)

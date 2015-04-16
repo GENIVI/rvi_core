@@ -1,0 +1,8 @@
+{application, dthread,
+ [{description, "dthread test"},
+  {vsn, git},
+  {modules, [dthread]},
+  {registered, []},
+  {env, []},
+  {applications,[kernel,stdlib]}
+  ]}.

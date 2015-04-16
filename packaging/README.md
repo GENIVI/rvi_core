@@ -82,18 +82,6 @@ resolv.conf file into the /etc directory of buildroot:
 
 *Please note that your path to the build root may differ.*
 
-## Certificates fix 
-Since the chrooted build environment does not have a /etc/ssl/certs
-directory, the git SSL session will fail when it cannot authenticate
-any certificates delivered by git's https sessions. 
-
-This is fixed by copying the certificate repo from your local machine
-to the /etc directory of buildroot:
-
-    sudo cp -rL /etc/ssl/ ~/GBS-ROOT/local/BUILD-ROOTS/scratch.i586.0/etc
-
-*Please note that your path to the build root may differ.*
-
 # BUILDING
 Go to the top directory of RVI and execute:
 
@@ -102,8 +90,45 @@ Go to the top directory of RVI and execute:
 An RPM file will be generated at the end of the build which can be
 installed on a Tizen box. The RPM can be found at:
 
-    ~/GBS-ROOT/local/repos/tizen/i586/RPMS/rvi-0.3.1-1.i686.rpm
+    ~/GBS-ROOT/local/repos/tizen/i586/RPMS/rvi-0.3.2-1.i686.rpm
 
+
+# UPDATING REBAR DEPENDENCIES
+All erlang dependencies, residing in ```deps```, are checked in with rvi_core in order
+to avoid having GBS and OBS to access the network to resolve them.
+If a new or updated module is to be included in deps, the following procedure
+can be used:
+
+1. <b>Update rebar.config</b><br>
+Edit rebar.config to include the correct version of the modules you need.
+
+2. <b>Clear deps</b><br>
+Delete the old deps with:
+
+    ```rm -rf deps/*```
+
+3. <b>Retrieve new deps</b><br>
+Use rebar to retrieve all modules listed in rebar.config.
+
+    ```rebar get-deps```
+
+3. <b>Clean out git info from deps</b><br>
+The checked out modules in deps are all their own repos. Clear the
+repo information.
+
+    ```rm -rf deps/*/.git
+	find deps -name .gitignore | xargs rm```
+
+4. <b>Add all new files in deps to the rvi_core repo</b><br>
+If any new files are added to deps by ```rebar get-deps``` above, they
+need to be added to the repo:
+
+    ```git add deps/*```
+
+5. <b>Commit rvi_core</b><br>
+Commit the updated deps directory to the repo:
+
+    ```git commit -a -m "Updated deps/gsm to version x"```
 
 
 

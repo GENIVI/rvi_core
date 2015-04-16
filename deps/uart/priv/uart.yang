@@ -1,0 +1,174 @@
+/*
+ * YANG description of a UART options
+ *
+ */
+module uart {
+    namespace "http://rogvall.se/ns/uart";
+    prefix uart;
+
+    organization
+	"Rogvall Invest AB";
+
+    contact
+	"Tony Rogvall <tony@rogvall.se>";
+
+    description 
+	"UART device settings";
+
+    revision 2012-04-26 {
+       description
+         "Initial revision.";
+    }
+
+    grouping uart-config {
+	leaf device {
+	    type string { length "1..255"; }
+	}
+	leaf baud {
+	    type uint32;
+	    default 9600;
+	}
+
+	leaf ibaud {
+	    type uint32;
+	    default 9600;
+	}
+
+	leaf obaud {
+	    type uint32;
+	    default 9600;
+	}
+
+	leaf csize {
+	    type uint8 { range "5..8"; }
+	    default 8;
+	}
+	leaf bufsz {
+	    type uint8;
+	    default 1;
+	}
+
+	leaf buftm {
+	    type uint8;
+	    default 0;
+	}
+
+	leaf stopb {
+	    type uint8 { range "1..3"; }
+	    default 1;
+	}
+
+	leaf parity {
+	    type enumeration {
+		enum none;
+		enum odd;
+		enum even;
+		enum mark;
+	    }
+	    default none;
+	}
+
+       // iflow = { [sw] [ rts | dtr ] }
+        leaf iflow {
+            type bits {
+                bit dtr { position 1; }
+                bit rts { position 2; }
+                bit sw  { position 15; }
+            }
+            default "";
+        }
+
+       // oflow = { [sw] | cts | dsr | dcd }
+        leaf oflow {
+            type bits {
+                bit cts { position 3; }
+                bit dcd { position 4; }
+                bit dsr { position 6; }
+                bit sw  { position 15; }
+            }
+            default "";
+        }
+	leaf xonchar {
+	    type uint8;
+	}
+	leaf xoffchar {
+	    type uint8;
+	}
+	leaf eolhar {
+	    type uint8;
+	    default 10;
+	}
+	leaf active {
+	    type enumeration {
+		enum false;
+		enum true;
+		enum once;
+	    }
+	}
+	leaf delay_send {
+	    type boolean;
+	}
+	leaf header {
+	    type uint32;
+	}
+	leaf packet_size {
+	    type uint32;
+	}
+	leaf deliver {
+	    type enumeration {
+		enum port;
+		enum term;
+	    }
+	}
+	leaf mode {
+	    type enumeration {
+		enum list;
+		enum binary;
+	    }
+	}
+
+	choice packet {
+
+	    leaf size {
+		description "No packaging is done. buf if and argument > 0 
+                             is given, fixed size packeting is used.";
+		type uint16;
+		default 0;
+	    }
+
+	    container packet-bytes {
+		description "Prepend packet with a length field";
+		leaf length {
+		    description "Size of the lenght field in bytes";
+		    type uint8 {
+			range "1..8";
+		    }
+		}
+		leaf endian {
+		    description "Byte order of the length field";
+		    type enumeration {
+			enum big;
+			enum litttle;
+		    }
+		    default big;
+		}
+	    }
+
+	    leaf line { 
+		description "Line mode, a packet is a line terminated with newline";
+		type empty;
+	    }
+	}
+
+	leaf buffer {
+	    description "Maximum number of byte to buffer in case of packet=0";
+	    type uint32;
+	}
+
+	leaf exit_on_close {
+	    description "Close the uart in case of error or hangup";
+	    type boolean;
+	    default true;
+	}
+    }
+}

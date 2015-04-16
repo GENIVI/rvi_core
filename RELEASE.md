@@ -55,3 +55,27 @@ Big data demo moved to its own repo at https://github.com/PDXostc/rvi_bigdata
 
 * <b>Don't send service availablity notifications over websockets</b><br>
   For unknown reasons this crashes the RVI node intermittently
+
+# v0.3.2 #
+* <b>Re-enable service availability notifications over websockets</b><br>
+  Issue 15 was an artifact of issue 14, thus we can turn notifications back on
+  now that 15 is fixed.
+
+* <b>Implement datalinkbert_rpc pings</b><br>
+  This fixes issue #14 where a rebooted tizen box did not shut down
+  the data link tcp connection correctly, which left it dangling on
+  the server. A periodic tcp (5 min default) will trigger a
+  kernel-originated shutdown when the remote address cannot be
+  reached.
+
+* <b>Filter out resurrected services when a remote data link disappears</b><br>
+  This fixes issue #14 where a rebooted tizen box would register its
+  services while its old (pre-reboot) dangling tcp connection was
+  still alive from the server's point of view. When the danlging tcp
+  connection died, the RVI would delete all services associated with
+  it, thus deleting active services registered over the new connection
+  after the tizen box rebooted.
+
+  We now filter any services associated with a dead tcp connection
+  against identically named services registered over other
+  connections.

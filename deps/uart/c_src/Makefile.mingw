@@ -1,0 +1,47 @@
+#
+# Makefile for Mingw
+#
+OSNAME := $(shell uname -s)
+MACHINE := $(shell uname -m)
+ERLDIR	:= $(shell erl -noshell -eval "io:format([126,115,126,110],[code:root_dir()])" -s erlang halt)
+ERL_C_INCLUDE_DIR := $(ERLDIR)/usr/include
+CC = gcc
+PRIVDIR=../priv
+DTHREAD_LIB_DIR = ../../dthread
+
+CFLAGS += -D__WIN32__ -DWIN32 -D_MT -D_DLL -DEBUG_MEM -DDLOG_DEFAULT=DLOG_NONE
+CFLAGS += -Wall -Wextra -Wswitch-default -Wswitch-enum -D_THREAD_SAFE -D_REENTRANT -fno-common
+CFLAGS += -I$(ERL_C_INCLUDE_DIR)
+CFLAGS += -I$(DTHREAD_LIB_DIR)/include
+LDFLAGS += -Wl--enable-stdcall-fixup
+
+EXT = dll
+LD_SHARED	:= $(CC) -shared
+
+debug: CFLAGS += -g
+debug: LDFLAGS += -g
+
+UART_DRV = $(PRIVDIR)/uart_drv.$(EXT)
+DTHREAD_LIB_OBJS = \
+		 $(DTHREAD_LIB_DIR)/c_src/dlib.obj \
+		 $(DTHREAD_LIB_DIR)/c_src/dterm.obj \
+		 $(DTHREAD_LIB_DIR)/c_src/dthread.obj
+
+UART_DRV_OBJS = \
+	      dosmap.obj \
+	      uart_drv.obj \
+	      uart_buf.obj \
+	      uart_queue.obj \
+	      uart_com_state.obj \
+	      uart_modem_state.obj \
+	      uart_options.obj \
+	      uart_message.obj \
+	      uart_win32.obj
+
+debug release all: $(UART_DRV)
+
+$(UART_DRV): $(UART_DRV_OBJS) 
+	$(LD_SHARED) -o $@ $(UART_DRV_OBJS) $(DTHREAD_LIB_OBJS) $(LDFLAGS)
+
+%.obj: %.c
+	$(CC) -c -o $@ $(CFLAGS) $<

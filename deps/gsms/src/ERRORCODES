@@ -1,0 +1,30 @@
+
+
++CMS ERROR
+Message service error
+Description 
+These are the error codes for +CMS ERROR. 
+
+Error code Meaning 
+0-127 GSM 04.11 Annex E-2 values 
+128-255 GSM 03.40 section 9.2.3.22 values 
+300 Phone failure 
+301 SMS service of phone reserved 
+302 Operation not allowed 
+303 Operation not supported 
+304 Invalid PDU mode parameter 
+305 Invalid text mode parameter 
+310 SIM not inserted 
+311 SIM PIN necessary 
+312 PH-SIM PIN necessary 
+313 SIM failure 
+314 SIM busy 
+315 SIM wrong 
+320 Memory failure 
+321 Invalid memory index 
+322 Memory full 
+330 SMSC (message service center) address unknown 
+331 No network service 
+332 Network timeout 
+500 Unknown error 
+512 Manufacturer specific 
