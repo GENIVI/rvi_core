@@ -14,10 +14,8 @@
 
 %% API
 -export([get_service_routes/1]).
+-export([get_service_protocols/2]).
 -export([start_link/0]).
-
--export([find_routes_/2, 
-	 normalize_routes_/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -42,6 +40,10 @@
 get_service_routes(Service) ->
     gen_server:call(?SERVER, { rvi_get_service_routes, Service }).
 
+%%
+%% Retrieve all protocols matching the service / data link pair
+get_service_protocols(Service, DataLink) ->
+    gen_server:call(?SERVER, { rvi_get_protocols, Service, DataLink }).
 
 
 %%--------------------------------------------------------------------
@@ -94,7 +96,10 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call( { rvi_get_service_routes, Service }, _From, St) ->
-    {reply, find_routes_( St#st.routes, Service), St};
+    {reply, find_routes( St#st.routes, Service), St};
+
+handle_call( { rvi_get_protocols, Service, DataLink }, _From, St) ->
+    {reply, find_protocols( St#st.routes, Service, DataLink), St};
 
 handle_call(_Request, _From, St) ->
     Reply = ok,
@@ -200,7 +205,7 @@ find_routes_(Rt, _Svc, CurRoutes, CurMatchLen) ->
     { CurRoutes, CurMatchLen }.
     
 
-find_routes_(Routes, Service) ->
+find_routes(Routes, Service) ->
     case find_routes_(Routes, Service, undefined, 0) of
 	{ undefined, 0 } ->
 	    ?debug("rvi_routing(): ~p -> unknown", [ Service]),
@@ -231,3 +236,26 @@ normalize_routes_([ {{ Pr, PrOp}, DL } | Rem ], Acc) ->
 normalize_routes_([ {Pr, DL} | Rem ], Acc) ->
     normalize_routes_(Rem, [ { {Pr, []}, { DL, [] } } | Acc]).
 
+
+find_protocols_(_DataLink, [], Acc ) ->
+    lists:reverse(Acc);
+
+
+%% Matching data link. This is an allowed protocol
+find_protocols_(DataLink, [ {{ Pr, PrOp }, { DL, DLOp }}  | T], 
+		Acc) when DataLink =:= DL ->
+
+    find_protocols_(DataLink, T, [ { Pr, PrOp, DLOp } | Acc ]);
+    
+
+%% No match
+find_protocols_(DataLink, [ {{ _Pr, _PrOp }, { _DL, _DLOp }}  | T], Acc) ->
+    find_protocols_(DataLink, T,  Acc ).
+
+
+find_protocols(AllRoutes, Service, DataLink) ->
+    SvcRoutes = find_routes(AllRoutes, Service),
+    Res = find_protocols_(DataLink, SvcRoutes, []),
+    ?debug("find_protocols(~p:~p): -> ~p", [ DataLink, Service, Res]),
+    Res.
+    

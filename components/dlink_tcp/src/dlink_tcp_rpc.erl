@@ -520,25 +520,32 @@ handle_cast(Other, St) ->
 
 
 handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
-    case proplists:get_value(target, Opts, undefined) of
-	undefined ->
-	    ?info("dlink_tcp:setup_data_link(~p) Failed: no target given in options.",
-		  [Service]),
-	     { reply, [ok, -1 ], St };
+    %% Do we already have a connection that support service?
+    case get_connections_by_service(Service) of
+	[] -> %% Nop[e
+	    case proplists:get_value(target, Opts, undefined) of
+		undefined ->
+		    ?info("dlink_tcp:setup_data_link(~p) Failed: no target given in options.",
+			  [Service]),
+		    { reply, [ok, -1 ], St };
 
-	Addr -> 
-	    [ Address, Port] =  string:tokens(Addr, ":"),
+		Addr -> 
+		    [ Address, Port] =  string:tokens(Addr, ":"),
 
-	    case connect_remote(Address, list_to_integer(Port), St#st.cs) of
-		ok  ->
-		    { reply, [ok, 2000], St };  %% 2 second timeout
+		    case connect_remote(Address, list_to_integer(Port), St#st.cs) of
+			ok  ->
+			    { reply, [ok, 2000], St };  %% 2 second timeout
 
-		already_connected ->
-		    { reply, [already_connected, 2000], St };  %% 2 second timeout to send message
-		    
-		Err ->
-		    { reply, [Err, 0], St }
-	    end
+			already_connected ->  %% We are already connected
+			    { reply, [already_connected, -1], St };  
+
+			Err ->
+			    { reply, [Err, 0], St }
+		    end
+	    end;
+
+	_ ->  %% Yes - We do have a connection that knows of service
+	    { reply, [already_connected, -1], St }
     end;
 
 

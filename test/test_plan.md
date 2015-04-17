@@ -15,7 +15,9 @@ While we are implementing an automated test suite, we will start with a simple m
 
 ## SERVICE INVOCATION
 
-## INVOCATION OF NON-EXISTENT SERVICE 
+## INVOCATION OF NON-EXISTENT SERVICE
+Ensure that message is forwarded if target service becomes available
+before message times out.
 
 ## STRESS TEST
 
