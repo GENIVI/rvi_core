@@ -659,7 +659,7 @@ send_orphaned_messages(SvcName, local, St) ->
     case find_service(SvcName, orphaned, St) of
 	 not_found ->
 	    ?debug("sched:send_orph(~p:~p): No orphaned messages waiting",
-		   [ local:SvcName]),
+		   [ local,SvcName]),
 	    St;
 
 	%% We have orphaned messages for the service and
