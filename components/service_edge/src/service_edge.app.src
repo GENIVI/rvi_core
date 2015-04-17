@@ -20,5 +20,6 @@
 		  wse
                  ]},
   {mod, { service_edge_app, []}},
-  {start_phases, [{init, []}]}
+
+  {start_phases, [{json_rpc, []},{websocket, []}]}
  ]}.

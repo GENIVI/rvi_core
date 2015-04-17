@@ -23,8 +23,8 @@
 start(_StartType, _StartArgs) ->
     service_discovery_sup:start_link().
 
-start_phase(init, _, _) ->
-    service_discovery_rpc:init_rvi_component(),
+start_phase(json_rpc, _, _) ->
+    service_discovery_rpc:start_json_server(),
     ok.
 
 stop(_State) ->

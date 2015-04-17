@@ -1,0 +1,56 @@
+# RVI TEST PLAN
+
+While we are implementing an automated test suite, we will start with a simple manual test schedule
+
+
+# LOCAL SERVICES 
+
+## SERVICE REGISTRATION
+
+## SERVICE QUERYING (RVI_GET_SERVICES)
+
+## SERVICE AVAILABILITY NOTIFICATION
+
+## SERVICE DEREGISTRATION
+
+## SERVICE INVOCATION
+
+## INVOCATION OF NON-EXISTENT SERVICE
+Ensure that message is forwarded if target service becomes available
+before message times out.
+
+## STRESS TEST
+
+
+
+# REMOTE SERVICES 
+
+## SERVICE REGISTRATION
+
+## SERVICE QUERYING (RVI_GET_SERVICES)
+
+## SERVICE AVAILABILITY NOTIFICATION
+
+## SERVICE DEREGISTRATION
+
+## SERVICE INVOCATION
+
+## INVOCATION OF NON-EXISTENT SERVICE 
+
+## LINK LOSS
+
+## LINK RECONNECT
+
+## LINK ESTABLISHMENT
+
+## STRESS TEST
+
+
+# MULTI-PATHED SERVICES
+
+## TCP
+
+## BT
+
+## SMS
+

@@ -44,7 +44,7 @@ class RVI(SimpleJSONRPCServer):
     # Arguments will be an array of fully qualified service names no longer available.
     def set_services_unavailable_callback(self, function):
         self.register_function(function, 'services_unavailable')
-    
+        
     def get_available_services(self):
         # We need at least one dummy argument for the RPC to go
         # through on the RVI side.
@@ -73,6 +73,10 @@ class RVI(SimpleJSONRPCServer):
     # in an RVI network to access your service.
     #
     def register_service(self, service_name, function):
+        # Add a prefixing slash if necessary
+        if service_name[0] != '/':
+            service_name = '/' + service_name
+
         # Register service_name within SimpleJSONRPCServer so that
         # when it gets invoked with the given URL suffic, it will call 'function'.
         #
@@ -102,6 +106,9 @@ class RVI(SimpleJSONRPCServer):
     #  retister_service()
     #
     def unregister_service(self, service_name):
+
+        if service_name[0] != '/':
+            service_name = '/' + service_name
 
         # Check that the service has been previously registered
         # If not just return
@@ -149,8 +156,8 @@ class RVI(SimpleJSONRPCServer):
     # Redefined shutdown method that first unregisters all services.
     #
     def shutdown(self):
-        for service in self.registered_services:
-            self.unregister_service(service)
+        for svc in self.registered_services.keys():
+            self.unregister_service(svc)
 
         SimpleJSONRPCServer.shutdown(self)
 

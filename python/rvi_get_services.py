@@ -20,7 +20,8 @@ def usage():
     print "Return the name of all available services that can be reached"
     print "through an RVI node."
     print
-    print "Usage:", sys.argv[0], " RVI-node"
+    print "Usage:", sys.argv[0], " [RVI-node]"
+    print "Default RVI node is http://127.0.0.1:8801"
     print
     print "Example: ./callrvi.py http://rvi1.nginfotpdx.net:8801"
     print
@@ -30,12 +31,15 @@ def usage():
 # 
 # Check that we have the correct arguments
 #
-if len(sys.argv) <2:
+if len(sys.argv) != 1 and len(sys.argv) != 2:
     usage()
 
 progname = sys.argv[0]
-rvi_node = sys.argv[1]
 
+if len(sys.argv) == 2:
+    rvi_node = sys.argv[1]
+else:
+    rvi_node = "http://localhost:8801"
 
 #
 # Setup an outbound JSON-RPC connection to the backend RVI node
@@ -44,13 +48,12 @@ rvi_node = sys.argv[1]
 rvi = RVI(rvi_node)
 
 
-print "RVI Node:         ", rvi_node
-
-
 #
-# Send the messge.
+# Retreieve services
 #
-print rvi.get_available_services()
+for i in rvi.get_available_services():
+    print i
+
 
 
 

@@ -13,7 +13,7 @@
 -include_lib("lager/include/log.hrl").
 
 -export([start_link/0,
-         add_listener/3,
+         add_listener/4,
          remove_listener/3]).
 
 -export([init/2, handle_call/3, handle_cast/2, handle_info/2]).
@@ -24,8 +24,8 @@
 start_link() ->
     gen_nb_server:start_link(?MODULE, []).
 
-add_listener(Pid, IpAddr, Port) ->
-    gen_server:call(Pid, {add_listener, IpAddr, Port}).
+add_listener(Pid, IpAddr, Port, CompSpec) ->
+    gen_server:call(Pid, {add_listener, IpAddr, Port, CompSpec}).
 
 remove_listener(Pid, IpAddr, Port) ->
     gen_server:call(Pid, {remove_listener, IpAddr, Port}).
@@ -33,13 +33,15 @@ remove_listener(Pid, IpAddr, Port) ->
 init([], State) ->
     {ok, State}.
 
-handle_call({add_listener, IpAddr, Port}, _From, State) ->
+handle_call({add_listener, IpAddr, Port, CompSpec}, _From, State) ->
     case gen_nb_server:add_listen_socket({IpAddr, Port}, State) of
         {ok, State1} ->
-            {reply, ok, State1};
+            {reply, ok, gen_nb_server:store_cb_state( CompSpec, State1 )};
+
         Error ->
-            {reply, Error, State}
+            {reply, Error, gen_nb_server:store_cb_state( CompSpec, State )}
     end;
+
 handle_call({remove_listener, IpAddr, Port}, _From, State) ->
     case gen_nb_server:remove_listen_socket({IpAddr, Port}, State) of
         {ok, State1} ->
@@ -47,6 +49,7 @@ handle_call({remove_listener, IpAddr, Port}, _From, State) ->
         Error ->
             {reply, Error, State}
     end;
+
 handle_call(_Msg, _From, State) ->
     {reply, ignored, State}.
 
@@ -69,8 +72,9 @@ new_connection(IP, Port, Sock, State) ->
 
     %% IP and Port are garbage. We'll grab peername when we get our
     %% first data.
+    %% Provide component spec as extra arg.
     {ok, _P} = connection:setup(undefined, 0, Sock, 
-				data_link_bert_rpc_rpc, 
-				handle_socket, []),
+				dlink_tcp_rpc, 
+				handle_socket, [gen_nb_server:get_cb_state(State)]),
     {ok, State}.
 

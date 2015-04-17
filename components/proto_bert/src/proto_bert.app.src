@@ -8,7 +8,7 @@
 
 
 %% -*- erlang -*-
-{application, protocol,
+{application, proto_bert,
  [
   {description, ""},
   {vsn, "0.1"},
@@ -18,6 +18,6 @@
                   stdlib,
 		  rvi_common
                  ]},
-  {mod, { protocol_app, []}},
-  {start_phases, [{init, []}]}
+  {mod, { proto_bert_app, []}},
+  {start_phases, [{json_rpc, []}]}
  ]}.
