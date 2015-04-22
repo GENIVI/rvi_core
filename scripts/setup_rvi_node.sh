@@ -3,7 +3,7 @@
 # Copyright (C) 2014, Jaguar Land Rover
 #
 # This program is licensed under the terms and conditions of the
-# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License, version 2.0.  The full text of the
 # Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 #
 
@@ -11,9 +11,9 @@
 # Setup an RVI release with a configuration file.
 #
 # This script will setup a directory with with the same name
-# as the release name. The script uses Ulf Wiger's setup application 
+# as the release name. The script uses Ulf Wiger's setup application
 # (github.com/Feuerlabs/setup) to generate the release.
-# 
+#
 # With the -d argument, a developer release will be built with
 # only
 #
@@ -24,28 +24,29 @@
 #  In order to create a standalone release, use create_rvi_release.sh
 #
 
-SELF_DIR=$(dirname $(readlink -f "$0"))
+#SELF_DIR=$(dirname $(readlink -f "$0"))
+SELF_DIR=$(dirname $0)
 SETUP_GEN=$SELF_DIR/setup_gen  # Ulf's kitchen sink setup utility
 
 usage() {
     echo "Usage: $0 [-d] -n node_name -c config_file"
     echo "  -n node_name     Specify the name of the rvi node to setup"
-    echo 
+    echo
     echo "  -c config_file   Specifies the setup config file to use when setting "
     echo "                   up the node"
-    echo 
+    echo
     echo "  -d               Create a development release. See below."
-    echo 
+    echo
     echo "The generated node will be created in a subdirectory with the same"
     echo "name as the node name."
-    echo 
+    echo
     echo "The created node can be started with: $SELF_DIR/rvi_node -n node_name"
-    echo 
+    echo
     echo "If the node was created with the -d flag, you need to start"
     echo "the node with $SELF_DIR/rvi_node -d -n node_name"
     echo
     echo "Configuration file examples can be found in hvac_demo/vehicle.config"
-    echo 
+    echo
     echo "The -d flag creates a development release that uses the erlang "
     echo "binaries found in ebin/ and deps/*/ebin. This means that new builds,"
     echo "created by make, can be run directly through "
@@ -56,7 +57,7 @@ usage() {
     echo "This directory, containing a standard erlang reltool release, "
     echo "including the erlang runtime system, can be copied as a stand alone"
     echo "system to a destination node."
-    echo 
+    echo
     echo "Configuration file examples can be found in hvac_demo/vehicle.config"
     exit 1
 }
@@ -91,7 +92,7 @@ if [ -z "${CONFIG_NAME}" ] ; then
 fi
 
 
-export ERL_LIBS=$PWD/components:$PWD/deps:$ERL_LIBS:$PWD 
+export ERL_LIBS=$PWD/components:$PWD/deps:$ERL_LIBS:$PWD
 echo  "Setting up node $NODE_NAME."
 $SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME
 
@@ -104,7 +105,7 @@ else
     echo "Building stand alone release for $NODE_NAME"
     # Copy the newly created config file.
     cp $NODE_NAME/sys.config rel/files/sys.config
-    ./rebar generate 
+    ./rebar generate
     # Rename the release after the node name
     mv rel/rvi rel/$NODE_NAME
     echo "Stand alone release for $NODE_NAME created under project "
@@ -114,9 +115,9 @@ else
     echo "Attach console:     ./rel/$NODE_NAME/bin/rvi attach"
     echo "Stop:               ./rel/$NODE_NAME/bin/rvi stop"
     echo "Start console mode: ./rel/$NODE_NAME/bin/rvi console"
-    echo 
+    echo
     echo "Start dev mode:     ./rvi_node.sh -n $NODE_NAME"
-    echo 
+    echo
     echo "./rel/$NODE_NAME can be copied and installed on its destination host."
 
 fi
