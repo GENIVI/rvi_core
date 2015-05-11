@@ -6,7 +6,6 @@ Group:      App Framework/Application Communication
 License:    Mozilla Public License 2.0
 Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.3.2.tgz
 
-BuildRequires:  ca-certificates
 BuildRequires:  make
 BuildRequires:  glib2-devel
 BuildRequires:  rpm

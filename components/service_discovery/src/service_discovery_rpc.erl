@@ -10,623 +10,419 @@
 -module(service_discovery_rpc).
 -behaviour(gen_server).
 
--export([handle_rpc/2]).
+-export([handle_rpc/2,
+	 handle_notification/2]).
+
 -export([start_link/0]).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--export([init_rvi_component/0]).
+-export([get_all_services/1,
+	 get_services_by_module/2,
+	 get_modules_by_service/2,
+	 subscribe/2,
+	 unsubscribe/2,
+	 register_services/3,
+	 unregister_services/3]).
+
+-export([start_json_server/0]).
 
 -include_lib("lager/include/log.hrl").
--define(LOCAL_SERVICE_TABLE, rvi_local_services).
--define(REMOTE_SERVICE_TABLE, rvi_remote_services).
--define(REMOTE_ADDRESS_TABLE, rvi_address_services).
+-include_lib("rvi_common/include/rvi_common.hrl").
+
+-define(SERVICE_TABLE, rvi_svcdisc_services).
+-define(MODULE_TABLE, rvi_svcdisc_modules).
+-define(SUBSCRIBER_TABLE, rvi_svcdisc_subscribers).
 
 -record(service_entry, {
-	  service = [],
-	  network_address = undefined %% Address where service can be found
+	  service = [],             %% Servie handled by this entry.
+	  data_link_mod = undefined %% Module handling service, 'local' if local service
 	 }).
 
+
+-record(subscriber_entry, {
+	  module %% Module subscribing to service availability
+	 }).
+
+
 -define(SERVER, ?MODULE). 
--record(st, { }).
+
+-record(st, {
+	  %% Component specification
+	  cs = #component_spec{}
+	 }).
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-    ?debug("service_discovery_rpc:init(): called."),
-    {ok, #st {}}.
+    ?info("svc_disc:init(): called."),
+    ets:new(?SERVICE_TABLE, [ duplicate_bag,  public, named_table, 
+			     { keypos, #service_entry.service }]),
 
-%% Called by service_discovery_app:start_phase().
-init_rvi_component() ->
-    ets:new(?LOCAL_SERVICE_TABLE,  [set,  public, named_table, { keypos, #service_entry.service }]),
-    ets:new(?REMOTE_SERVICE_TABLE, [set,  public, named_table, { keypos, #service_entry.service }]),
-    ets:new(?REMOTE_ADDRESS_TABLE, [duplicate_bag,  public, named_table, 
-				    {keypos, #service_entry.network_address}]),
+    ets:new(?MODULE_TABLE, [ duplicate_bag,  public, named_table, 
+			     { keypos, #service_entry.data_link_mod }]),
 
-    case rvi_common:get_component_config(service_discovery, exo_http_opts) of
-	{ ok, ExoHttpOpts } ->
-	    exoport_exo_http:instance(service_discovery_sup, 
-				      service_discovery_rpc,
-				      ExoHttpOpts);
-	Err -> Err
-    end,
-    ok.
+    ets:new(?SUBSCRIBER_TABLE, [set,  public, named_table, 
+				  { keypos, #subscriber_entry.module }]),
 
-dump_table(_Table, '$end_of_table') ->
-    true;
-
-dump_table(Table, Key) ->
-    Val = ets:lookup(Table, Key),
-    ?info("Table: ~p(~p) - ~p", [ Table, Key, Val ]),
-    dump_table(Table, ets:next(Table, Key)).
-
-dump_table(Table) ->
-    dump_table(Table, ets:first(Table)).
-
-register_remote_service(NetworkAddress) ->
-    ?info("service_discovery_rpc:register_remote_service(): service(n/a) -> ~p", [NetworkAddress]),
-
-    ets:insert(?REMOTE_ADDRESS_TABLE, 
-	       #service_entry {
-		  service = "",
-		  network_address = NetworkAddress
-		 }),
-
-    dump_table(?REMOTE_ADDRESS_TABLE),
-    {ok, [ {service, ""}, { status, rvi_common:json_rpc_status(ok)}]}.
+    {ok, #st { cs = rvi_common:get_component_specification() } }.
 
 
-register_remote_service(Service, NetworkAddress) ->
-    ?info("service_discovery_rpc:register_remote_service(): service(~p) -> ~p", [Service, NetworkAddress]),
+start_json_server() ->
+    rvi_common:start_json_rpc_server(service_discovery, ?MODULE, service_discovery_sup).
 
-    FullSvcName = rvi_common:remote_service_to_string(Service),
+get_all_services(CompSpec) ->
+    rvi_common:request(service_discovery, ?MODULE, 
+		       get_all_services, [], [status, services], CompSpec).
 
-    ets:insert(?REMOTE_SERVICE_TABLE, 
-	       #service_entry {
-		  service = FullSvcName,
-		  network_address = NetworkAddress
-		 }),
+get_services_by_module(CompSpec, DataLinkMod) ->
+    rvi_common:request(service_discovery, ?MODULE, 
+		       get_services_by_module, 
+		       [ { data_link_module, DataLinkMod }], 
+		       [status, services], CompSpec).
 
-    %% Delete any addresses stored with an empty service name,
-    %% installed with register_remote_service/1, since we now have at
-    %% least one service name.
-    ets:match_delete(?REMOTE_ADDRESS_TABLE, 
-		     #service_entry { 
-			service = [], 
-			network_address = NetworkAddress 
-		      }),
-
-    %% Delete any previous instances of the given entry, in case
-    %% the service registers multiple times
-    ets:match_delete(?REMOTE_ADDRESS_TABLE, 
-		     #service_entry { 
-			service = FullSvcName, 
-			network_address = NetworkAddress 
-		      }),
-
-    ets:insert(?REMOTE_ADDRESS_TABLE, 
-	       #service_entry {
-		  service = FullSvcName,
-		  network_address = NetworkAddress
-		 }),
-
-    {ok, [ {service, FullSvcName}, { status, rvi_common:json_rpc_status(ok)}]}.
+get_modules_by_service(CompSpec, Service) ->
+    rvi_common:request(service_discovery, ?MODULE, 
+		       get_modules_by_service,
+		       [ { service, Service }], 
+		       [status, modules], CompSpec).
 
 
-unregister_remote_services_by_address(NetworkAddress) ->
+register_services(CompSpec, Services, DataLinkModule) ->
+    rvi_common:notification(service_discovery, ?MODULE, register_services, 
+			    [{ services, Services },
+			     { data_link_module, DataLinkModule }],
+			    CompSpec).
 
-    %% Delete all services registered under the given address.
-    Svcs = ets:lookup(?REMOTE_ADDRESS_TABLE, NetworkAddress),
+unregister_services(CompSpec, Services, DataLinkModule) ->
+    rvi_common:notification(service_discovery, ?MODULE, unregister_services, 
+			    [{ services,  Services },
+			     { data_link_module, DataLinkModule}],
+			     CompSpec).
 
-    %% We now have a bunch of service records, convert them to a list of service
-    %% names and send them of to schedule for deregistration
-    AllSvcNames = lists:foldr(fun(#service_entry {  service = SvcName }, Acc) -> 
-				      [SvcName | Acc]
-			      end, [], Svcs),
+subscribe(CompSpec, SubscribingMod) ->
+    rvi_common:notification(service_discovery, ?MODULE, subscribe, 
+			    [ { subscribing_module, SubscribingMod }], 
+			    CompSpec).
 
-    ?info("service_discovery_rpc:unregister_remote_services_by_address(): ~p -> ~p", 
-	  [NetworkAddress, AllSvcNames]),
-
-    %% We need to filter AllSvcNames to remove all service entries that have
-    %% been registered under another name. 
-    %% We do this by creating a list of all matching entries associated
-    %% with a network address not matching the disconnected NetworkAddress
-    %%
-    %% See issue https://github.com/PDXostc/rvi/issues/14 for details
-    FilterSvc =
-	lists:foldr(
-	  fun(Service, Acc) -> 
-
-		  %% Lookup the service in the service table.
-		  case ets:lookup(?REMOTE_SERVICE_TABLE, Service) of
-
-		      %% Not found. Do not filter out.
-		      [] ->
-			  Acc;
-
-		      %% We found or own entry, tiet to the disconnected address.
-		      %% Do not add to addresses to be removed.
-		      [ #service_entry { network_address = NetworkAddress } ] ->
-			  Acc;
-
-		      %% We found an entry that does not the disconnected
-		      %% network address. This one should be filtered out
-		      [ _ ] ->
-			  [ Service | Acc ]
-
-		  end 
-	  end, [], AllSvcNames),
+unsubscribe(CompSpec, SubscribingMod) ->
+    rvi_common:notification(service_discovery, ?MODULE, unsubscribe, 
+			    [ { subscribing_module, SubscribingMod }], 
+			    CompSpec).
     
-    SvcNames = AllSvcNames -- FilterSvc,
-
-
-    case FilterSvc of
-	[] -> ok;
-
-	_ ->
-	    ?info("service_discovery_rpc:unregister_remote_services_by_address(): Resurrected services: ~p", 
-		  [FilterSvc]),
-
-	    ?info("service_discovery_rpc:unregister_remote_services_by_address(): Filtered services to be deleted: ~p", 
-		  [SvcNames])
-    end,
-    
-
-    %% Delete any addresses stored with an empty service name,
-    %% installed with register_remote_service/1, since we now have at
-    %% least one service name.
-    ets:match_delete(?REMOTE_ADDRESS_TABLE, 
-		     #service_entry { 
-			service = [], 
-			network_address = NetworkAddress 
-		      }),
-
-    ets:delete(?REMOTE_ADDRESS_TABLE, NetworkAddress),
-    case SvcNames of 
-	[] ->
-	    true;
-	_ ->
-
-	    rvi_common:send_component_request(schedule, unregister_remote_services, 
-				      [
-				       { services, SvcNames }
-				      ]),
-
-	    [ ets:delete(?REMOTE_SERVICE_TABLE, Svc#service_entry.service) || Svc <- Svcs ],
-
-	    %% Forward to service edge so that it can inform its locally
-	    %% connected services.
-	    %% Build a list of all our local services' addresses to provide
-	    %% to service edge so that it knows where to send the,
-	    LocalSvcAddresses = 
-		ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
-				  [ LocalAddress | Acc ] end, 
-			  [], ?LOCAL_SERVICE_TABLE),
-
-	    %% Call service edge with local addresses (sorted and de-duped) and
-	    %% the services to register.
-	    rvi_common:send_component_request(service_edge, unregister_remote_services, 
-	    				      [
-	     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-	     				       { services, SvcNames}				       
-	     				      ])
-    end,
-
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
-
-
-unregister_single_remote_service_by_name_(Service) ->
-    ?info("service_discovery_rpc:unregister_remote_services_by_name(): ~p", 
-	  [Service]),
-
-
-    %% Delete any remote address table entries with a matching Service.
-    ets:match_delete(?REMOTE_ADDRESS_TABLE, 
-		     #service_entry { 
-			service = Service,
-			network_address = '_'
-		      }),
-
-    ets:delete(?REMOTE_SERVICE_TABLE, Service),
-    After = ets:foldl(fun(#service_entry { service = Svc }, Acc) -> 
-			      [ Svc | Acc ] end, 
-		      [], ?REMOTE_SERVICE_TABLE),
-
-    ?debug("AFter removing ~p: ~p", [ Service, After ]),
-    
-    %% Forward to service edge so that it can inform its locally
-    %% connected services.
-    %% Build a list of all our local services' addresses to provide
-    %% to service edge so that it knows where to send the,
-    LocalSvcAddresses = 
-	ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
-			  [ LocalAddress | Acc ] end, 
-		  [], ?LOCAL_SERVICE_TABLE),
-    
-    %% Call service edge with local addresses (sorted and de-duped) and
-    %% the services to register.
-    rvi_common:send_component_request(service_edge, unregister_remote_services, 
-    				      [
-     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-     				       { services, [Service]}				       
-     				      ]),
-
-    ok.
-
-
-unregister_remote_services_by_name(Services) ->
-    [ unregister_single_remote_service_by_name_(Svc) || Svc <- Services],
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
-
-unregister_local_service(Service) ->
-    ?info("service_discovery_rpc:unregister_local_service(): ~p", 
-	  [Service]),
-
-    ets:delete(?LOCAL_SERVICE_TABLE, Service),
-    {ok, [ { status, rvi_common:json_rpc_status(ok)}]}.
-
-
-register_local_service(NetworkAddress, Service) ->
-    ?info("service_discovery_rpc:register_local_service(): ~p ->  ~p", [Service, NetworkAddress]),
-
-    FullSvcName = rvi_common:local_service_to_string(Service),
-
-    ets:insert(?LOCAL_SERVICE_TABLE, 
-	       #service_entry {
-		  service = FullSvcName,
-		  network_address = NetworkAddress
-		 }),
-    FullSvcName.
-
-
-
-resolve_local_service(RawService) ->
-    Service = rvi_common:sanitize_service_string(RawService),
-    ?debug("service_discovery_rpc:resolve_local_service(): RawService:      ~p", [RawService]),
-    ?debug("service_discovery_rpc:resolve_local_service(): Cleaned Service: ~p", [Service]),
-    case resolve_service(?LOCAL_SERVICE_TABLE, Service) of 
-	not_found ->
-	    { ok, [ { status, rvi_common:json_rpc_status(not_found) }]};
-	
-	{ok, NetworkAddress } ->
-	    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-		   { network_address, NetworkAddress }]}
-    end.
-
-resolve_remote_service(RawService) ->
-    Service = rvi_common:sanitize_service_string(RawService),
-    ?debug("service_discovery_rpc:resolve_remote_service(): RawService:      ~p", [RawService]),
-    ?debug("service_discovery_rpc:resolve_remote_service(): Cleaned Service: ~p", [Service]),
-    case resolve_service(?REMOTE_SERVICE_TABLE, Service) of
-	{ok, NetworkAddress } ->
-	    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-		   { network_address, NetworkAddress }]};
-
-	not_found ->
-	    ?debug("service_discovery_rpc:resolve_remote_service(~p): Service not found in ets. "
-		  "Trying static nodes",
-		  [Service]),
-
-	    
-	    %% Check if this is a service residing on the backend server
-	    case rvi_common:get_static_node(Service) of
-		not_found -> %% Not found
-		    ?info("service_discovery_rpc:resolve_remote_service(~p): Service not found.", 
-			   [Service]),
-		    
-		    { ok, [ { status, rvi_common:json_rpc_status(not_found) }]};
-
-		NetworkAddress -> %% Found
-			    ?debug("service_discovery_rpc:resolve_service(~p): Service is on static node ~p", 
-				   [Service, NetworkAddress]),
-
-		    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-			   { network_address, NetworkAddress }]}
-	    end
-    end.
-					  
-					  
-
-
-register_remote_services(Address, Services) ->
-    %% Loop through the services and register them.
-    case Services of 
-	[] -> register_remote_service(Address); 
-	_ -> 
-	    lists:map(fun(Svc) -> register_remote_service(Svc, Address) end, Services),
-
-	    %% Forward to scheduler now that we have updated our own state
-	    rvi_common:send_component_request(schedule, register_remote_services, 
-						  [
-						   {services, Services}, 
-						   { network_address, Address }
-						  ]),
-
-	    %% Forward to service edge so that it can inform its locally
-	    %% connected services.
-	    %% Build a list of all our local services' addresses to provide
-	    %% to service edge so that it knows where to send the,
-	    LocalSvcAddresses = 
-		ets:foldl(fun(#service_entry { network_address = LocalAddress }, Acc) -> 
-				  [ LocalAddress | Acc ] end, 
-			  [], ?LOCAL_SERVICE_TABLE),
-
-	    %% Call service edge with local addresses (sorted and de-duped) and
-	    %% the services to register.
-	    rvi_common:send_component_request(service_edge, register_remote_services, 
-	    				      [
-	     				       { local_service_addresses, lists:usort(LocalSvcAddresses)}, 
-	     				       { services, Services}				       
-	     				      ])
-    end,
-
-    {ok, [ { status, rvi_common:json_rpc_status(ok) } ]}.
-
-resolve_service(Table, Service) ->
-    case ets:lookup(Table, Service) of
-	%% We found a service entry, report it back
-	[#service_entry { network_address = NetworkAddress }] ->
-	    ?debug("service_discovery_rpc:resolve_service(~p): service: ~p -> ~p", 
-		   [ Table, Service, NetworkAddress ]),
-
-	    {ok, NetworkAddress };
-
-	%% We did not find a service entry, check statically configured nodes.
-	[] -> 
-	    ?debug("service_discovery_rpc:resolve_service(~p): service: ~p -> Not Found", 
-		   [ Table, Service ]),
-	    not_found
-    end.
-
-
-
-get_services(Table) ->
-    Services = ets:foldl(fun(#service_entry {service = ServiceName, 
-					     network_address = ServiceAddr}, Acc) -> 
-				 [ {ServiceName, ServiceAddr } | Acc ] end, 
-			 [], Table),
-
-    ?debug("service_discovery_rpc:get_services(): ~p", [ Services ]),
-    Services.
-
-get_all_services() ->
-    RemoteSvc = ets:foldl(fun(#service_entry {service = ServiceName}, Acc) -> 
-				  [ ServiceName  | Acc ] end, 
-			  [], ?REMOTE_SERVICE_TABLE),
-
-    LocalSvc = ets:foldl(fun(#service_entry {service = ServiceName}, Acc) -> 
-				  [ ServiceName  | Acc ] end, 
-			  [], ?LOCAL_SERVICE_TABLE),
-
-    Services = RemoteSvc++LocalSvc,
-    ?debug("service_discovery_rpc:get_all_services(): ~p", [ Services]),
-    Services.
-
-
-get_json_services(Table) ->
-    Services = ets:foldl(fun(#service_entry {service = ServiceName, 
-					     network_address = ServiceAddr}, Acc) -> 
-				 [ {struct, 
-				    [ 
-				      {service, ServiceName}, 
-				      {address, ServiceAddr}
-				    ]
-				   } | Acc ] end, 
-			 [], Table),
-    ?debug("service_discovery_rpc:get_services(): ~p", [ Services]),
-    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-	   { services, {array, Services }}]}.
-
-
-get_network_addresses_(Table) ->
-    AddrList = ets:foldl(fun(#service_entry {network_address = NetworkAddr}, Acc) 
-				when NetworkAddr =:= unavailable -> 
-				  Acc; %% Don't report if service is not active
-
-			     %% We have an active network address
-			     (#service_entry {network_address = NetworkAddr}, Acc)  ->
-				  %% Avoid duplicates
-				  case lists:keyfind(NetworkAddr, 1, Acc) of
-				      false ->[ NetworkAddr | Acc ];
-				      _ -> Acc
-				  end
-			  end, [], Table),
-
-
-    %% Return a dup-scrubbed list.
-    Addresses = sets:to_list(sets:from_list(AddrList)),
-    ?debug("service_discovery_rpc:get_network_addresses(~p): ~p", [ Table, Addresses ]),
-    Addresses.
-
-
-get_json_network_addresses(Table) ->
-    Addresses = get_network_addresses_(Table),
-    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-	   { addresses, {array, Addresses }}]}.
-    
-get_network_addresses(Table) ->
-    Addresses = get_network_addresses_(Table),
-    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-	   { addresses, Addresses }]}.
-
 
 %% JSON-RPC entry point
 %% Called by local exo http server
 
-%% Register local services
-
-handle_rpc("register_local_service", Args) ->
-    {ok, Service} = rvi_common:get_json_element(["service"], Args),
-    {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
-    FullSvcName   = register_local_service(Address, Service),
-
-    {ok, [ { service, FullSvcName }, 
-	   { status, rvi_common:json_rpc_status(ok) }
-	 ]
-    };
-
-
 %% Register remote services
-
-handle_rpc("register_remote_services", Args) ->
+handle_notification("register_services", Args) ->
     {ok, Services} = rvi_common:get_json_element(["services"], Args),
-    {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
-    register_remote_services(Address, Services);
+    {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
+
+    gen_server:cast(?SERVER, { rvi, register_services, 
+			       [ Services, list_to_atom(DataLinkModule) ]}),
+    ok;
 
 
-handle_rpc("unregister_remote_services_by_address", Args) ->
-    {ok, Address} = rvi_common:get_json_element(["network_address"], Args),
-
-    %% Loop through the services and de-register them.
-    unregister_remote_services_by_address(Address);
-
-handle_rpc("unregister_remote_services_by_name", Args) ->
+handle_notification("unregister_services", Args) ->
     {ok, Services} = rvi_common:get_json_element(["services"], Args),
+    {ok, DataLinkModule } = rvi_common:get_json_element(["data_link_module"], Args),
+    gen_server:cast(?SERVER, { rvi, unregister_services, 
+			       [ Services, list_to_atom(DataLinkModule) ]}),
+    ok;
 
-    %% Loop through the services and de-register them.
-    unregister_remote_services_by_name(Services);
 
-handle_rpc("unregister_local_service", Args) ->
-    {ok, Service} = rvi_common:get_json_element(["service"], Args),
+handle_notification("subscribe", Args) ->
+    {ok, Module } = rvi_common:get_json_element(["subscribing_module"], Args),
+
     %% De-register service
-    unregister_local_service(Service);
+    gen_server:cast(?SERVER, { rvi, subscribe, [ list_to_atom(Module) ]}),
+    ok;
 
+handle_notification("unsubscribe_from_service", Args) ->
+    {ok, Module } = rvi_common:get_json_element(["subscribing_module"], Args),
 
-%%
-%% Resolve remote service
-%%
-handle_rpc("resolve_remote_service", Args) ->
-    {ok, Service} = rvi_common:get_json_element(["service"], Args),
-    resolve_remote_service(Service);
+    %% De-register service
+    gen_server:cast(?SERVER, { rvi, unsubscribe, [ list_to_atom(Module) ]}),
+    ok;
 
+handle_notification( Other, _Args) ->
+    ?info("svc_disc:handle_notification(~p): unknown", [ Other ]),
+    ok.
 
-%%
-%% Get remote services
-%%
-handle_rpc("get_remote_services", _Args) ->
-    get_json_services(?REMOTE_SERVICE_TABLE);
 
 %%
 %% Get all services
 %%
 handle_rpc("get_all_services", _Args) ->
-    Services = get_all_services(),
-    {ok, [ { status, rvi_common:json_rpc_status(ok) },
-	   { services, {array, Services }}]};
+    ?debug("svc_disc:get_all_services(json-rpc)"),
+    [ok, Services ] = gen_server:call(?SERVER, { rvi, get_all_services, []}),
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} , { services, { array, Services } }]};
 
 
-%%
-%% Get remote network addresses
-%%
-handle_rpc("get_remote_network_addresses", _Args) ->
-    get_json_network_addresses(?REMOTE_ADDRESS_TABLE);
+handle_rpc("get_services_by_module", Args) ->
+    {ok, DataLinkMod } = rvi_common:get_json_element(["data_link_module"], Args),
+    ?debug("svc_disc:get_services_by_module(json-rpc): ~p ", [DataLinkMod]),
+    [ok, Services ] = gen_server:call(?SERVER, 
+				      { rvi, 
+					get_services_by_module, 
+					[DataLinkMod]}),
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} , { services, { array, Services } }]};
 
 
-%%
-%% Resolve local service
-%%
-handle_rpc("resolve_local_service", Args) ->
-    {ok, Service} = rvi_common:get_json_element(["service"], Args),
-    resolve_local_service(Service);
+handle_rpc("get_modules_by_service", Args) ->
+    {ok, Service } = rvi_common:get_json_element(["service"], Args),
+    ?debug("svc_disc:get_modules_by_service(json-rpc): ~p ", [Service]),
+    [ok, Modules ] = gen_server:call(?SERVER, 
+				      { rvi,
+					get_modules_by_service,
+					[Service]}),
+
+    {ok, [ {status, rvi_common:json_rpc_status(ok)} , { modules, { array, Modules } }]};
 
 
-%%
-%% Get local services
-%%
-handle_rpc("get_local_services", _Args) ->
-    get_json_services(?LOCAL_SERVICE_TABLE);
-
-
-%%
-%% Get local network addresses
-%%
-handle_rpc("get_local_network_addresses", _Args) ->
-    get_json_network_addresses(?LOCAL_SERVICE_TABLE);
 
 
 %% 
 %% Handle the rest.
 %%
 handle_rpc( Other, _Args) ->
-    ?info("service_discovery_rpc:handle_rpc(~p): unknown", [ Other ]),
-    { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
+    ?info("svc_disc:handle_rpc(~p): unknown", [ Other ]),
+    {ok, [ { status, invalid_command } ]}.
 
 
-%% Handle calls received through regular gen_server calls, routed byh
-%% rvi_common:send_component_request()
-
-handle_call({rvi_call, register_local_service, Args}, _From, State) ->
-    {_, Service} = lists:keyfind(service, 1, Args),
-    {_, Address} = lists:keyfind(network_address, 1, Args),
-    FullSvcName  = register_local_service(Address, Service),
-
-    {reply, {ok, [ { service, FullSvcName }, 
-		   { status, rvi_common:json_rpc_status(ok) }
-		 ]
-	    }, State  };
+handle_call({rvi, get_all_services, _Args}, _From, St) ->
+    Svcs = ets:foldl(fun(#service_entry {service = ServiceName}, Acc) -> 
+			    [ ServiceName | Acc ] end, 
+		    [], ?SERVICE_TABLE),
+    {reply,  [ok, Svcs], St };
 
 
-handle_call({rvi_call, register_remote_services, Args}, _From, State) ->
-    {_, Services} = lists:keyfind(services, 1, Args),
-    {_, Address} = lists:keyfind(network_address, 1, Args),
-    {reply, register_remote_services(Address, Services), State };
+handle_call({rvi, get_services_by_module, [Module]}, _From, St) ->
+    {reply,  [ok, get_services_by_module_(Module)], St };
 
-handle_call({rvi_call, unregister_remote_services_by_address, Args}, _From, State) ->
-    {_, Address} = lists:keyfind(network_address, 1, Args),
-    {reply, unregister_remote_services_by_address(Address), State };
 
-handle_call({rvi_call, unregister_remote_services_by_name, Args}, _From, State) ->
-    {_, Services} = lists:keyfind(services, 1, Args),
-    {reply, unregister_remote_services_by_name(Services), State };
+handle_call({rvi, get_modules_by_service, [Service]}, _From, St) ->
+    {reply,  [ok, get_modules_by_service_(Service)], St };
 
-handle_call({rvi_call, unregister_local_service, Args}, _From, State) ->
-    {_, Service} = lists:keyfind(service, 1, Args),
-    {reply, unregister_local_service(Service), State };
 
-handle_call({rvi_call, resolve_remote_service, Args}, _From, State) ->
-    {_, Service} = lists:keyfind(service, 1, Args),
-    {reply, resolve_remote_service(Service), State };
+handle_call(Other, _From, St) ->
+    ?warning("svc_disc:handle_call(~p): unknown", [ Other ]),
+    { reply,  [unknown_command] , St}.
 
-handle_call({rvi_call, get_remote_services, _Args}, _From, State) ->
-    Services = get_services(?REMOTE_SERVICE_TABLE),
-    {reply,  {ok, 
-	      [ { status, rvi_common:json_rpc_status(ok) },
-		{ services, Services }]}, State };
 
-handle_call({rvi_call, get_all_services, _Args}, _From, State) ->
-    Services = get_all_services(),
-    {reply,  {ok, 
-	      [ { status, rvi_common:json_rpc_status(ok) },
-		{ services, Services }]}, State };
 
-handle_call({rvi_call, get_remote_network_addresses, _Args}, _From, State) ->
-    {reply, get_network_addresses(?REMOTE_ADDRESS_TABLE), State };
+handle_cast({rvi, subscribe, [ SubsMod] }, St) ->
+    %% Insert new entry, or replace existing one
+    ets:insert(?SUBSCRIBER_TABLE, #subscriber_entry { module = SubsMod}),
 
-handle_call({rvi_call, resolve_local_service, Args}, _From, State) ->
-    {_, Service} = lists:keyfind(service, 1, Args),
-    {reply, resolve_local_service(Service), State };
+    initial_notification(St#st.cs, SubsMod),
 
-handle_call({rvi_call, get_local_services, _Args}, _From, State) ->
-    Services = get_services(?LOCAL_SERVICE_TABLE),
-    {reply,  {ok, 
-	      [ { status, rvi_common:json_rpc_status(ok) },
-		{ services, Services }]}, State };
+    { noreply, St};
 
-handle_call({rvi_call, get_local_network_addresses, _Args}, _From, State) ->
-    {reply, get_network_addresses(?LOCAL_SERVICE_TABLE), State };
 
-handle_call(Other, _From, State) ->
-    ?warning("service_discovery_rpc:handle_call(~p): unknown", [ Other ]),
-    { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, State}.
+handle_cast({rvi, unsubscribe, [ SubsMod] }, St) ->
+    ets:delete(?SUBSCRIBER_TABLE, SubsMod),
+    { noreply, St};
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
 
-handle_info(_Info, State) ->
-    {noreply, State}.
+%% Handle calls received through regular gen_server calls, routed by
+%% rvi_common:request()
+handle_cast({rvi, register_services, [Services, DataLinkModule] }, St) ->
+    ?info("svc_disc:register_services(): ~p:~p",
+	  [DataLinkModule, Services]),
 
-terminate(_Reason, _State) ->
+    [ register_single_service_(SvcName, DataLinkModule) || SvcName <- Services],
+
+    %% Notify all subscribers
+    notify_subscribers(St#st.cs,
+		       available, 
+		       Services, 
+		       DataLinkModule),
+
+
+    {noreply, St };
+
+
+%% Handle calls received through regular gen_server calls, routed by
+%% rvi_common:request()
+handle_cast({rvi, unregister_services, [Services, DataLinkModule] }, St) ->
+
+    ?info("svc_disc:unregister_services(): ~p:~p",
+	  [DataLinkModule, Services]),
+
+    [ unregister_single_service_(SvcName, DataLinkModule) || SvcName <- Services],
+
+    %% Notify all subscribers
+    notify_subscribers(St#st.cs,
+		       unavailable, 
+		       Services, 
+		       DataLinkModule),
+
+
+    {noreply, St };
+
+
+
+handle_cast(Other, St) ->
+    ?warning("svc_disc:handle_cast(~p): unknown", [ Other ]),
+    {noreply, St}.
+
+handle_info(_Info, St) ->
+    {noreply, St}.
+
+terminate(_Reason, _St) ->
     ok.
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, St, _Extra) ->
+    {ok, St}.
+
+
+register_single_service_(Service, DataLinkModule) ->
+    ?info("svc_disc:register_remote_service_(~p:~p)", 
+	  [DataLinkModule,Service]),
+
+    %% Delete any previous instances of the given entry, in case
+    %% the service registers multiple times
+    ets:match_delete(?MODULE_TABLE, 
+		     #service_entry { 
+			service = Service, 
+			data_link_mod = DataLinkModule 
+		      }),
+
+    ets:match_delete(?SERVICE_TABLE, 
+		     #service_entry { 
+			service = Service, 
+			data_link_mod = DataLinkModule 
+		      }),
+
+    ets:insert(?SERVICE_TABLE, 
+	       #service_entry {
+		  service = Service,
+		  data_link_mod = DataLinkModule
+		 }),
+
+    ets:insert(?MODULE_TABLE, 
+	       #service_entry {
+		  service = Service,
+		  data_link_mod = DataLinkModule
+		 }),
+
+
+    ok.
+
+
+
+unregister_single_service_(Service, DataLinkModule) ->
+    ?info("svc_disc:unregister_single_service_(): ~p:~p", 
+	  [DataLinkModule, Service]),
+
+
+    %% Delete any service table entries with a matching Service.
+    ets:match_delete(?SERVICE_TABLE, 
+		     #service_entry { 
+			service = Service,
+			data_link_mod = DataLinkModule 
+		      }),
+    %% Delete any remote address table entries with a matching Service.
+    ets:match_delete(?MODULE_TABLE, 
+		     #service_entry { 
+			service = Service,
+			data_link_mod = DataLinkModule 
+		      }),
+
+    ok.
+
+%%
+%% Return all modules that can currently route the provided service.
+%%
+get_modules_by_service_(Service) ->
+
+    ModMatch = ets:lookup(?SERVICE_TABLE, Service),
+    
+    ModNames = lists:foldl(fun(#service_entry { 
+				  data_link_mod = Mod 
+				 }, Acc) -> 
+				   [ Mod | Acc ]
+		end, [], ModMatch),
+    
+	
+
+
+    ?debug("svc_disc:get_modules_by_service_(): ~p -> ~p", [ Service, ModNames ]),
+    ModNames.
+
+
+
+get_services_by_module_(Module) ->
+
+    SvcMatch = ets:lookup(?MODULE_TABLE, Module),
+    
+    SvcNames = lists:foldl(fun(#service_entry { 
+				  service = Svc 
+				 }, Acc) -> 
+				   [ Svc | Acc ]
+		end, [], SvcMatch),
+
+    ?debug("svc_disc:get_services_by_module_(): ~p -> ~p", [ Module, SvcNames ]),
+    SvcNames.
+
+
+
+send_notification(_CompSpec, '$end_of_table', _SubsFun,
+		  _DataLinkModule, _Services) ->
+    ok;
+
+send_notification(CompSpec, SubsModule, SubsFun, 
+		  DataLinkModule, Services) ->
+
+    %% Invoke subscriber for each service that has been updated.
+    ?debug("notify_subscribers(~p:~p) ~p:~p()", [ DataLinkModule, Services, SubsModule, SubsFun]),
+    [ SubsModule:SubsFun(CompSpec, SvcName, DataLinkModule) || SvcName <- Services],
+
+    %% Move on to the next subscribing module
+    send_notification(CompSpec, 
+		      ets:next(?SUBSCRIBER_TABLE, SubsModule), SubsFun,
+		      DataLinkModule, Services).
+    
+notify_subscribers(CompSpec, Available, Services, DataLinkModule) -> 
+    
+    ?debug("notify_subscribers(~p:~p) ~p", [ DataLinkModule, Services, Available]),
+
+    %% Figure out the function to invoke
+    Fun = case Available of
+	      available -> service_available;
+	      unavailable -> service_unavailable
+	  end,
+
+    %% Initiate with the first module
+    send_notification(CompSpec, 
+		      ets:first(?SUBSCRIBER_TABLE), 
+		      Fun, 
+		      DataLinkModule, 
+		      Services).
+
+
+
+initial_notification(_CompSpec, _SubsMod, '$end_of_table') ->
+    ok;
+
+%% Send all available services to the newly subscribing module
+initial_notification(CompSpec, SubsMod, Service) ->
+    case ets:lookup(?SERVICE_TABLE, Service) of
+	[] -> %% Yanked
+	    ok;
+
+	[#service_entry { data_link_mod = DataLinkMod }] -> 
+	    SubsMod:service_available(CompSpec, Service, DataLinkMod)
+    end,
+
+    %% Move on to the next service
+    initial_notification(CompSpec, SubsMod,
+			 ets:next(?SERVICE_TABLE, Service)).
+	    
+    
+initial_notification(CompSpec, SubsMod) ->
+    initial_notification(CompSpec, SubsMod, ets:first(?SERVICE_TABLE)),
+    ok.

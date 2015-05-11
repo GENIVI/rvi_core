@@ -1,4 +1,6 @@
+<<<<<<< HEAD
 ebin
+deps
 .eunit
 *.o
 *.beam

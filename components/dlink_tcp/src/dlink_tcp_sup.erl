@@ -7,7 +7,7 @@
 %%
 
 
--module(data_link_bert_rpc_sup).
+-module(dlink_tcp_sup).
 
 -behaviour(supervisor).
 
@@ -34,6 +34,6 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-	    ?CHILD(data_link_bert_rpc_rpc, worker)
+	    ?CHILD(dlink_tcp_rpc, worker)
 	   ]} }.
 

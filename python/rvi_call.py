@@ -15,10 +15,11 @@ import sys
 from rvilib import RVI
 import threading
 import time
-
+import getopt
 def usage():
-    print "Usage:", sys.argv[0], " RVI-node service key=val ..."
-    print "  RVI-node     DNS name or IP of host running RVI"
+    print "Usage:", sys.argv[0], "[-n RVI-node] service key=val ..."
+    print "  RVI-node     DNS name or IP of host running RVI. "
+    print "               default: http://localhost:8801"
     print "  service      Service to invoke in RVI."
     print "  key=val      Named arguments to provide to service."
     print
@@ -32,21 +33,28 @@ def usage():
 # 
 # Check that we have the correct arguments
 #
-if len(sys.argv) <3:
+opts, args= getopt.getopt(sys.argv[1:], "n:")
+
+
+rvi_node = "http://localhost:8801"
+for o, a in opts:
+    if o == "-n":
+        rvi_node = a
+    else:
+        usage()
+
+if len(args) < 1:
     usage()
 
-progname = sys.argv[0]
-rvi_node = sys.argv[1]
-service = sys.argv[2]
-args = []
-i=3
-
 # Construct a dictionary from the provided paths.
-while i < len(sys.argv):
-    print sys.argv[i]
-    [k, v] = sys.argv[i].split('=')
-    args = args + [{ k: v}]
-    i = i + 1
+i = 0
+service = args[0]
+rvi_args = []
+for i in args[1:]:
+    print i
+    [k, v] = i.split('=')
+    rvi_args = rvi_args + [{ k: v}]
+
 
 
 
@@ -56,17 +64,11 @@ while i < len(sys.argv):
 #
 rvi = RVI(rvi_node)
 
-
 print "RVI Node:         ", rvi_node
 print "Service:          ", service
-print "args:             ", args
+print "args:             ", rvi_args
 
 #
 # Send the messge.
 #
-rvi.message(service, args)
-
-
-
-
-
+rvi.message(service, rvi_args)

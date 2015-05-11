@@ -7,7 +7,7 @@
 %%
 
 
--module(protocol_app).
+-module(proto_bert_app).
 
 -behaviour(application).
 
@@ -21,10 +21,14 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    protocol_sup:start_link().
+    proto_bert_sup:start_link().
 
 start_phase(init, _, _) ->
-    protocol_rpc:init_rvi_component(),
+    proto_bert_rpc:init_rvi_component(),
+    ok;
+
+start_phase(json_rpc, _, _) ->
+    proto_bert_rpc:start_json_server(),
     ok.
 
 stop(_State) ->

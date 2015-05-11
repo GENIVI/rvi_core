@@ -10,18 +10,25 @@
 -module(authorize_rpc).
 -behaviour(gen_server).
 
--export([handle_rpc/2]).
+-export([handle_rpc/2,
+	 handle_notification/2]).
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
--export([init_rvi_component/0]).
+
+-export([start_json_server/0]).
+-export([authorize_local_message/2,
+	 authorize_remote_message/4]).
+
 -include_lib("lager/include/log.hrl").
+-include_lib("rvi_common/include/rvi_common.hrl").
 
 -define(SERVER, ?MODULE). 
 -record(st, { 
 	  next_transaction_id = 1, %% Sequentially incremented transaction id.
-	  services_tid = undefined %% Known services.
+	  services_tid = undefined, %% Known services.
+	  cs = #component_spec{}
 	 }).
 
 start_link() ->
@@ -29,27 +36,18 @@ start_link() ->
 
 init([]) ->
     ?debug("authorize_rpc:init(): called."),
-    {ok, #st {}}.
+    {ok, #st { cs = rvi_common:get_component_specification() } }.
 
-init_rvi_component() ->
-    ?debug("authorize_rpc:init_rvi_component(): called"),
-    case rvi_common:get_component_config(authorize, exo_http_opts) of
-	{ ok, ExoHttpOpts } ->
-	    exoport_exo_http:instance(authorize_sup, 
-				      authorize_rpc,
-				      ExoHttpOpts),
-	    ok;
-	
-	_ -> 	
-	    ?info("authorize_rpc:init_rvi_component(): exo_http_opts not specified. Gen Server only"),
-	    ok
-    end.
+start_json_server() ->
+    ?debug("authorize_rpc:start_json_server(): called"),
+    rvi_common:start_json_rpc_server(authorize, ?MODULE, authorize_sup),
+    ok.
 
 
 %% Retrieve certificate. 
 %% Certificate will be passed to exo_json:encode() in order
 %% to be translated to JSON.
-get_certificate_body(_ServiceName) ->
+get_certificate_body(_Service) ->
     {struct, 
      [
       %% Topic tree patterns that this node is authorized to
@@ -104,65 +102,73 @@ get_certificate_body(_ServiceName) ->
      ]
     }.
 
-authorize_local_message(ServiceName) ->
-    ?debug("authorize_rpc:authorize_local_msg(): service_name:    ~p ~n", [ServiceName]),
-    {ok, 
-     [ 
-       { status, rvi_common:json_rpc_status(ok)},
-       { signature, "fixme_add_signature" },
-%%       { certificate, get_certificate_body(ServiceName) }
-       { certificate, "certificate"  }
-     ]}.
+authorize_local_message(CompSpec, Service) ->
+    ?debug("authorize_rpc:authorize_local_msg(): service:    ~p ~n", [Service]),
+    rvi_common:request(authorize, ?MODULE,authorize_local_message, 
+		       [{ service, Service }],
+		       [staus, signature, certificate], CompSpec).
+    
 
-authorize_remote_message(ServiceName, Signature, Certificate) ->
-    ?debug("authorize_rpc:authorize_remote_msg(): service_name: ~p ~n", [ServiceName]),
+
+authorize_remote_message(CompSpec, Service, Signature, Certificate) ->
+    ?debug("authorize_rpc:authorize_remote_msg(): service: ~p ~n", [Service]),
     ?debug("authorize_rpc:authorize_remote_msg(): signature:    ~p ~n", [Signature]),
     ?debug("authorize_rpc:authorize_remote_msg(): certificate:  ~p ~n", [Certificate]),
-    {ok, 
-     [ 
-       { status, rvi_common:json_rpc_status(ok) },
-       { signature, Signature },
-       { certificate, Certificate }
-     ]}.
+    rvi_common:request(authorize, ?MODULE,authorize_remote_message, 
+		       [{ service, Service},
+			{ signature, Signature },
+			{ certificate, Certificate }],
+		       [staus], CompSpec).
+
+
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
 handle_rpc("authorize_local_message", Args) ->
-    {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
-    authorize_local_message(ServiceName);
+    {ok, Service} = rvi_common:get_json_element(["service"], Args),
+    [ Status | Rem ] = 
+	gen_server:call(?SERVER, { rvi, authorize_local_message, 
+				   [Service]}),
+
+    { ok, [ rvi_common:json_rpc_status(Status) | Rem] };
+
 
 handle_rpc("authorize_remote_message", Args) ->
-    {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
+    {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
-    authorize_remote_message(ServiceName , Signature, Certificate);
+    [ Status ]  = gen_server:call(?SERVER, { rvi, authorize_remote_message, 
+					     [Service, Signature, Certificate]}),
+    { ok, rvi_common:json_rpc_status(Status)};
 
 handle_rpc(Other, _Args) ->
     ?debug("authorize_rpc:handle_rpc(~p): unknown", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
+handle_notification(Other, _Args) ->
+    ?debug("authorize_rpc:handle_other(~p): unknown", [ Other ]),
+    ok.
 
 %%
 %% Genserver implementation
 %%
-handle_call({rvi_call, authorize_local_message, Args}, _From, State) ->
-    {_, ServiceName} = lists:keyfind(service_name, 1, Args),
-    ?debug("authorize_rpc:authorize_local_message(gen_server):  args:            ~p", [ Args]),
-    ?debug("authorize_rpc:authorize_local_message(gen_server):  service name:    ~p", [ ServiceName]),
-    {reply, authorize_local_message(ServiceName), State};
+handle_call({rvi, authorize_local_message, [_Service] }, _From, State) ->
+    {reply, [ ok, "signature", "certificate" ], State};
 
-handle_call({rvi_call, authorize_remote_message, Args}, _From, State) ->
-    {_, ServiceName} = lists:keyfind(service_name, 1, Args),
-    {_, Signature} = lists:keyfind(signature, 1, Args),
-    {_, Certificate} = lists:keyfind(certificate, 1, Args),
-    {reply, authorize_remote_message(ServiceName, Signature, Certificate), State};
+handle_call({rvi, authorize_remote_message, 
+	     [_Service, _Signature, _Certificate]},
+	     _From, State) ->
+
+    %% FIXME: Implement
+    {reply, [ ok ], State};
 
 handle_call(Other, _From, State) ->
     ?warning("authorize_rpc:handle_call(~p): unknown", [ Other ]),
-    { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, State}.
+    { reply, unknown_command, State}.
 
-handle_cast(_Msg, State) ->
+handle_cast(Other, State) ->
+    ?warning("authorize_rpc:handle_cast(~p): unknown", [ Other ]),
     {noreply, State}.
 
 handle_info(_Info, State) ->
@@ -172,4 +178,3 @@ terminate(_Reason, _State) ->
     ok.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
