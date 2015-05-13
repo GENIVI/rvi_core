@@ -2,7 +2,7 @@
 
 -compile(export_all).
 
--define(DIGEST_TYPE, sha).
+-define(DIGEST_TYPE, sha256).
 
 %% Inspired by
 %% http://blog.differentpla.net/blog/2015/04/19/jwt-rs256-erlang/
@@ -11,7 +11,8 @@ decode_jwt(JWT, PubKey) ->
     Header = decode_json(base64url:decode(H)),
     Payload = decode_json(base64url:decode(P)),
     Signature = base64url:decode(S),
-    case public_key:verify(P, ?DIGEST_TYPE, Signature, PubKey) of
+    SigningInput = <<H/binary, ".", P/binary>>,
+    case public_key:verify(SigningInput, ?DIGEST_TYPE, Signature, PubKey) of
 	false ->
 	    invalid;
 	true ->
@@ -24,9 +25,10 @@ encode_jwt(JSON, PrivKey) ->
 encode_jwt(Payload0, Header0, PrivKey) ->
     Header = base64url:encode(ensure_json(Header0)),
     Payload = base64url:encode(ensure_json(Payload0)),
+    SigningInput = <<Header/binary, ".", Payload/binary>>,
     Signature = base64url:encode(
-		  public_key:sign(Payload, ?DIGEST_TYPE, PrivKey)),
-    <<Header/binary, ".", Payload/binary, ".", Signature/binary>>.
+		  public_key:sign(SigningInput, ?DIGEST_TYPE, PrivKey)),
+    <<SigningInput/binary, ".", Signature/binary>>.
 
 header() ->
     "{\"alg\": \"RS256\"}".
