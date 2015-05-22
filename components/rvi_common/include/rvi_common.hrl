@@ -25,5 +25,5 @@
 -define(COMP_SPEC_SCHEDULE_DEFAULT,          [ { schedule_rpc, gen_server, [] } ]).
 -define(COMP_SPEC_SERVICE_DISCOVERY_DEFAULT, [ { service_discovery_rpc, gen_server, [] } ]).
 -define(COMP_SPEC_AUTHORIZE_DEFAULT,         [ { authorize_rpc, gen_server, [] }]).
--define(COMP_SPEC_DATA_LINK_DEFAULT,         [ { data_link_bert_rpc, gen_server, [] } ]).
+-define(COMP_SPEC_DATA_LINK_DEFAULT,         [ { dlink_tcp_rpc, gen_server, [] } ]).
 -define(COMP_SPEC_PROTOCOL_DEFAULT,          [ { protocol, gen_server, [] } ]).

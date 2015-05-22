@@ -8,24 +8,16 @@
 
 
 %% -*- erlang -*-
-{application, rvi,
+{application, dlink_bt,
  [
   {description, ""},
-  {vsn, "0.3.2"},
+  {vsn, "0.1"},
   {registered, []},
   {applications, [
                   kernel,
                   stdlib,
-		  rvi_common,
-		  service_discovery,
-		  schedule,
-		  lager,
-		  service_edge,
-		  authorize,
-		  dlink_tcp,
-		  bt,
-		  dlink_bt,
-		  proto_bert
+		  rvi_common
                  ]},
-  {mod, { rvi_app, []}}
+  {mod, { dlink_bt_app, []}},
+  {start_phases, [{json_rpc, []}, {connection_manager, []}]}
  ]}.
