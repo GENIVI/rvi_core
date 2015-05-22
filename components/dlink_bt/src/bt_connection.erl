@@ -25,8 +25,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--export([setup/6]).
--export([accept/6]).
+-export([connect/5]).
+-export([accept/5]).
 -export([send/2]).
 -export([send/3]).
 -export([is_connection_up/1]).
@@ -40,7 +40,6 @@
 -record(st, {
 	  remote_addr = "00:00:00:00:00:00",
 	  channel = 0,
-	  parent_pid = undefined,
 	  rfcomm_ref = undefined,
 	  mod = undefined,
 	  func = undefined,
@@ -52,16 +51,15 @@
 %%%===================================================================
 %% MFA is to deliver data received on the socket.
 
-setup(Addr, Channel, Ref, Mod, Fun, Arg) ->
+connect(Addr, Channel, Mod, Fun, Arg) ->
     gen_server:start_link(?MODULE, 
-			  {connect, Addr, Channel, Ref, Mod, Fun, Arg },
+			  {connect, Addr, Channel, Mod, Fun, Arg },
 			  []).
 
-accept(Channel, ListenRef, ParentPid, Mod, Fun, Arg) ->
+accept(Channel, ListenRef, Mod, Fun, Arg) ->
     gen_server:start_link(?MODULE, {accept, 
 				    Channel, 
 				    ListenRef, 
-				    ParentPid,
 				    Mod,
 				    Fun, 
 				    Arg},[]).
@@ -70,7 +68,7 @@ send(Pid, Data) when is_pid(Pid) ->
     gen_server:cast(Pid, {send, Data}).
     
 send(Addr, Channel, Data) ->
-    case connection_manager:find_connection_by_address(Addr, Channel) of
+    case bt_connection_manager:find_connection_by_address(Addr, Channel) of
 	{ok, Pid} ->
 	    gen_server:cast(Pid, {send, Data});
 
@@ -85,7 +83,7 @@ terminate_connection(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, terminate_connection).
     
 terminate_connection(Addr, Channel) ->
-    case connection_manager:find_connection_by_address(Addr, Channel) of
+    case bt_connection_manager:find_connection_by_address(Addr, Channel) of
 	{ok, Pid} ->
 	    gen_server:call(Pid, terminate_connection);
 
@@ -97,7 +95,7 @@ is_connection_up(Pid) when is_pid(Pid) ->
     is_process_alive(Pid).
 
 is_connection_up(Addr, Channel) ->
-    case connection_manager:find_connection_by_address(Addr, Channel) of
+    case bt_connection_manager:find_connection_by_address(Addr, Channel) of
 	{ok, Pid} ->
 	    is_connection_up(Pid);
 
@@ -123,22 +121,15 @@ is_connection_up(Addr, Channel) ->
 %% MFA used to handle socket closed, socket error and received data
 %% When data is received, a separate process is spawned to handle
 %% the MFA invocation.
-init({connect, BTAddr, Channel, ConnRef, Mod, Fun, Arg}) ->
-    connection_manager:add_connection(BTAddr, Channel, self()),
-
-    ?debug("connection:init(): self():   ~p", [self()]),
-    ?debug("connection:init(): BTAddr:   ~p", [BTAddr]),
-    ?debug("connection:init(): Channel:  ~p", [Channel]),
-    ?debug("connection:init(): Ref:      ~p", [ConnRef]),
-    ?debug("connection:init(): Module:   ~p", [Mod]),
-    ?debug("connection:init(): Function: ~p", [Fun]),
-    ?debug("connection:init(): Arg:      ~p", [Arg]),
-
-    %% Grab socket control
+init({connect, BTAddr, Channel, Mod, Fun, Arg}) ->
+    
+    %% connect will block on rfcomm:open, so cast to self
+    %% in order to let init return.
+    gen_server:cast(self(), connect),
     {ok, #st{
 	    remote_addr = BTAddr,
 	    channel = Channel,
-	    rfcomm_ref = ConnRef,
+	    rfcomm_ref = undefined,
 	    mod = Mod,
 	    func = Fun,
 	    args = Arg
@@ -146,18 +137,18 @@ init({connect, BTAddr, Channel, ConnRef, Mod, Fun, Arg}) ->
 
 
 
-init({accept, Channel, ListenRef, ParentPid, Mod, Fun, Arg}) ->
+init({accept, Channel, ListenRef, Mod, Fun, Arg}) ->
     { ok, ARef } = rfcomm:accept(ListenRef, infinity, self()),
-    ?debug("bt_connection:init(): self():    ~p", [self()]),
-    ?debug("bt_connection:init(): Channel:   ~p", [Channel]),
-    ?debug("bt_connection:init(): ParentPid: ~p", [ParentPid]),
-    ?debug("bt_connection:init(): Module:    ~p", [Mod]),
-    ?debug("bt_connection:init(): Function:  ~p", [Fun]),
-    ?debug("bt_connection:init(): Arg:       ~p", [Arg]),
+    ?debug("bt_connection:init(accept): self():    ~p", [self()]),
+    ?debug("bt_connection:init(accept): Channel:   ~p", [Channel]),
+    ?debug("bt_connection:init(accept): ListenRef: ~p", [ListenRef]),
+    ?debug("bt_connection:init(accept): AcceptRef: ~p", [ARef]),
+    ?debug("bt_connection:init(accept): Module:    ~p", [Mod]),
+    ?debug("bt_connection:init(accept): Function:  ~p", [Fun]),
+    ?debug("bt_connection:init(accept): Arg:       ~p", [Arg]),
 
     {ok, #st{
 	    channel = Channel,
-	    parent_pid = ParentPid,
 	    rfcomm_ref = ARef,
 	    mod = Mod,
 	    func = Fun,
@@ -201,11 +192,45 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast(connect,  #st {
+			 remote_addr = BTAddr,
+			 channel = Channel,
+			 mod = Mod,
+			 func = Fun,
+			 args = Arg
+			} = St) ->
+
+    %% Looong call that blocks for ever.
+    case rfcomm:open(BTAddr, Channel) of
+	{ok, ConnRef} ->
+	    ?debug("bt_connection:init(connect): self():   ~p", [self()]),
+	    ?debug("bt_connection:init(connect): BTAddr:   ~p", [BTAddr]),
+	    ?debug("bt_connection:init(connect): Channel:  ~p", [Channel]),
+	    ?debug("bt_connection:init(connect): Ref:      ~p", [ConnRef]),
+	    ?debug("bt_connection:init(connect): Module:   ~p", [Mod]),
+	    ?debug("bt_connection:init(connect): Function: ~p", [Fun]),
+	    ?debug("bt_connection:init(connect): Arg:      ~p", [Arg]),
+
+	    %% Add to managed connections,
+	    bt_connection_manager:add_connection(BTAddr, Channel, self()),
+
+	    Mod:Fun(self(), BTAddr, Channel, connected, Arg),
+
+	    %% Update state with new connection
+	    {noreply, St#st{
+			rfcomm_ref = ConnRef
+		       }};
+
+	{ err, Error } ->
+	    ?info("Failed to connect to ~p-~p", [ BTAddr, Channel]),
+	    { stop, { connect_failed, Error}, St }
+    end;
+
 handle_cast({send, Data},  St) ->
     ?debug("~p:handle_call(send): Sending: ~p", 
 	     [ ?MODULE, Data]),
 
-%%    gen_tcp:send(St#st.sock, term_to_binary(Data)),
+    rfcomm:send(St#st.rfcomm_ref, Data),
 
     {noreply, St};
 
@@ -226,37 +251,34 @@ handle_cast(_Msg, State) ->
 
 %% An accept reference we've setup now has accetpted an
 %% incoming connection.
-handle_info({ARef, {accept, BTAddr, Channel} }, 
-	    #st { rfcomm_ref = ConnRef, 
-		  parent_pid = PPid } = St) 
-  when ConnRef =:= ARef ->
-    io:format("bt_connection from ~w:~w\n", [BTAddr,Channel]),
-    PPid ! {accept, ARef, Channel, ok},
+handle_info({rfcomm, _ARef, { accept, BTAddr, _ } }, 
+	    #st { mod = Mod,
+		  func = Fun,
+		  args = Arg,
+		  channel = Channel } = St)  ->
+
+    ?info("~p:handle_info(): bt_connection from ~w:~w\n", 
+	  [?MODULE, BTAddr,Channel]),
+    
+    Mod:Fun(self(), BTAddr, Channel, accepted, Arg),
     { noreply, St#st { remote_addr = BTAddr, 
 		       channel = Channel } };
 
-handle_info({tcp, _ConnRef, Data}, 
+
+handle_info({rfcomm, _ConnRef, {data, Data}}, 
 	    #st { remote_addr = BTAddr,
 		  channel = Channel,
 		  mod = Mod,
 		  func = Fun,
 		  args = Arg } = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
-    ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, BTAddr, Channel]),
+    ?info("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, BTAddr, Channel]),
+    ?info("~p:handle_info(data): ~p:~p -> ~p:~p", 
+	  [ ?MODULE, BTAddr, Channel, Mod, Fun]),
+    Self = self(),
+    spawn(fun() -> Mod:Fun(Self, BTAddr, Channel, 
+			   data, Data, Arg) end),
 
-    try binary_to_term(Data) of
-	Term ->
-	    ?debug("~p:handle_info(data): Term: ~p", [ ?MODULE, Term]),
-	    FromPid = self(),
-	    spawn(fun() -> Mod:Fun(FromPid, BTAddr, Channel, 
-				   data, Term, Arg) end)
-    catch
-	_:_ ->
-	    ?warning("~p:handle_info(data): Data could not be decoded: ~pp", 
-		     [ ?MODULE, Data])
-
-    end,
-%%    inet:setopts(Sock, [{active, once}]),
     {noreply, State};
 
 
@@ -268,7 +290,7 @@ handle_info({rfcomm_closed, ConnRef},
 		  args = Arg } = State) ->
     ?debug("~p:handle_info(tcp_closed): BTAddr: ~p:~p ", [ ?MODULE, BTAddr, Channel]),
     Mod:Fun(self(), BTAddr, Channel, closed, Arg),
-    connection_manager:delete_connection_by_pid(self()),
+    bt_connection_manager:delete_connection_by_pid(self()),
     rfcomm_close:close(ConnRef),
     {stop, normal, State};
 
@@ -283,7 +305,7 @@ handle_info({rfcomm_error, ConnRef},
     ?debug("~p:handle_info(tcp_error): BTAddr: ~p:~p ", [ ?MODULE, BTAddr, Channel]),
     Mod:Fun(self(), BTAddr, Channel, error, Arg),
     rfcomm:close(ConnRef),
-    connection_manager:delete_connection_by_pid(self()),
+    bt_connection_manager:delete_connection_by_pid(self()),
     {stop, normal, State};
 
 
