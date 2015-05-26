@@ -2,6 +2,7 @@
 
 -compile(export_all).
 
+-include_lib("lager/include/log.hrl").
 -define(DIGEST_TYPE, sha256).
 
 %% Inspired by
@@ -23,6 +24,8 @@ encode_jwt(JSON, PrivKey) ->
     encode_jwt(JSON, header(), PrivKey).
 
 encode_jwt(Payload0, Header0, PrivKey) ->
+    ?debug("encode_jwt(~p,~p,_)~n", [ensure_json(Payload0),
+				     ensure_json(Header0)]),
     Header = base64url:encode(ensure_json(Header0)),
     Payload = base64url:encode(ensure_json(Payload0)),
     SigningInput = <<Header/binary, ".", Payload/binary>>,
