@@ -180,6 +180,7 @@ send_data(CompSpec, ProtoMod, Service, DataLinkOpts, Data) ->
 %% Connect to a remote RVI node.
 %%
 connect_remote(IP, Port, CompSpec) ->
+    ?info("connect_remote(~p, ~p)~n", [IP, Port]),
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ ok, _Pid } ->
 	    already_connected;
@@ -202,8 +203,10 @@ connect_remote(IP, Port, CompSpec) ->
 		    { LocalIP, LocalPort} = rvi_common:node_address_tuple(),
 		    connection:send(Pid, 
 				    { authorize, 
-				      1, LocalIP, LocalPort, rvi_binary, 
-				      { certificate, {}}, { signature, {}} }),
+				      1, LocalIP, LocalPort, rvi_binary,
+				      get_certificate(CompSpec),
+				      get_authorize_jwt(CompSpec)
+				     }),
 		    ok;
 		
 		{error, Err } -> 
@@ -269,24 +272,20 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 		RemoteAddress, 
 		RemotePort, 
 		Protocol, 
-		Certificate,
-		Signature}, [CompSpec]) ->
+		Cert,
+		AuthJWT}, [CompSpec]) ->
 
     ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
     ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
-    ?info("dlink_tcp:authorize(): Protocol:       ~p", [ Protocol ]),
+    ?info( "dlink_tcp:authorize(): Protocol:       ~p", [ Protocol ]),
     ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:authorize(): Certificate:    ~p", [ Certificate ]),
-    ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
-
-
-    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+    ?debug("dlink_tcp:authorize(): AuthJWT:        ~p", [ AuthJWT ]),
 
     %% If the remote address and port are both reported as "0.0.0.0" and 0,
     %% then the client connects from behind a firewall and cannot
     %% accept return connections. In these cases, we will tie the
     %% gonnection to the peer address provided in PeerIP and PeerPort
-    { NRemoteAddress, NRemotePort} =
+    { _NRemoteAddress, _NRemotePort} = Conn =
 	case { RemoteAddress, RemotePort } of
 	    { "0.0.0.0", 0 } ->
 		
@@ -297,42 +296,13 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    _ -> { RemoteAddress, RemotePort}
 	end,
 
-    %% If FromPid (the genserver managing the socket) is not yet registered
-    %% with the conneciton manager, this is an incoming connection
-    %% from the client. We should respond with our own authorize followed by
-    %% a service announce
-    
-    %% FIXME: Validate certificate and signature before continuing.
-    case connection_manager:find_connection_by_pid(FromPid) of
-	not_found ->
-	    ?info("dlink_tcp:authorize(): New connection!"),
-	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
-	    ?debug("dlink_tcp:authorize(): Sending authorize."),
-	    Res = connection:send(FromPid, 
-			    { authorize, 
-			      1, LocalAddress, LocalPort, rvi_binary, 
-			      {certificate, {}}, { signature, {}}}),
-	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
-	    ok;
-	_ -> ok
-    end,
-
-    %% Send our own servide announcement to the remote server
-    %% that just authorized to us.
-    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
-	 
-
-    %% Send an authorize back to the remote node
-    ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
-	  [LocalServices, NRemoteAddress, NRemotePort]),
-
-    connection:send(FromPid, 
-		    { service_announce, 2, available,
-		      LocalServices, { signature, {}}}),
-
-    %% Setup ping interval
-    gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
-    ok;
+    case validate_auth_jwt(AuthJWT, Cert, Conn, CompSpec) of
+	true ->
+	    connection_authorized(FromPid, Conn, CompSpec);
+	false ->
+	    %% close connection (how?)
+	    false
+    end;
 
 handle_socket(FromPid, RemoteIP, RemotePort, data, 
 	      { service_announce, 
@@ -521,6 +491,7 @@ handle_cast(Other, St) ->
 
 handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
     %% Do we already have a connection that support service?
+    ?info("dlink_tcp: setup_data_link (~p, ~p)~n", [Service, Opts]),
     case get_connections_by_service(Service) of
 	[] -> %% Nop[e
 	    case proplists:get_value(target, Opts, undefined) of
@@ -610,6 +581,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
 
 %% Setup static nodes
 handle_info({ rvi_setup_persistent_connection, IP, Port, CompSpec }, St) ->
+    ?info("rvi_setup_persistent_connection, ~p, ~p~n", [IP, Port]),
     connect_and_retry_remote(IP, Port, CompSpec),
     { noreply, St };
 
@@ -622,6 +594,49 @@ terminate(_Reason, _St) ->
     ok.
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
+
+
+connection_authorized(FromPid, {NRemoteAddress, NRemotePort}, CompSpec) ->
+    
+    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+
+    %% If FromPid (the genserver managing the socket) is not yet registered
+    %% with the conneciton manager, this is an incoming connection
+    %% from the client. We should respond with our own authorize followed by
+    %% a service announce
+    case connection_manager:find_connection_by_pid(FromPid) of
+	not_found ->
+	    ?info("dlink_tcp:authorize(): New connection!"),
+	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
+	    ?debug("dlink_tcp:authorize(): Sending authorize."),
+	    Res = connection:send(FromPid, 
+			    { authorize, 
+			      1, LocalAddress, LocalPort, rvi_binary, 
+			      get_certificate(CompSpec),
+			      get_authorize_jwt(CompSpec)
+			    }),
+	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
+	    ok;
+	_ -> ok
+    end,
+
+    %% Send our own servide announcement to the remote server
+    %% that just authorized to us.
+    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
+	 
+
+    %% Send an authorize back to the remote node
+    ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
+	  [LocalServices, NRemoteAddress, NRemotePort]),
+
+    connection:send(FromPid, 
+		    { service_announce, 2, available,
+		      LocalServices, { signature, {}}}),
+
+    %% Setup ping interval
+    gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
+    ok.
+
 
 setup_reconnect_timer(MSec, IP, Port, CompSpec) ->
     erlang:send_after(MSec, ?MODULE, 
@@ -713,3 +728,30 @@ get_connections(Key, Acc) ->
 	    
 get_connections() ->
     get_connections(ets:first(?CONNECTION_TABLE), []).
+
+
+get_authorize_jwt(CompSpec) ->
+    case authorize_rpc:get_authorize_jwt(CompSpec) of
+	[ok, JWT] ->
+	    JWT;
+	[not_found] ->
+	    ?error("No authorize JWT~n", []),
+	    error(cannot_authorize)
+    end.
+
+get_certificate(CompSpec) ->
+    case authorize_rpc:get_certificate(CompSpec) of
+	[ok, Cert] ->
+	    Cert;
+	[not_found] ->
+	    ?error("No certificate found~n", []),
+	    error(no_certificate_found)
+    end.
+
+validate_auth_jwt(JWT, Cert, Conn, CompSpec) ->
+    case authorize_rpc:validate_authorization(CompSpec, JWT, Cert, Conn) of
+	[ok] ->
+	    true;
+	[not_found] ->
+	    false
+    end.
