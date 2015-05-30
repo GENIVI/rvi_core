@@ -204,7 +204,7 @@ connect_remote(IP, Port, CompSpec) ->
 		    connection:send(Pid, 
 				    { authorize, 
 				      1, LocalIP, LocalPort, rvi_binary,
-				      get_certificate(CompSpec),
+				      get_certificates(CompSpec),
 				      get_authorize_jwt(CompSpec)
 				     }),
 		    ok;
@@ -215,7 +215,6 @@ connect_remote(IP, Port, CompSpec) ->
 		    not_available
 	    end
     end.
-		    
 
 connect_and_retry_remote( IP, Port, CompSpec) ->
     ?info("dlink_tcp:connect_and_retry_remote(): ~p:~p", 
@@ -244,9 +243,9 @@ announce_local_service_(CompSpec,
 			[ConnPid | T],
 			Service, Availability) ->
     
-    Res = connection:send(ConnPid, 
-			  {service_announce, 3, Availability, 
-			   [Service], { signature, {}}}),
+    [ ok, JWT ] = authorize_rpc:sign_message(
+		    CompSpec, availability_msg(Availability, [Service])),
+    Res = connection:send(ConnPid, {service_announce, 3, JWT}),
 
     ?debug("dlink_tcp:announce_local_service(~p: ~p) -> ~p  Res: ~p", 
 	   [ Availability, Service, ConnPid, Res]),
@@ -272,7 +271,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 		RemoteAddress, 
 		RemotePort, 
 		Protocol, 
-		Cert,
+		Certs,
 		AuthJWT}, [CompSpec]) ->
 
     ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
@@ -296,7 +295,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    _ -> { RemoteAddress, RemotePort}
 	end,
 
-    case validate_auth_jwt(AuthJWT, Cert, Conn, CompSpec) of
+    case validate_auth_jwt(AuthJWT, Certs, Conn, CompSpec) of
 	true ->
 	    connection_authorized(FromPid, Conn, CompSpec);
 	false ->
@@ -305,44 +304,38 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     end;
 
 handle_socket(FromPid, RemoteIP, RemotePort, data, 
-	      { service_announce, 
-		TransactionID,
-		available,
-		Services,
-		Signature }, [CompSpec]) ->
-    ?debug("dlink_tcp:service_announce(available): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-    ?debug("dlink_tcp:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
-    ?debug("dlink_tcp:service_announce(available): TransactionID: ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:service_announce(available): Signature:     ~p", [ Signature ]),
-    ?debug("dlink_tcp:service_announce(available): Service:       ~p", [ Services ]),
-
-    
-    add_services(Services, FromPid),
-    
-    service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
+	      { service_announce, TransactionID, JWT }, [CompSpec]) ->
+    Conn = {RemoteIP, RemotePort},
+    case authorize_rpc:validate_message(CompSpec, JWT, Conn) of
+	[ok, Msg] ->
+	    handle_availability_msg(
+	      Msg, FromPid, RemoteIP, RemotePort, TransactionID, CompSpec);
+	_ ->
+	    ?debug("Couldn't validate availability msg from ~p~n",
+		   [{RemoteIP, RemotePort}])
+    end,
     ok;
 
+%% handle_socket(FromPid, RemoteIP, RemotePort, data, 
+%% 	      { service_announce, 
+%% 		TransactionID, 
+%% 		unavailable,
+%% 		Services, 
+%% 		Signature}, [CompSpec]) ->
+%%     ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
+%%     ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
+%%     ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
+%%     ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
+%%     ?debug("dlink_tcp:service_announce(unavailable): Service:       ~p", [ Services ]),
 
-handle_socket(FromPid, RemoteIP, RemotePort, data, 
-	      { service_announce, 
-		TransactionID, 
-		unavailable,
-		Services, 
-		Signature}, [CompSpec]) ->
-    ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
-    ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Service:       ~p", [ Services ]),
-
-    %% Register the received services with all relevant components
+%%     %% Register the received services with all relevant components
 
     
-    %% Delete from our own tables.
+%%     %% Delete from our own tables.
     
-    delete_services(FromPid, Services),
-    service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
-    ok;
+%%     delete_services(FromPid, Services),
+%%     service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
+%%     ok;
 
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
@@ -596,7 +589,7 @@ code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
 
-connection_authorized(FromPid, {NRemoteAddress, NRemotePort}, CompSpec) ->
+connection_authorized(FromPid, {NRemoteAddress, NRemotePort} = Conn, CompSpec) ->
     
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
 
@@ -612,7 +605,7 @@ connection_authorized(FromPid, {NRemoteAddress, NRemotePort}, CompSpec) ->
 	    Res = connection:send(FromPid, 
 			    { authorize, 
 			      1, LocalAddress, LocalPort, rvi_binary, 
-			      get_certificate(CompSpec),
+			      get_certificates(CompSpec),
 			      get_authorize_jwt(CompSpec)
 			    }),
 	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
@@ -620,18 +613,21 @@ connection_authorized(FromPid, {NRemoteAddress, NRemotePort}, CompSpec) ->
 	_ -> ok
     end,
 
-    %% Send our own servide announcement to the remote server
+    %% Send our own service announcement to the remote server
     %% that just authorized to us.
     [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
-	 
+    
+    [ ok, FilteredServices ] = authorize_rpc:filter_by_destination(
+				 CompSpec, LocalServices, Conn),
 
     %% Send an authorize back to the remote node
     ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
-	  [LocalServices, NRemoteAddress, NRemotePort]),
+	  [FilteredServices, NRemoteAddress, NRemotePort]),
 
-    connection:send(FromPid, 
-		    { service_announce, 2, available,
-		      LocalServices, { signature, {}}}),
+    [ok, JWT] = authorize_rpc:sign_message(
+		  CompSpec, availability_msg(available, FilteredServices)),
+
+    connection:send(FromPid, {service_announce, 2, JWT}),
 
     %% Setup ping interval
     gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
@@ -695,7 +691,25 @@ delete_services(ConnPid, SvcNameList) ->
 		 }) || SvcName <- SvcNameList ],
     ok.
 
+availability_msg(Availability, Services) ->
+    {struct, [{"availability", atom_to_list(Availability)},
+	      {"services", {array, Services}}]}.
 
+handle_availability_msg(Msg, FromPid, IP, Port, TID, CompSpec) ->
+    {ok, Avail} = rvi_common:get_json_element(["availability"], Msg),
+    {ok, Svcs} = rvi_common:get_json_element(["services"], Msg),
+    ?debug("dlink_tcp:service_announce(~p): Address:       ~p:~p", [Avail,IP,Port]),
+    ?debug("dlink_tcp:service_announce(~p): TransactionID: ~p", [Avail,TID]),
+    ?debug("dlink_tcp:service_announce(~p): Services:      ~p", [Avail,Svcs]),
+    case Avail of
+	"available" ->
+	    add_services(Svcs, FromPid),    
+	    service_discovery_rpc:register_services(CompSpec, Svcs, ?MODULE);
+	"unavailable" ->
+	    delete_services(FromPid, Svcs),
+	    service_discovery_rpc:unregister_services(CompSpec, Svcs, ?MODULE)
+    end,
+    ok.
 
 delete_connection(Conn) ->
     %% Create or replace existing connection table entry
@@ -739,17 +753,17 @@ get_authorize_jwt(CompSpec) ->
 	    error(cannot_authorize)
     end.
 
-get_certificate(CompSpec) ->
-    case authorize_rpc:get_certificate(CompSpec) of
-	[ok, Cert] ->
-	    Cert;
+get_certificates(CompSpec) ->
+    case authorize_rpc:get_certificates(CompSpec) of
+	[ok, Certs] ->
+	    Certs;
 	[not_found] ->
 	    ?error("No certificate found~n", []),
 	    error(no_certificate_found)
     end.
 
-validate_auth_jwt(JWT, Cert, Conn, CompSpec) ->
-    case authorize_rpc:validate_authorization(CompSpec, JWT, Cert, Conn) of
+validate_auth_jwt(JWT, Certs, Conn, CompSpec) ->
+    case authorize_rpc:validate_authorization(CompSpec, JWT, Certs, Conn) of
 	[ok] ->
 	    true;
 	[not_found] ->
