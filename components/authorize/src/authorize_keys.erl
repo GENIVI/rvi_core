@@ -7,9 +7,12 @@
 	 authorize_jwt/0,
 	 provisioning_key/0,
 	 signed_public_key/2,
-	 save_keys/2]).
+	 save_keys/2,
+	 save_cert/3]).
 -export([get_certificates/0,
 	 get_certificates/1]).
+-export([validate_message/2]).
+-export([filter_by_destination/2]).
 -export([public_key_to_json/1,
 	 json_to_public_key/1]).
 
@@ -94,17 +97,26 @@ get_key_pair() ->
 authorize_jwt() ->
     gen_server:call(?MODULE, authorize_jwt).
 
+validate_message(JWT, Conn) ->
+    gen_server:call(?MODULE, {validate_message, JWT, Conn}).
+
 get_certificates() ->
     get_certificates(local).
 
 get_certificates(Conn) ->
     gen_server:call(?MODULE, {get_certificates, Conn}).
 
+filter_by_destination(Services, Conn) ->
+    gen_server:call(?MODULE, {filter_by_destination, Services, Conn}).
+
 provisioning_key() ->
     gen_server:call(?MODULE, provisioning_key).
 
 save_keys(Keys, Conn) ->
     gen_server:call(?MODULE, {save_keys, Keys, Conn}).
+
+save_cert(Cert, JWT, Conn) ->
+    gen_server:call(?MODULE, {save_cert, Cert, JWT, Conn}).
 
 %% Gen_server functions
 
@@ -126,22 +138,47 @@ init([]) ->
     {ok, AuthJwt} = file:read_file(get_env(authorize_jwt)),
     ?debug("CertDir = ~p~n", [CertDir]),
     Certs = scan_certs(CertDir, ProvisioningKey),
+    ?debug("scan_certs found ~p certificates~n", [length(Certs)]),
     [ets:insert(?CERTS, {{local, C#cert.id}, C}) || C <- Certs],
     {ok, #st{provisioning_key = ProvisioningKey,
 	     cert_dir = CertDir,
 	     authorize_jwt = AuthJwt}}.
 
-handle_call(authorize_jwt, _, S) ->
+handle_call(Req, From, S) ->
+    try handle_call_(Req, From, S)
+    catch
+	error:Err ->
+	    ?warning("ERROR - authorize_keys:handle_call(~p): ~p~n", [Req,Err]),
+	    {reply, error, S}
+    end.
+
+handle_call_(authorize_jwt, _, S) ->
     {reply, S#st.authorize_jwt, S};
-handle_call(provisioning_key, _, S) ->
+handle_call_(provisioning_key, _, S) ->
     {reply, S#st.provisioning_key, S};
-handle_call({get_certificates, Conn}, _, S) ->
+handle_call_({get_certificates, Conn}, _, S) ->
     Certs = certs_by_conn(Conn),
     {reply, Certs, S};
-handle_call({save_keys, Keys, Conn}, _, S) ->
+handle_call_({save_keys, Keys, Conn}, _, S) ->
     ?debug("save_keys: Keys=~p, Conn=~p~n", [Keys, Conn]),
+    save_keys_(Keys, Conn),
     {reply, ok, S};
-handle_call(_, _, S) ->
+handle_call_({validate_message, JWT, Conn}, _, S) ->
+    {reply, validate_message_(JWT, Conn), S};
+handle_call_({save_cert, Cert, JWT, Conn}, _, S) ->
+    case process_cert_struct(Cert, JWT) of
+	invalid ->
+	    {reply, {error, invalid}, S};
+	#cert{} = C ->
+	    ets:insert(?CERTS, {{Conn, C#cert.id}, C}),
+	    {reply, ok, S}
+    end;
+handle_call_({filter_by_destination, Services, Conn} =R, _From, State) ->
+    ?debug("authorize_keys:handle_call(~p,...)~n", [R]),
+    Filtered = filter_by_destination_(Services, Conn),
+    ?debug("Filtered = ~p~n", [Filtered]),
+    {reply, Filtered, State};
+handle_call_(_, _, S) ->
     {reply, error, S}.
 
 handle_cast(_, S) ->
@@ -159,12 +196,60 @@ code_change(_FromVsn, S, _Extra) ->
 %% Local functions
 
 certs_by_conn(Conn) ->
+    ?debug("certs_by_conn(~p)~n", [Conn]),
     UTC = rvi_common:utc_timestamp(),
     Certs = ets:select(?CERTS, [{ {{Conn,'_'}, #cert{jwt = '$1',
 						     validity = '$2',
 						     _='_'}},
 				  [], [{{'$1', '$2'}}] }]),
+    ?debug("rough selection: ~p~n", [Certs]),
     [C || {C,V} <- Certs, check_validity(V, UTC)].
+
+filter_by_destination_(Services, Conn) ->
+    Dests = ets:select(?CERTS, [{ {{Conn,'_'}, #cert{destinations = '$1',
+						     _ = '_'}},
+				  [], ['$1'] }]),
+    ?debug("Dests by conn (~p) -> ~p~n", [Conn, Dests]),
+    filter_svcs_by_dest_(Services, Dests).
+
+filter_svcs_by_dest_([S|Svcs], Dests) ->
+    case lists:any(fun(Ds) ->
+			   lists:any(
+			     fun(D) ->
+				     match_dest(D, S)
+			     end, Ds)
+		   end, Dests) of
+	true ->
+	    [S|filter_svcs_by_dest_(Svcs, Dests)];
+	false ->
+	    filter_svcs_by_dest_(Svcs, Dests)
+    end;
+filter_svcs_by_dest_([], _) ->
+    [].
+
+match_dest(D, S) ->
+    A = split_path(strip_prot(D)),
+    B = split_path(strip_prot(S)),
+    ?debug("match_dest_(~p, ~p)~n", [A, B]),
+    match_dest_(A, B).
+
+strip_prot(P) ->
+    case re:split(P, ":", [{return,list}]) of
+	[_] -> P;
+	[_,Rest] -> Rest
+    end.
+
+split_path(P) ->
+    re:split(P, "/", [{return, list}]).
+
+match_dest_([H|T], [H|T1]) ->
+    match_dest_(T, T1);
+match_dest_(["+"|T], [_|T1]) ->
+    match_dest_(T, T1);
+match_dest_([], _) ->
+    true;
+match_dest_(_, _) ->
+    false.
 
 get_env(K) ->
     case application:get_env(rvi, K) of
@@ -247,29 +332,12 @@ process_cert(F, Key, UTC, Acc) ->
 	{ok, Bin} ->
 	    try authorize_sig:decode_jwt(Bin, Key) of
 		{_, Cert} ->
-		    ID = cert_id(Cert),
-		    ?info("Cert ~p loaded (~p)~n", [ID, F]),
-		    {ok, Sources} = rvi_common:get_json_element(
-				      ["sources"], Cert),
-		    {ok, Dests} = rvi_common:get_json_element(
-				    ["destinations"], Cert),
-		    {ok, Validity} = rvi_common:get_json_element(
-				       ["validity"], Cert),
-		    {Start, Stop} = parse_validity(Validity),
-		    ?debug("Start = ~p; Stop = ~p~n", [Start, Stop]),
-		    case check_validity(Start, Stop, UTC) of
-			true ->
-			    [#cert{id = ID,
-				   sources = Sources,
-				   destinations = Dests,
-				   validity = {Start, Stop},
-				   jwt = Bin,
-				   cert = Cert} | Acc];
-			false ->
-			    %% Cert outdated
-			    ?warning("Outdated cert: ~p~nValidity = ~p~n"
-				     "UTC = ~p~n", [F, Validity, UTC]),
-			    Acc
+		    ?info("Unpacked Cert ~p:~n~p~n", [F, Cert]),
+		    case process_cert_struct(Cert, Bin, UTC) of
+			invalid ->
+			    Acc;
+			#cert{} = C ->
+			    [C|Acc]
 		    end;
 		invalid ->
 		    ?warning("Invalid cert: ~p~n", [F]),
@@ -284,7 +352,37 @@ process_cert(F, Key, UTC, Acc) ->
 	    ?warning("Cannot read cert ~p: ~p~n", [F, Error]),
 	    Acc
     end.
-    
+
+process_cert_struct(Cert, Bin) ->
+    process_cert_struct(Cert, Bin, rvi_common:utc_timestamp()).
+
+process_cert_struct(Cert, Bin, UTC) ->
+    ID = cert_id(Cert),
+    {ok, Sources} = rvi_common:get_json_element(
+		      ["sources"], Cert),
+    {ok, Dests} = rvi_common:get_json_element(
+		    ["destinations"], Cert),
+    {ok, Start} = rvi_common:get_json_element(
+		    ["validity", "start"], Cert),
+    {ok, Stop}  = rvi_common:get_json_element(
+		    ["validity", "stop"], Cert),
+    ?debug("Start = ~p; Stop = ~p~n", [Start, Stop]),
+    Validity = {Start, Stop},
+    case check_validity(Start, Stop, UTC) of
+	true ->
+	    #cert{id = ID,
+		  sources = Sources,
+		  destinations = Dests,
+		  validity = Validity,
+		  jwt = Bin,
+		  cert = Cert};
+	false ->
+	    %% Cert outdated
+	    ?warning("Outdated cert: Validity = ~p; UTC = ~p~n",
+		     [Validity, UTC]),
+	    invalid
+    end.
+
 cert_id(Cert) ->
     case rvi_common:get_json_element(["id"], Cert) of
 	{ok, Id} ->
@@ -300,7 +398,41 @@ check_validity({Start, Stop}, UTC) ->
 check_validity(Start, Stop, UTC) ->
     (UTC > Start) andalso (UTC < Stop).
 
-parse_validity(V) ->
-    Start = rvi_common:get_json_element(["start"], V),
-    Stop  = rvi_common:get_json_element(["stop"] , V),
-    {Start, Stop}.
+save_keys_(Keys, Conn) ->
+    lists:foreach(
+      fun(K) ->
+	      save_key(K, Conn)
+      end, Keys).
+
+save_key(K, Conn) ->
+    case json_to_public_key(K) of
+	undefined ->
+	    ?warning("Unknown key type: ~p~n", [K]),
+	    skip;
+	#'RSAPublicKey'{} = PubKey ->
+	    case rvi_common:get_json_element(["kid"], K) of
+		{ok, ID} ->
+		    ets:insert(?KEYS, #key{id = {Conn,ID}, key = PubKey});
+		_ ->
+		    ets:insert(?KEYS, #key{id = {Conn,make_ref()},
+					   key = PubKey})
+	    end
+    end.
+
+keys_by_conn(Conn) ->
+    ets:select(?KEYS, [{ #key{id = {Conn,'$1'},
+			      key = '$2', _='_'}, [], [{{'$1', '$2'}}] }]).
+
+validate_message_(JWT, Conn) ->
+    [_|_] = Keys = keys_by_conn(Conn),
+    validate_message_1(Keys, JWT).
+
+validate_message_1([K|T], JWT) ->
+    case authorize_sig:decode_jwt(JWT, K) of
+	invalid ->
+	    validate_message_1(T, JWT);
+	{_, Msg} ->
+	    Msg
+    end;
+validate_message_1([], _) ->
+    error(invalid).
