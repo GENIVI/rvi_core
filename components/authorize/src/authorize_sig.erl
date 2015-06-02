@@ -14,12 +14,15 @@ decode_jwt(JWT, PubKey) ->
     Payload = decode_json(base64url:decode(P)),
     Signature = base64url:decode(S),
     SigningInput = <<H/binary, ".", P/binary>>,
-    case public_key:verify(SigningInput, ?DIGEST_TYPE, Signature, PubKey) of
+    Res = case public_key:verify(
+		 SigningInput, ?DIGEST_TYPE, Signature, PubKey) of
 	false ->
 	    invalid;
 	true ->
 	    {Header, Payload}
-    end.
+	  end,
+    ?debug("decoded JWT = ~p~n", [Res]),
+    Res.
 
 encode_jwt(JSON, PrivKey) ->
     encode_jwt(JSON, header(), PrivKey).
