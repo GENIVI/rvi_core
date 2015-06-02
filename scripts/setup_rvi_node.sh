@@ -93,6 +93,7 @@ fi
 
 export ERL_LIBS=$PWD/components:$PWD/deps:$ERL_LIBS:$PWD 
 echo  "Setting up node $NODE_NAME."
+rm -rf $NODE_NAME
 $SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME
 
 if [ "${build_type}" = "dev" ]
@@ -103,6 +104,7 @@ then
 else
     echo "Building stand alone release for $NODE_NAME"
     # Copy the newly created config file.
+    rm -rf rel/$NODE_NAME
     cp $NODE_NAME/sys.config rel/files/sys.config
     ./rebar generate 
     # Rename the release after the node name

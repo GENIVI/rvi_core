@@ -680,8 +680,6 @@ delete_services(ConnPid, SvcNameList) ->
 		 }) || SvcName <- SvcNameList ],
     ok.
 
-
-
 delete_connection(Conn) ->
     %% Create or replace existing connection table entry
     %% with the sum of new and old services.
@@ -713,3 +711,15 @@ get_connections(Key, Acc) ->
 	    
 get_connections() ->
     get_connections(ets:first(?CONNECTION_TABLE), []).
+
+term_to_json(Term) ->
+    binary_to_list(iolist_to_binary(exo_json:encode(Term))).
+
+opt(K, L, Def) ->
+    case lists:keyfind(K, 1, L) of
+	{_, V} -> V;
+	false  -> Def
+    end.
+
+opts(Keys, Elems, Def) ->
+    [ opt(K, Elems, Def) || K <- Keys].
