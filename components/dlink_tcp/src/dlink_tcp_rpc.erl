@@ -180,6 +180,7 @@ send_data(CompSpec, ProtoMod, Service, DataLinkOpts, Data) ->
 %% Connect to a remote RVI node.
 %%
 connect_remote(IP, Port, CompSpec) ->
+    ?info("connect_remote(~p, ~p)~n", [IP, Port]),
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ ok, _Pid } ->
 	    already_connected;
@@ -202,8 +203,10 @@ connect_remote(IP, Port, CompSpec) ->
 		    { LocalIP, LocalPort} = rvi_common:node_address_tuple(),
 		    connection:send(Pid, 
 				    { authorize, 
-				      1, LocalIP, LocalPort, rvi_binary, 
-				      { certificate, {}}, { signature, {}} }),
+				      1, LocalIP, LocalPort, rvi_binary,
+				      get_certificates(CompSpec),
+				      get_authorize_jwt(CompSpec)
+				     }),
 		    ok;
 		
 		{error, Err } -> 
@@ -212,7 +215,6 @@ connect_remote(IP, Port, CompSpec) ->
 		    not_available
 	    end
     end.
-		    
 
 connect_and_retry_remote( IP, Port, CompSpec) ->
     ?info("dlink_tcp:connect_and_retry_remote(): ~p:~p", 
@@ -241,9 +243,9 @@ announce_local_service_(CompSpec,
 			[ConnPid | T],
 			Service, Availability) ->
     
-    Res = connection:send(ConnPid, 
-			  {service_announce, 3, Availability, 
-			   [Service], { signature, {}}}),
+    [ ok, JWT ] = authorize_rpc:sign_message(
+		    CompSpec, availability_msg(Availability, [Service])),
+    Res = connection:send(ConnPid, {service_announce, 3, JWT}),
 
     ?debug("dlink_tcp:announce_local_service(~p: ~p) -> ~p  Res: ~p", 
 	   [ Availability, Service, ConnPid, Res]),
@@ -269,24 +271,20 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 		RemoteAddress, 
 		RemotePort, 
 		Protocol, 
-		Certificate,
-		Signature}, [CompSpec]) ->
+		Certs,
+		AuthJWT}, [CompSpec]) ->
 
     ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
     ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
-    ?info("dlink_tcp:authorize(): Protocol:       ~p", [ Protocol ]),
+    ?info( "dlink_tcp:authorize(): Protocol:       ~p", [ Protocol ]),
     ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:authorize(): Certificate:    ~p", [ Certificate ]),
-    ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
-
-
-    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+    ?debug("dlink_tcp:authorize(): AuthJWT:        ~p", [ AuthJWT ]),
 
     %% If the remote address and port are both reported as "0.0.0.0" and 0,
     %% then the client connects from behind a firewall and cannot
     %% accept return connections. In these cases, we will tie the
     %% gonnection to the peer address provided in PeerIP and PeerPort
-    { NRemoteAddress, NRemotePort} =
+    { _NRemoteAddress, _NRemotePort} = Conn =
 	case { RemoteAddress, RemotePort } of
 	    { "0.0.0.0", 0 } ->
 		
@@ -297,89 +295,63 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    _ -> { RemoteAddress, RemotePort}
 	end,
 
-    %% If FromPid (the genserver managing the socket) is not yet registered
-    %% with the conneciton manager, this is an incoming connection
-    %% from the client. We should respond with our own authorize followed by
-    %% a service announce
-    
-    %% FIXME: Validate certificate and signature before continuing.
-    case connection_manager:find_connection_by_pid(FromPid) of
-	not_found ->
-	    ?info("dlink_tcp:authorize(): New connection!"),
-	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
-	    ?debug("dlink_tcp:authorize(): Sending authorize."),
-	    Res = connection:send(FromPid, 
-			    { authorize, 
-			      1, LocalAddress, LocalPort, rvi_binary, 
-			      {certificate, {}}, { signature, {}}}),
-	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
-	    ok;
-	_ -> ok
+    case validate_auth_jwt(AuthJWT, Certs, Conn, CompSpec) of
+	true ->
+	    connection_authorized(FromPid, Conn, CompSpec);
+	false ->
+	    %% close connection (how?)
+	    false
+    end;
+
+handle_socket(FromPid, IP, Port, data, 
+	      { service_announce, TransactionID, JWT } = _Data, [CompSpec]) ->
+    ?debug("dlink_tcp_rpc:handle_socket(~p,~p,~p,data,~p)~n",
+	   [FromPid, IP, Port, _Data]),
+    Conn = {RemoteIP, RemotePort} =
+	case connection_manager:find_connection_by_pid(FromPid) of
+	    {ok, IP1, Port1} ->
+		{IP1, Port1};
+	    not_found ->
+		{IP, Port}
+	end,
+    case authorize_rpc:validate_message(CompSpec, JWT, Conn) of
+	[ok, Msg] ->
+	    handle_availability_msg(
+	      Msg, FromPid, RemoteIP, RemotePort, TransactionID, CompSpec);
+	_ ->
+	    ?debug("Couldn't validate availability msg from ~p~n",
+		   [{RemoteIP, RemotePort}])
     end,
-
-    %% Send our own servide announcement to the remote server
-    %% that just authorized to us.
-    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
-	 
-
-    %% Send an authorize back to the remote node
-    ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
-	  [LocalServices, NRemoteAddress, NRemotePort]),
-
-    connection:send(FromPid, 
-		    { service_announce, 2, available,
-		      LocalServices, { signature, {}}}),
-
-    %% Setup ping interval
-    gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
     ok;
 
-handle_socket(FromPid, RemoteIP, RemotePort, data, 
-	      { service_announce, 
-		TransactionID,
-		available,
-		Services,
-		Signature }, [CompSpec]) ->
-    ?debug("dlink_tcp:service_announce(available): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-    ?debug("dlink_tcp:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
-    ?debug("dlink_tcp:service_announce(available): TransactionID: ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:service_announce(available): Signature:     ~p", [ Signature ]),
-    ?debug("dlink_tcp:service_announce(available): Service:       ~p", [ Services ]),
+%% handle_socket(FromPid, RemoteIP, RemotePort, data, 
+%% 	      { service_announce, 
+%% 		TransactionID, 
+%% 		unavailable,
+%% 		Services, 
+%% 		Signature}, [CompSpec]) ->
+%%     ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
+%%     ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
+%%     ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
+%%     ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
+%%     ?debug("dlink_tcp:service_announce(unavailable): Service:       ~p", [ Services ]),
+
+%%     %% Register the received services with all relevant components
 
     
-    add_services(Services, FromPid),
+%%     %% Delete from our own tables.
     
-    service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
-    ok;
-
-
-handle_socket(FromPid, RemoteIP, RemotePort, data, 
-	      { service_announce, 
-		TransactionID, 
-		unavailable,
-		Services, 
-		Signature}, [CompSpec]) ->
-    ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
-    ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Service:       ~p", [ Services ]),
-
-    %% Register the received services with all relevant components
-
-    
-    %% Delete from our own tables.
-    
-    delete_services(FromPid, Services),
-    service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
-    ok;
+%%     delete_services(FromPid, Services),
+%%     service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
+%%     ok;
 
 
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
 	      { receive_data, ProtocolMod, Data}, [CompSpec]) ->
 %%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
-    ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ProtocolMod:receive_message(CompSpec, Data),
+    ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p} "
+	   "ProtocolMod = ~p~n", [ SetupIP, SetupPort, ProtocolMod ]),
+    ProtocolMod:receive_message(CompSpec, {SetupIP, SetupPort}, Data),
     ok;
 
 
@@ -472,7 +444,7 @@ handle_rpc("setup_data_link", Args) ->
 
     {ok, [ {status, rvi_common:json_rpc_status(Res)} , { timeout, Timeout }]};
 
-handle_rpc("disconenct_data_link", Args) ->
+handle_rpc("disconnect_data_link", Args) ->
     { ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     [Res] = gen_server:call(?SERVER, { rvi, disconnect_data_link, [NetworkAddress]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
@@ -521,6 +493,7 @@ handle_cast(Other, St) ->
 
 handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
     %% Do we already have a connection that support service?
+    ?info("dlink_tcp: setup_data_link (~p, ~p)~n", [Service, Opts]),
     case get_connections_by_service(Service) of
 	[] -> %% Nop[e
 	    case proplists:get_value(target, Opts, undefined) of
@@ -609,7 +582,8 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     {noreply, St};
 
 %% Setup static nodes
-handle_info({ rvi_setup_persitent_connection, IP, Port, CompSpec }, St) ->
+handle_info({ rvi_setup_persistent_connection, IP, Port, CompSpec }, St) ->
+    ?info("rvi_setup_persistent_connection, ~p, ~p~n", [IP, Port]),
     connect_and_retry_remote(IP, Port, CompSpec),
     { noreply, St };
 
@@ -623,9 +597,55 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
+
+connection_authorized(FromPid, {NRemoteAddress, NRemotePort} = Conn, CompSpec) ->
+    
+    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+
+    %% If FromPid (the genserver managing the socket) is not yet registered
+    %% with the conneciton manager, this is an incoming connection
+    %% from the client. We should respond with our own authorize followed by
+    %% a service announce
+    case connection_manager:find_connection_by_pid(FromPid) of
+	not_found ->
+	    ?info("dlink_tcp:authorize(): New connection!"),
+	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
+	    ?debug("dlink_tcp:authorize(): Sending authorize."),
+	    Res = connection:send(FromPid, 
+			    { authorize, 
+			      1, LocalAddress, LocalPort, rvi_binary, 
+			      get_certificates(CompSpec),
+			      get_authorize_jwt(CompSpec)
+			    }),
+	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
+	    ok;
+	_ -> ok
+    end,
+
+    %% Send our own service announcement to the remote server
+    %% that just authorized to us.
+    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
+    
+    [ ok, FilteredServices ] = authorize_rpc:filter_by_destination(
+				 CompSpec, LocalServices, Conn),
+
+    %% Send an authorize back to the remote node
+    ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
+	  [FilteredServices, NRemoteAddress, NRemotePort]),
+
+    [ok, JWT] = authorize_rpc:sign_message(
+		  CompSpec, availability_msg(available, FilteredServices)),
+
+    connection:send(FromPid, {service_announce, 2, JWT}),
+
+    %% Setup ping interval
+    gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
+    ok.
+
+
 setup_reconnect_timer(MSec, IP, Port, CompSpec) ->
     erlang:send_after(MSec, ?MODULE, 
-		      { rvi_setup_persitent_connection, 
+		      { rvi_setup_persistent_connection, 
 			IP, Port, CompSpec }),
     ok.
 
@@ -680,7 +700,25 @@ delete_services(ConnPid, SvcNameList) ->
 		 }) || SvcName <- SvcNameList ],
     ok.
 
+availability_msg(Availability, Services) ->
+    {struct, [{"availability", atom_to_list(Availability)},
+	      {"services", {array, Services}}]}.
 
+handle_availability_msg(Msg, FromPid, IP, Port, TID, CompSpec) ->
+    {ok, Avail} = rvi_common:get_json_element(["availability"], Msg),
+    {ok, Svcs} = rvi_common:get_json_element(["services"], Msg),
+    ?debug("dlink_tcp:service_announce(~p): Address:       ~p:~p", [Avail,IP,Port]),
+    ?debug("dlink_tcp:service_announce(~p): TransactionID: ~p", [Avail,TID]),
+    ?debug("dlink_tcp:service_announce(~p): Services:      ~p", [Avail,Svcs]),
+    case Avail of
+	"available" ->
+	    add_services(Svcs, FromPid),    
+	    service_discovery_rpc:register_services(CompSpec, Svcs, ?MODULE);
+	"unavailable" ->
+	    delete_services(FromPid, Svcs),
+	    service_discovery_rpc:unregister_services(CompSpec, Svcs, ?MODULE)
+    end,
+    ok.
 
 delete_connection(Conn) ->
     %% Create or replace existing connection table entry
@@ -713,3 +751,30 @@ get_connections(Key, Acc) ->
 	    
 get_connections() ->
     get_connections(ets:first(?CONNECTION_TABLE), []).
+
+
+get_authorize_jwt(CompSpec) ->
+    case authorize_rpc:get_authorize_jwt(CompSpec) of
+	[ok, JWT] ->
+	    JWT;
+	[not_found] ->
+	    ?error("No authorize JWT~n", []),
+	    error(cannot_authorize)
+    end.
+
+get_certificates(CompSpec) ->
+    case authorize_rpc:get_certificates(CompSpec) of
+	[ok, Certs] ->
+	    Certs;
+	[not_found] ->
+	    ?error("No certificate found~n", []),
+	    error(no_certificate_found)
+    end.
+
+validate_auth_jwt(JWT, Certs, Conn, CompSpec) ->
+    case authorize_rpc:validate_authorization(CompSpec, JWT, Certs, Conn) of
+	[ok] ->
+	    true;
+	[not_found] ->
+	    false
+    end.

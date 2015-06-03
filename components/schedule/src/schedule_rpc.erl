@@ -13,7 +13,7 @@
 -include_lib("rvi_common/include/rvi_common.hrl").
 %% API
 -export([start_link/0]).
--export([schedule_message/6]).
+-export([schedule_message/5]).
 
 %% Invoked by service discovery
 %% FIXME: Should be rvi_service_discovery behavior
@@ -64,8 +64,7 @@
 	  routes,         %% Routes retrieved for this 
 	  timeout_tref,   %% Reference to erlang timer associated with this message.
 	  parameters,
-	  signature,
-	  certificate
+	  signature
 	 }).
 
 
@@ -125,16 +124,14 @@ schedule_message(CompSpec,
 		 SvcName, 
 		 Timeout, 
 		 Parameters,
-		 Signature,
-		 Certificate) ->
+		 Signature) ->
     
     rvi_common:request(schedule, ?MODULE, 
 		       schedule_message, 
 		       [{ service, SvcName }, 
 			{ timeout, Timeout },
 			{ parameters, Parameters }, 
-			{ signature, Signature }, 
-			{ certificate, Certificate }], 
+			{ signature, Signature }], 
 		       [status, transaction_id], CompSpec).
 
 
@@ -162,20 +159,17 @@ handle_rpc("schedule_message", Args) ->
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
-    {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
 
     ?debug("schedule_rpc:schedule_request(): service:     ~p", [ SvcName]),
     ?debug("schedule_rpc:schedule_request(): timeout:     ~p", [ Timeout]),
 %%    ?debug("schedule_rpc:schedule_request(): parameters:      ~p", [Parameters]),
     ?debug("schedule_rpc:schedule_request(): signature:   ~p", [Signature]),
-    ?debug("schedule_rpc:schedule_request(): certificate: ~p", [Certificate]),
 
     [ok, TransID] = gen_server:call(?SERVER, { rvi, schedule_message, 
 					       [ SvcName,
 						 Timeout,
 						 Parameters,
-						 Signature,
-						 Certificate]}),
+						 Signature]}),
 
     {ok, [ { status, rvi_common:json_rpc_status(ok)},
 	   { transaction_id, TransID } ] };
@@ -214,14 +208,12 @@ handle_call( { rvi, schedule_message,
 	       [SvcName, 
 		Timeout, 
 		Parameters,
-		Signature,
-		Certificate] }, _From, St) ->
+		Signature] }, _From, St) ->
 
     ?debug("sched:sched_msg(): service:     ~p", [SvcName]),
     ?debug("sched:sched_msg(): timeout:     ~p", [Timeout]),
     ?debug("sched:sched_msg(): parameters:  ~p", [Parameters]),
     ?debug("sched:sched_msg(): signature:   ~p", [Signature]),
-    ?debug("sched:sched_msg(): certificate  ~p", [Certificate]),
     %%?debug("sched:sched_msg(): St:          ~p", [St]),
 
     %% Create a transaction ID
@@ -230,11 +222,10 @@ handle_call( { rvi, schedule_message,
     %% Queue the message
     {_, NSt2 }= queue_message(SvcName, 
 			      TransID, 
-			      rvi_routing:get_service_routes(SvcName), %% Can be no_route
+			      rvi_routing:get_service_routes(SvcName), %% Can be [] (no route)
 			      Timeout, 
 			      Parameters, 
-			      Signature, 
-			      Certificate,
+			      Signature,
 			      NSt1),
 
     { reply, [ok, TransID], NSt2 };
@@ -349,7 +340,6 @@ handle_info({ rvi_message_timeout, SvcName, DLMod,TransID},
 					      Msg#message.timeout,
 					      Msg#message.parameters,
 					      Msg#message.signature,
-					      Msg#message.certificate,
 					      St),
 			    {noreply, NSt}
 		    end;
@@ -433,8 +423,7 @@ queue_message(SvcName,
 	      [ ],
 	      Timeout,
 	      Parameters, 
-	      Signature,
-	      Certificate, 
+	      Signature, 
 	      St) ->
 
     TOut = calc_relative_tout(Timeout),
@@ -454,8 +443,7 @@ queue_message(SvcName,
 		     routes =  [],
 		     timeout_tref = 0,
 		     parameters = Parameters, 
-		     signature = Signature,
-		     certificate = Certificate
+		     signature = Signature
 		    }, 
 		  TOut),
     {ok, St};
@@ -467,14 +455,12 @@ queue_message(SvcName,
 	      [ { { ProtoMod, ProtoOpt }, { DLMod, DLOpt } }  | RemainingRoutes ],
 	      Timeout, 
 	      Parameters, 
-	      Signature,
-	      Certificate, 
+	      Signature, 
 	      St) ->
 
     ?debug("sched:q(~p:~s): timeout:      ~p", [DLMod, SvcName, Timeout]),
     %%?debug("sched:q(~p:~s): parameters:   ~p", [DLMod, SvcName, Parameters]),
     %%?debug("sched:q(~p:~s): signature:    ~p", [DLMod, SvcName, Signature]),
-    %%?debug("sched:q(~p:~s): certificate:  ~p", [DLMod, SvcName, Certificate]),
 
     SvcRec = find_or_create_service(SvcName, DLMod, St),
 
@@ -484,28 +470,26 @@ queue_message(SvcName,
     %% Once up, the data link will invoke service_availble()
     %% to indicate that the service is available for the given DL.
     %% 
+    Msg = #message {
+	     transaction_id = TransID, 
+	     service = SvcName,
+	     timeout = Timeout,
+	     data_link = { DLMod, DLOpt },
+	     protocol = { ProtoMod, ProtoOpt },
+	     routes =  RemainingRoutes,
+	     timeout_tref = 0,
+	     parameters = Parameters, 
+	     signature = Signature
+	    }, 
+    
     case DLMod:setup_data_link(St#st.cs, SvcName, DLOpt) of
 	[ ok, DLTimeout ] ->
 
 	    TOut = select_timeout(calc_relative_tout(Timeout), DLTimeout),
 	    ?debug("sched:q(~p:~s): ~p seconds to compe up.", 
-		   [ DLMod, SvcName, TOut / 1000.0]),         
+		   [ DLMod, SvcName, TOut / 1000.0]),
 
-	    store_message(SvcRec,
-			  DLMod,
-			  #message {
-			     transaction_id = TransID, 
-			     service = SvcName,
-			     timeout = Timeout,
-			     data_link = { DLMod, DLOpt },
-			     protocol = { ProtoMod, ProtoOpt },
-			     routes =  RemainingRoutes,
-			     timeout_tref = 0,
-			     parameters = Parameters, 
-			     signature = Signature,
-			     certificate = Certificate
-			    }, 
-			  TOut),
+	    store_message(SvcRec, DLMod, Msg, TOut),
 	    {ok, St};
 
 	[ already_connected, _] ->
@@ -515,20 +499,7 @@ queue_message(SvcName,
 
 	    %% Will re-queue message if cannot send.
 	    { _, NSt } = 
-		send_message(DLMod, DLOpt,
-			     ProtoMod, ProtoOpt,
-			     #message {
-				transaction_id = TransID, 
-				timeout = Timeout,
-				service = SvcName,
-				data_link = { DLMod, DLOpt },
-				protocol = { ProtoMod, ProtoOpt },
-				routes =  RemainingRoutes,
-				timeout_tref = 0,
-				parameters = Parameters, 
-				signature = Signature,
-				certificate = Certificate
-			       }, St),
+		send_message(DLMod, DLOpt, ProtoMod, ProtoOpt, Msg, St),
 	    { ok, NSt };
 
 
@@ -542,8 +513,7 @@ queue_message(SvcName,
 			  RemainingRoutes, 
 			  Timeout,
 			  Parameters,
-			  Signature,
-			  Certificate, 
+			  Signature, 
 			  St)
     end.
     
@@ -559,8 +529,7 @@ send_message(local, _,  _, _,   Msg, St) ->
 					   Msg#message.service, 
 					   Msg#message.timeout,
 					   Msg#message.parameters,
-					   Msg#message.signature,
-					   Msg#message.certificate),
+					   Msg#message.signature),
     {ok, St};
 
 %% Forward message to protocol.
@@ -580,8 +549,7 @@ send_message(DataLinkMod, DataLinkOpts,
 	   DataLinkMod,
 	   DataLinkOpts,
 	   Msg#message.parameters,
-	   Msg#message.signature,
-	   Msg#message.certificate) of
+	   Msg#message.signature) of
 
 	%% Success
 	[ok] -> 
@@ -600,7 +568,6 @@ send_message(DataLinkMod, DataLinkOpts,
 			  Msg#message.timeout, 
 			  Msg#message.parameters,
 			  Msg#message.signature,
-			  Msg#message.certificate,
 			  St)
     end.
 
