@@ -183,7 +183,7 @@ handle_cast({send, Data},  St) ->
     ?debug("~p:handle_call(send): Sending: ~p", 
 	     [ ?MODULE, Data]),
 
-    gen_tcp:send(St#st.sock, term_to_binary(Data)),
+    gen_tcp:send(St#st.sock, Data),
 
     {noreply, St};
 
@@ -218,19 +218,10 @@ handle_info({tcp, Sock, Data},
 		  args = Arg } = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
-
-    try binary_to_term(Data) of
-	Term ->
-	    ?debug("~p:handle_info(data): Term: ~p", [ ?MODULE, Term]),
-	    FromPid = self(),
-	    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
-				   data, Term, Arg) end)
-    catch
-	_:_ ->
-	    ?warning("~p:handle_info(data): Data could not be decoded: ~pp", 
-		     [ ?MODULE, Data])
-
-    end,
+    %%?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
+    FromPid = self(),
+    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
+			   data, Data, Arg) end),
     inet:setopts(Sock, [{active, once}]),
     {noreply, State};
 
