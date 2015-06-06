@@ -324,28 +324,6 @@ handle_socket(FromPid, IP, Port, data,
     end,
     ok;
 
-%% handle_socket(FromPid, RemoteIP, RemotePort, data, 
-%% 	      { service_announce, 
-%% 		TransactionID, 
-%% 		unavailable,
-%% 		Services, 
-%% 		Signature}, [CompSpec]) ->
-%%     ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-%%     ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
-%%     ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
-%%     ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
-%%     ?debug("dlink_tcp:service_announce(unavailable): Service:       ~p", [ Services ]),
-
-%%     %% Register the received services with all relevant components
-
-    
-%%     %% Delete from our own tables.
-    
-%%     delete_services(FromPid, Services),
-%%     service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
-%%     ok;
-
-
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
 	      { receive_data, ProtocolMod, Data}, [CompSpec]) ->
 %%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
