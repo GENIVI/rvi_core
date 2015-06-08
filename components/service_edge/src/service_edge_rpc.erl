@@ -363,6 +363,7 @@ handle_call({ rvi, handle_local_message,
 	authorize_rpc:authorize_local_message(St#st.cs, SvcName),
     
     
+    
     %%
     %% Check if this is a local service by trying to resolve its service name. 
     %% If successful, just forward it to its service_name.
