@@ -194,6 +194,7 @@ wse_message(Ws, SvcName, Timeout, JSONParameters) ->
     [ Res, TID ] = gen_server:call(?SERVER, { rvi, handle_local_message, 
 					      [ SvcName, Timeout, Parameters]}),
 
+    ?debug("service_edge_rpc:wse_message(~p) Res:      ~p", [ Ws, Res ]),
     { ok, [ { status, rvi_common:json_rpc_status(Res) }, 
 	    { transaction_id, TID} ] }.
 
@@ -524,7 +525,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
     ok;
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, 
-			 [{ service_name, SvcName}, { parameters, Args}] ) ->
+			 {struct, [{ service_name, SvcName}, { parameters, Args}]} ) ->
     ?info("service_edge:dispatch_to_local_service(message, websock): ~p", [Args]),
     wse:call(list_to_pid(WSPidStr), wse:window(),
 	     "message", 
@@ -606,17 +607,11 @@ announce_service_availability(Available, SvcName) ->
 
     ets:foldl(
       %% Notify if this is not the originating service.
-      fun(#service_entry { 
-	     service = ServiceEntry,
-	     url = URL }, Acc) ->
-
+      fun(#service_entry { url = URL }, Acc) ->
 	      %% If the URL is not on the blackout
 	      %% list, send a notification
-	      case lists:member(URL, BlockURLs) of 
+	      case lists:member(URL, Acc) of 
 		  false ->
-		      ?info("ANN: SvcEntry: ~p", [ ServiceEntry ]),
-		      ?info("ANN: SvcName:  ~p", [ SvcName ]),
-		      ?info("ANN: URL     : ~p", [ URL ]),
 		      dispatch_to_local_service(URL, Cmd, 
 						{struct, [ { services, 
 							     { array, [SvcName]}
