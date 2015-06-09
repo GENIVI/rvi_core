@@ -63,7 +63,7 @@ terminate(_Reason, _State) ->
     ok.
 
 sock_opts() ->
-    [binary, {active, once}, {packet, 4}].
+    [list, {active, once}, {packet, 4}].
 
 new_connection(IP, Port, Sock, State) ->
     ?debug("listener:new_connection(): Peer IP:    ~p (ignored)", [IP]),
@@ -77,4 +77,3 @@ new_connection(IP, Port, Sock, State) ->
 				dlink_tcp_rpc, 
 				handle_socket, [gen_nb_server:get_cb_state(State)]),
     {ok, State}.
-

@@ -42,7 +42,8 @@
 	  sock = undefined,
 	  mod = undefined,
 	  func = undefined,
-	  args = undefined
+	  args = undefined,
+	  buffer = undefined
 	 }).
 
 %%%===================================================================
@@ -215,15 +216,26 @@ handle_info({tcp, Sock, Data},
 		  port = Port,
 		  mod = Mod,
 		  func = Fun,
-		  args = Arg } = State) ->
+		  args = Arg,
+		  buffer = Buffer} = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
-    %%?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
-    FromPid = self(),
-    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
-			   data, Data, Arg) end),
-    inet:setopts(Sock, [{active, once}]),
-    {noreply, State};
+
+    case count_brackets(Data, Buffer) of
+	{ incomplete, NBuffer } ->
+	    ?debug("~p:handle_info(data incomplete): Data: ~p", [ ?MODULE, Data]),
+	    inet:setopts(Sock, [{active, once}]),
+	    {noreply, State#st { buffer = NBuffer} };
+
+	{complete, Processed, NBuffer } ->
+	    ?debug("~p:handle_info(data complete): Data: ~p", [ ?MODULE, Data]),
+	    FromPid = self(),
+	    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
+				   data, Processed, Arg) end),
+	    inet:setopts(Sock, [ { active, once } ]),
+	    {noreply, State#st { buffer = NBuffer} }
+    end;
+
 
 
 handle_info({tcp_closed, Sock}, 
@@ -285,3 +297,29 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+count_brackets([${ | Rem], { Processed, start} ) ->
+    count_brackets(Rem,  { [ ${ | Processed ], 1});
+
+%% Drop any initial characters prior to opening bracket
+count_brackets([_ | Rem], { Processed, start }) ->
+    count_brackets(Rem, { Processed, start });
+
+count_brackets(Rem, { Processed, 0 }) ->
+    { complete,  lists:reverse(Processed), {Rem, start} };
+
+count_brackets([], { Processed, Count }) ->
+    { incomplete,  { Processed, Count } };
+
+count_brackets([${ | Rem], {Processed, Count}) ->
+    count_brackets(Rem, {[ ${ | Processed ], Count + 1});
+
+count_brackets([$} | Rem], {Processed, Count}) ->
+    count_brackets(Rem, {[ $} | Processed ], Count - 1});
+
+count_brackets([C | Rem], {Processed, Count}) ->
+    count_brackets(Rem, {[ C | Processed ], Count});
+
+count_brackets(New, undefined) ->
+    count_brackets(New, { [], start}).
+    

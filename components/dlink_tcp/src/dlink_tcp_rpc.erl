@@ -190,7 +190,7 @@ connect_remote(IP, Port, CompSpec) ->
 	    ?info("dlink_tcp:connect_remote(): Connecting ~p:~p",
 		  [IP, Port]),
 
-	    case gen_tcp:connect(IP, Port, [binary, {packet, 4}]) of
+	    case gen_tcp:connect(IP, Port, [list, {packet, 0}]) of
 		{ ok, Sock } -> 
 		    ?info("dlink_tcp:connect_remote(): Connected ~p:~p", 
 			   [IP, Port]),
@@ -469,7 +469,7 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
 
 
 handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
-    {ok, {struct, Elems}} = exo_json:decode_string(binary_to_list(Payload)),
+    {ok, {struct, Elems}} = exo_json:decode_string(Payload),
     ?debug("dlink_tcp:data(): Got ~p", [ Elems ]),
 
     case opt(?DLINK_ARG_CMD, Elems, undefined) of
