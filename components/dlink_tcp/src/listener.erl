@@ -63,7 +63,7 @@ terminate(_Reason, _State) ->
     ok.
 
 sock_opts() ->
-    [list, {active, once}, {packet, 4}].
+    [list, {active, once}, {packet, 0}].
 
 new_connection(IP, Port, Sock, State) ->
     ?debug("listener:new_connection(): Peer IP:    ~p (ignored)", [IP]),
