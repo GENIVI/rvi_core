@@ -231,12 +231,12 @@ handle_info({tcp, Sock, Data},
 
     case count_brackets(Data, Buffer) of
 	{ incomplete, NBuffer } ->
-	    ?debug("~p:handle_info(data incomplete): Data: ~p", [ ?MODULE, Data]),
+	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
 	    inet:setopts(Sock, [{active, once}]),
 	    {noreply, State#st { buffer = NBuffer} };
 
 	{complete, Processed, NBuffer } ->
-	    ?debug("~p:handle_info(data complete): Data: ~p", [ ?MODULE, Data]),
+	    ?debug("~p:handle_info(data complete): Processed: ~p", [ ?MODULE, Processed]),
 	    FromPid = self(),
 	    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
 				   data, Processed, Arg) end),
@@ -314,7 +314,7 @@ count_brackets([_ | Rem], { Processed, start }) ->
     count_brackets(Rem, { Processed, start });
 
 count_brackets(Rem, { Processed, 0 }) ->
-    { complete,  lists:reverse(Processed), {Rem, start} };
+    { complete,  lists:reverse(Processed), {lists:reverse(Rem), start} };
 
 count_brackets([], { Processed, Count }) ->
     { incomplete,  { Processed, Count } };
