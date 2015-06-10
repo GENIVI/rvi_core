@@ -36,6 +36,13 @@
 
 -define(SERVER, ?MODULE). 
 
+-record(pst, {
+	  buffer = [],
+	  balance = start,
+	  in_string = false,
+	  escaped = false
+	 }).
+
 -record(st, {
 	  ip = {0,0,0,0},
 	  port = 0,
@@ -43,7 +50,7 @@
 	  mod = undefined,
 	  func = undefined,
 	  args = undefined,
-	  buffer = undefined
+	  pst = undefined %%  Payload state
 	 }).
 
 %%%===================================================================
@@ -139,7 +146,7 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
 	    mod = Mod,
 	    func = Fun,
 	    args = Arg,
-	    buffer = undefined
+	    pst = #pst{}
 	   }}.
 
 
@@ -225,23 +232,23 @@ handle_info({tcp, Sock, Data},
 		  mod = Mod,
 		  func = Fun,
 		  args = Arg,
-		  buffer = Buffer} = State) ->
+		  pst = PST} = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
 
-    case count_brackets(Data, Buffer) of
-	{ incomplete, NBuffer } ->
+    case count_brackets(Data, PST) of
+	{ incomplete, NPST } ->
 	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
 	    inet:setopts(Sock, [{active, once}]),
-	    {noreply, State#st { buffer = NBuffer} };
+	    {noreply, State#st { pst = NPST} };
 
-	{complete, Processed, NBuffer } ->
+	{complete, Processed, NPST } ->
 	    ?debug("~p:handle_info(data complete): Processed: ~p", [ ?MODULE, Processed]),
 	    FromPid = self(),
 	    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
 				   data, Processed, Arg) end),
 	    inet:setopts(Sock, [ { active, once } ]),
-	    {noreply, State#st { buffer = NBuffer} }
+	    {noreply, State#st { pst = NPST} }
     end;
 
 
@@ -306,28 +313,95 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-count_brackets([${ | Rem], { Processed, start} ) ->
-    count_brackets(Rem,  { [ ${ | Processed ], 1});
+
+count_brackets([${ | Rem], 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = start } = PSt)  ->
+    count_brackets(Rem, 
+		   PSt#pst{ 
+		     buffer = [ ${ | Buffer ], 
+		     balance = 1});
 
 %% Drop any initial characters prior to opening bracket
-count_brackets([_ | Rem], { Processed, start }) ->
-    count_brackets(Rem, { Processed, start });
+count_brackets([_ | Rem],
+	       #pst { balance = start } = PSt)  ->
+    count_brackets(Rem, PSt );
 
-count_brackets(Rem, { Processed, 0 }) ->
-    { complete,  lists:reverse(Processed), {lists:reverse(Rem), start} };
+%% If balance is back to zero, we have completed a JSON
+%% element.
+count_brackets(Rem, 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = 0 } = PSt) ->
 
-count_brackets([], { Processed, Count }) ->
-    { incomplete,  { Processed, Count } };
+    { complete, lists:reverse(Buffer), 
+      PSt#pst {
+	buffer = lists:reverse(Rem),
+	balance = start
+       } 
+    };
 
-count_brackets([${ | Rem], {Processed, Count}) ->
-    count_brackets(Rem, {[ ${ | Processed ], Count + 1});
+%% If we still have balance, but no more input
+%% we have an incomplete element.x
+count_brackets([], PSt) ->
+    { incomplete,  PSt };
 
-count_brackets([$} | Rem], {Processed, Count}) ->
-    count_brackets(Rem, {[ $} | Processed ], Count - 1});
 
-count_brackets([C | Rem], {Processed, Count}) ->
-    count_brackets(Rem, {[ C | Processed ], Count});
+%% We have a string start or end, and we are not esacped
+%% Flip our in-string state
+count_brackets([$" | Rem],
+	       #pst {
+		  buffer = Buffer, 
+		  in_string = InString,
+		  escaped = false} = PSt) ->
 
-count_brackets(New, undefined) ->
-    count_brackets(New, { [], start}).
-    
+    count_brackets(Rem, PSt#pst { 
+			  buffer = [ $" | Buffer ],
+			  in_string = not InString });
+ 
+
+%% We have an escape character, and we are in a string. Turn on our escape state
+count_brackets([$\\ | Rem],
+	       #pst { 
+		  buffer = Buffer,
+		  in_string = true,
+		  escaped = false } = PSt) ->
+
+    count_brackets(Rem, PSt#pst { 
+			  buffer = [ $\\ | Buffer ],
+			  escaped = true});
+ 
+%% We have an opening bracket and we are not in a string
+count_brackets([${ | Rem], 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = Balance,
+		  in_string = false } = PSt) ->
+
+    count_brackets(Rem,
+		   PSt#pst { 
+		     buffer = [ ${ | Buffer ], 
+		     balance = Balance + 1});
+
+%% We have an closing bracket and we are not in a string
+count_brackets([$} | Rem], 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = Balance,
+		  in_string = false } = PSt) ->
+
+    count_brackets(Rem,
+		   PSt#pst { 
+		     buffer = [ $} | Buffer ], 
+		     balance = Balance - 1});
+
+%% We have just regular data to feed over.
+%% Make sure to clear the escape state.
+count_brackets([C | Rem],
+	       #pst { buffer = Buffer } = PSt) ->
+
+    count_brackets(Rem, PSt#pst { 
+			  buffer = [ C | Buffer ],
+			  escaped = false
+			 } ).
