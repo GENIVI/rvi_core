@@ -472,6 +472,7 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
 
 
 handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
+    ?debug("dlink_tcp:data(): Payload ~p", [Payload ]),
     {ok, {struct, Elems}} = exo_json:decode_string(Payload),
     ?debug("dlink_tcp:data(): Got ~p", [ Elems ]),
 
