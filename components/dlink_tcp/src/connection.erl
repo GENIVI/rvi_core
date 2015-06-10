@@ -38,7 +38,7 @@
 
 -record(pst, {
 	  buffer = [],
-	  balance = undefined,
+	  balance = start,
 	  in_string = false,
 	  escaped = false
 	 }).
