@@ -314,7 +314,7 @@ count_brackets([_ | Rem], { Processed, start }) ->
     count_brackets(Rem, { Processed, start });
 
 count_brackets(Rem, { Processed, 0 }) ->
-    { complete,  Processed, {Rem, start} };
+    { complete,  lists:reverse(Processed), {Rem, start} };
 
 count_brackets([], { Processed, Count }) ->
     { incomplete,  { Processed, Count } };
