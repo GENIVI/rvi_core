@@ -236,17 +236,18 @@ handle_info({tcp, Sock, Data},
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
 
-    case count_brackets(Data, PST) of
-	{ incomplete, NPST } ->
+    case extract_json(Data, PST) of
+	{ [], NPST } ->
 	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
 	    inet:setopts(Sock, [{active, once}]),
 	    {noreply, State#st { pst = NPST} };
 
-	{complete, Processed, NPST } ->
-	    ?debug("~p:handle_info(data complete): Processed: ~p", [ ?MODULE, Processed]),
+	{ JSONElements, NPST } ->
+	    ?debug("~p:handle_info(data complete): Processed: ~p", [ ?MODULE, JSONElements]),
 	    FromPid = self(),
-	    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
-				   data, Processed, Arg) end),
+	    spawn(fun() -> [ Mod:Fun(FromPid, IP, Port, 
+				     data, SingleElem, Arg) || SingleElem <- JSONElements ]
+		  end),
 	    inet:setopts(Sock, [ { active, once } ]),
 	    {noreply, State#st { pst = NPST} }
     end;
@@ -314,6 +315,20 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 
+count_brackets([], 
+	       #pst { 
+		  buffer = [], 
+		  balance = start } = PSt)  ->
+    { incomplete, PSt#pst {}};
+
+count_brackets([], 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = start } = PSt)  ->
+    count_brackets(Buffer, 
+		   PSt#pst { 
+		     buffer = [], 
+		     balance = start } );
 count_brackets([${ | Rem], 
 	       #pst { 
 		  buffer = Buffer, 
@@ -337,7 +352,7 @@ count_brackets(Rem,
 
     { complete, lists:reverse(Buffer), 
       PSt#pst {
-	buffer = lists:reverse(Rem),
+	buffer = Rem,
 	balance = start
        } 
     };
@@ -405,3 +420,18 @@ count_brackets([C | Rem],
 			  buffer = [ C | Buffer ],
 			  escaped = false
 			 } ).
+    
+extract_json(Buf, PST, Acc) ->
+    case count_brackets(Buf, PST) of
+	{ complete, Processed, NPST} ->
+	    io:format("Trying again~n"),
+	    extract_json([], NPST, [ Processed | Acc]);
+
+
+	{ incomplete, NPST} ->
+	    io:format("Incomplete~n"),
+	    { Acc, NPST }
+    end.
+
+extract_json(Buf, PST) ->
+    extract_json(Buf, PST,[]).
