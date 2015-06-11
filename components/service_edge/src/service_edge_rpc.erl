@@ -120,10 +120,13 @@ start_websocket() ->
 		
 		Port ->
 		    %% FIXME: MONITOR AND RESTART
-		    wse_server:start(Port, proplists:delete(port, WSOpts)),
+		    wse_server:start(Port, 
+				     ?MODULE, handle_websocket, undefined, 
+				     proplists:delete(port, WSOpts)),
 		    ok
 	    end
     end.
+
 
 
 
