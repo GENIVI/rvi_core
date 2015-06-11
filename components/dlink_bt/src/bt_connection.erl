@@ -221,7 +221,7 @@ handle_cast(connect,  #st {
 			rfcomm_ref = ConnRef
 		       }};
 
-	{ err, Error } ->
+	{ error, Error } ->
 	    ?info("Failed to connect to ~p-~p", [ BTAddr, Channel]),
 	    { stop, { connect_failed, Error}, St }
     end;
