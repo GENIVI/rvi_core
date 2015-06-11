@@ -528,11 +528,11 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
 
 %% Dispatch to regular JSON-RPC over HTTP.
 dispatch_to_local_service(URL, Command, Args) ->
-    CmdStr = atom_to_list(Command),
-    Res = rvi_common:send_json_request(URL, CmdStr, Args),
     ?debug("dispatch_to_local_service():  Command:         ~p",[ CmdStr]),
     ?debug("dispatch_to_local_service():  Args:            ~p",[ Args]),
     ?debug("dispatch_to_local_service():  URL:             ~p",[ URL]),
+    CmdStr = atom_to_list(Command),
+    Res = rvi_common:send_json_request(URL, CmdStr, Args),
     ?debug("dispatch_to_local_service():  Result:          ~p",[ Res]),
     Res.
 

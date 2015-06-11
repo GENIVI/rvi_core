@@ -26,7 +26,7 @@ for i in $(find deps -name '*.app.src'); do sed 's/git/"1.0"/' < $i > $i.tmp; mv
 
 make compile
 # Create a tizen node if that is what we have.
-./scripts/setup_rvi_node.sh -n rvi-$RPM_PACKAGE_VERSION -c tizen.config
+./scripts/setup_rvi_node.sh -n rvi-$RPM_PACKAGE_VERSION -c ./packaging/tizen.config
 %install
 rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION
