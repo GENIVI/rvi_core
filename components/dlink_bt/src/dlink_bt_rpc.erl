@@ -7,7 +7,7 @@
 %%
 
 
--module(dlink_tcp_rpc).
+-module(dlink_bt_rpc).
 -behavior(gen_server).
 
 -export([handle_rpc/2]).
@@ -36,14 +36,13 @@
 -include_lib("rvi_common/include/rvi_common.hrl").
 
 -define(PERSISTENT_CONNECTIONS, persistent_connections).
--define(DEFAULT_BERT_RPC_PORT, 9999).
--define(DEFAULT_RECONNECT_INTERVAL, 5000).
--define(DEFAULT_BERT_RPC_ADDRESS, "0.0.0.0").
+-define(DEFAULT_BT_CHANNEL, 1).
+-define(DEFAULT_RECONNECT_INTERVAL, 1000).
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
 -define(SERVER, ?MODULE). 
 
--define(CONNECTION_TABLE, rvi_dlink_tcp_connections).
--define(SERVICE_TABLE, rvi_dlink_tcp_services).
+-define(CONNECTION_TABLE, rvi_dlink_bt_connections).
+-define(SERVICE_TABLE, rvi_dlink_bt_services).
 
 %% Multiple registrations of the same service, each with a different connection,
 %% is possible.
@@ -65,12 +64,27 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+tohex(V) when V < 16 ->
+    "0" ++ integer_to_list(V, 16);
+
+tohex(V) ->
+    integer_to_list(V, 16).
+	  
+bt_address_to_string({A1, A2, A3, A4, A5, A6}) ->
+    tohex(A1) ++ ":" ++
+    tohex(A2) ++ ":" ++
+    tohex(A3) ++ ":" ++
+    tohex(A4) ++ ":" ++ 
+    tohex(A5) ++ ":" ++
+    tohex(A6).
+	
+
 init([]) ->
-    ?info("dlink_tcp:init(): Called"),
+    ?info("dlink_bt:init(): Called"),
     %% Dig out the bert rpc server setup
 
     ets:new(?SERVICE_TABLE, [ set, public, named_table, 
-			     { keypos, #service_entry.service }]),
+			      { keypos, #service_entry.service }]),
 
     ets:new(?CONNECTION_TABLE, [ set, public, named_table, 
 				 { keypos, #connection_entry.connection }]),
@@ -84,7 +98,7 @@ init([]) ->
     }.
 
 start_json_server() ->
-    rvi_common:start_json_rpc_server(data_link, ?MODULE, dlink_tcp_sup).
+    rvi_common:start_json_rpc_server(data_link, ?MODULE, dlink_bt_sup).
 
 
 start_connection_manager() ->
@@ -94,48 +108,50 @@ start_connection_manager() ->
 						   server_opts, 
 						   [], 
 						   CompSpec),
-    IP = proplists:get_value(ip, BertOpts, ?DEFAULT_BERT_RPC_ADDRESS),
-    Port = proplists:get_value(port, BertOpts, ?DEFAULT_BERT_RPC_PORT),
+    %% Retrieve the channel we should use
+    Channel = proplists:get_value(channel, BertOpts, ?DEFAULT_BT_CHANNEL),
     
-    ?info("dlink_tcp:init_rvi_component(~p): Starting listener.", [self()]),
+    ?info("dlink_bt:init_rvi_component(~p): Starting listener.", [self()]),
 
     %% Fire up listener
-    connection_manager:start_link(), 
-    {ok,Pid} = listener:start_link(), 
-    ?info("dlink_tcp:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
+ 
+    bt:start(),
+    bt:debug(debug),
+    bt_listener:start_link(), 
+    bt_connection_manager:start_link(), 
+    ?info("dlink_bt:start_connection_manager(): Adding listener on bluetooth channel ~p", [Channel ]),
     
-    %% Add listener port.
-    case listener:add_listener(Pid, IP, Port, CompSpec) of
+    %% Add listener channel.
+    case bt_listener:add_listener(Channel) of
 	ok ->
-	    ?notice("---- RVI Node External Address: ~s", 
-		    [ application:get_env(rvi, node_address, undefined)]);
+	    ok;
 
 	Err -> 	
-	    ?error("dlink_tcp:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
+	    ?error("dlink_bt:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
 	    ok
     end,
-    ?info("dlink_tcp:init_rvi_component(): Setting up persistent connections."),
-    
+
     {ok, PersistentConnections } = rvi_common:get_module_config(data_link, 
 								?MODULE, 
 								?PERSISTENT_CONNECTIONS, 
 								[], 
 								CompSpec),
 
-
     setup_persistent_connections_(PersistentConnections, CompSpec),
     ok.
+
 
 setup_persistent_connections_([ ], _CompSpec) ->
      ok;
 
 
-setup_persistent_connections_([ NetworkAddress | T], CompSpec) ->
-    ?debug("~p: Will persistently connect connect : ~p", [self(), NetworkAddress]),
-    [ IP, Port] =  string:tokens(NetworkAddress, ":"),
-    connect_and_retry_remote(IP, Port, CompSpec), 
+setup_persistent_connections_([ BTAddress | T], CompSpec) ->
+    ?debug("~p: Will persistently connect connect : ~p", [self(), BTAddress]),
+    [ BTAddr, Channel] =  string:tokens(BTAddress, "-"),
+    connect_and_retry_remote(BTAddr, Channel, CompSpec), 
     setup_persistent_connections_(T, CompSpec),
     ok.
+
 
 service_available(CompSpec, SvcName, DataLinkModule) ->
     rvi_common:notification(data_link, ?MODULE, 
@@ -166,11 +182,11 @@ disconnect_data_link(CompSpec, NetworkAddress) ->
 
 send_data(CompSpec, ProtoMod, Service, DataLinkOpts, Data) ->
     rvi_common:request(data_link, ?MODULE, send_data,
-			    [ { proto_mod, ProtoMod }, 
-			      { service, Service }, 
-			      { data, Data },
-			      { opts, DataLinkOpts }
-			     ], 
+		       [ { proto_mod, ProtoMod }, 
+			 { service, Service }, 
+			 { data, Data },
+			 { opts, DataLinkOpts }
+		       ], 
 		       [status], CompSpec).
 
 
@@ -179,56 +195,49 @@ send_data(CompSpec, ProtoMod, Service, DataLinkOpts, Data) ->
 %%
 %% Connect to a remote RVI node.
 %%
-connect_remote(IP, Port, CompSpec) ->
-    case connection_manager:find_connection_by_address(IP, Port) of
+connect_remote(BTAddr, Channel, CompSpec) ->
+    case bt_connection_manager:find_connection_by_address(BTAddr, Channel) of
 	{ ok, _Pid } ->
 	    already_connected;
 
 	not_found ->
 	    %% Setup a new outbound connection
-	    ?info("dlink_tcp:connect_remote(): Connecting ~p:~p",
-		  [IP, Port]),
+	    ?info("dlink_bt:connect_remote(): Connecting ~p:~p",
+		  [BTAddr, Channel]),
 
-	    case gen_tcp:connect(IP, Port, [binary, {packet, 4}]) of
-		{ ok, Sock } -> 
-		    ?info("dlink_tcp:connect_remote(): Connected ~p:~p", 
-			   [IP, Port]),
+	    %%FIXME
+	    %% Setup a genserver around the new connection.
+	    case bt_connection:connect(BTAddr, Channel, 
+				       ?MODULE, handle_socket, CompSpec ) of
+		{ ok, Pid } -> 
+		    ?info("dlink_bt:connect_remote(): Connection in progress ~p:~p - Proc ~p", 
+			   [BTAddr, Channel, Pid]),
 
-		    %% Setup a genserver around the new connection.
-		    {ok, Pid } = connection:setup(IP, Port, Sock, 
-						  ?MODULE, handle_socket, [CompSpec] ),
-
-		    %% Send authorize
-		    { LocalIP, LocalPort} = rvi_common:node_address_tuple(),
-		    connection:send(Pid, 
-				    { authorize, 
-				      1, LocalIP, LocalPort, rvi_binary, 
-				      { certificate, {}}, { signature, {}} }),
 		    ok;
 		
 		{error, Err } -> 
-		    ?info("dlink_tcp:connect_remote(): Failed ~p:~p: ~p",
-			   [IP, Port, Err]),
+		    ?info("dlink_bt:connect_remote(): Failed ~p:~p: ~p",
+			   [BTAddr, Channel, Err]),
 		    not_available
 	    end
     end.
 		    
 
-connect_and_retry_remote( IP, Port, CompSpec) ->
-    ?info("dlink_tcp:connect_and_retry_remote(): ~p:~p", 
-	  [ IP, Port]),
+connect_and_retry_remote( BTAddr, Channel, CompSpec) ->
+    ?info("dlink_bt:connect_and_retry_remote(): ~p:~p", 
+	  [ BTAddr, Channel]),
 
-    case connect_remote(IP, list_to_integer(Port), CompSpec) of
+    case connect_remote(BTAddr, list_to_integer(Channel), CompSpec) of
 	ok  -> ok;
 
 	Err -> %% Failed to connect. Sleep and try again
-	    ?notice("dlink_tcp:connect_and_retry_remote(~p:~p): Failed: ~p", 
-			   [IP, Port, Err]),
+	    ?notice("dlink_bt:connect_and_retry_remote(~p:~p): Failed: ~p", 
+			   [BTAddr, Channel, Err]),
 
-	    ?notice("dlink_tcp:connect_and_retry_remote(~p:~p): Will try again in ~p sec", 
-			   [IP, Port, ?DEFAULT_RECONNECT_INTERVAL]),
+	    ?notice("dlink_bt:connect_and_retry_remote(~p:~p): Will try again in ~p sec", 
+			   [BTAddr, Channel, ?DEFAULT_RECONNECT_INTERVAL]),
 
-	    setup_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, IP, Port, CompSpec),
+	    setup_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, BTAddr, Channel, CompSpec),
 
 	    not_available
     end.
@@ -241,11 +250,11 @@ announce_local_service_(CompSpec,
 			[ConnPid | T],
 			Service, Availability) ->
     
-    Res = connection:send(ConnPid, 
-			  {service_announce, 3, Availability, 
-			   [Service], { signature, {}}}),
+    Res = bt_connection:send(ConnPid, 
+			     term_to_binary({service_announce, 3, Availability, 
+					     [Service], { signature, {}}})),
 
-    ?debug("dlink_tcp:announce_local_service(~p: ~p) -> ~p  Res: ~p", 
+    ?debug("dlink_bt:announce_local_service(~p: ~p) -> ~p  Res: ~p", 
 	   [ Availability, Service, ConnPid, Res]),
 
     %% Move on to next connection.
@@ -254,48 +263,81 @@ announce_local_service_(CompSpec,
 			    Service, Availability).
 
 announce_local_service_(CompSpec, Service, Availability) ->
+    ?debug("dlink_bt:announce_local_service(~p, ~p)", 
+	   [ Service, Availability]),
+
     announce_local_service_(CompSpec, 
 			    get_connections(),
 			    Service, Availability).
 
 
-handle_socket(_FromPid, PeerIP, PeerPort, data, ping, [_CompSpec]) ->
-    ?info("dlink_tcp:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),
+process_data(_FromPid, RemoteBTAddr, RemoteChannel, ProtocolMod, Data, CompSpec) ->
+    ?debug("dlink_bt:receive_data(): SetupAddress: {~p, ~p}", [ RemoteBTAddr, RemoteChannel ]),
+    ProtocolMod:receive_message(CompSpec, Data),
+    ok.
+
+
+process_announce(FromPid, RemoteBTAddr, RemoteChannel,
+		 TransactionID, available, Services,
+		 Signature, CompSpec) ->
+    ?debug("dlink_bt:service_announce(available): Address:       ~p-~p", [ RemoteBTAddr, RemoteChannel ]),
+    ?debug("dlink_bt:service_announce(available): TransactionID: ~p", [ TransactionID ]),
+    ?debug("dlink_bt:service_announce(available): Signature:     ~p", [ Signature ]),
+    ?debug("dlink_bt:service_announce(available): Service:       ~p", [ Services ]),
+
+
+    %% Register the received services with all relevant components
+
+    add_services(Services, FromPid),
+
+    service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
     ok;
 
-handle_socket(FromPid, PeerIP, PeerPort, data, 
-	      { authorize, 
-		TransactionID, 
-		RemoteAddress, 
-		RemotePort, 
-		Protocol, 
-		Certificate,
-		Signature}, [CompSpec]) ->
 
-    ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
-    ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
-    ?info("dlink_tcp:authorize(): Protocol:       ~p", [ Protocol ]),
-    ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:authorize(): Certificate:    ~p", [ Certificate ]),
-    ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
+process_announce(FromPid, 
+		 RemoteBTAddr, 
+		 RemoteChannel,
+		 TransactionID,
+		 unavailable,
+		 Services,
+		 Signature ,
+		 CompSpec) ->
+    ?debug("dlink_bt:service_announce(unavailable): Address:       ~p-~p",
+	   [ RemoteBTAddr, RemoteChannel ]),
+    ?debug("dlink_bt:service_announce(unavailable): TransactionID: ~p", 
+	   [ TransactionID ]),
+    ?debug("dlink_bt:service_announce(unavailable): Signature:     ~p", 
+	   [ Signature ]),
+    ?debug("dlink_bt:service_announce(unavailable): Service:       ~p",
+	   [ Services ]),
 
 
-    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+    %% Delete from our own tables.
 
-    %% If the remote address and port are both reported as "0.0.0.0" and 0,
-    %% then the client connects from behind a firewall and cannot
-    %% accept return connections. In these cases, we will tie the
-    %% gonnection to the peer address provided in PeerIP and PeerPort
-    { NRemoteAddress, NRemotePort} =
-	case { RemoteAddress, RemotePort } of
-	    { "0.0.0.0", 0 } ->
-		
-		?info("dlink_tcp:authorize(): Remote is behind firewall. Will use ~p:~p", 
-		      [ PeerIP, PeerPort]),
-		{ PeerIP, PeerPort };
+    delete_services(FromPid, Services),
+    service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
+    ok.
 
-	    _ -> { RemoteAddress, RemotePort}
-	end,
+process_authorize(FromPid,
+		  PeerBTAddr, 
+		  PeerBTChannel,
+		  TransactionID, 
+		  RemoteAddress, 
+		  RemoteChannel, 
+		  Protocol, 
+		  Certificate, 
+		  Signature,
+		  CompSpec) ->
+
+    ?info("dlink_bt:authorize(): Peer Address:   ~p:~p", [PeerBTAddr, PeerBTChannel ]),
+    ?info("dlink_bt:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemoteChannel ]),
+    ?info("dlink_bt:authorize(): Protocol:       ~p",   [ Protocol ]),
+    ?debug("dlink_bt:authorize(): TransactionID:  ~p",  [ TransactionID ]),
+    ?debug("dlink_bt:authorize(): Certificate:    ~p",  [ Certificate ]),
+    ?debug("dlink_bt:authorize(): Signature:      ~p",  [ Signature ]),
+
+
+    { LocalAddress, LocalChannel } = rvi_common:node_address_tuple(),
 
     %% If FromPid (the genserver managing the socket) is not yet registered
     %% with the conneciton manager, this is an incoming connection
@@ -303,16 +345,17 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
     %% a service announce
     
     %% FIXME: Validate certificate and signature before continuing.
-    case connection_manager:find_connection_by_pid(FromPid) of
+    case bt_connection_manager:find_connection_by_pid(FromPid) of
 	not_found ->
-	    ?info("dlink_tcp:authorize(): New connection!"),
-	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
-	    ?debug("dlink_tcp:authorize(): Sending authorize."),
-	    Res = connection:send(FromPid, 
-			    { authorize, 
-			      1, LocalAddress, LocalPort, rvi_binary, 
-			      {certificate, {}}, { signature, {}}}),
-	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
+	    ?info("dlink_bt:authorize(): New connection!"),
+	    bt_connection_manager:add_connection(RemoteAddress, RemoteChannel, FromPid),
+	    ?debug("dlink_bt:authorize(): Sending authorize."),
+	    Res = bt_connection:send(FromPid, 
+				     term_to_binary(
+				       { authorize, 
+					 1, LocalAddress, LocalChannel, rvi_json, 
+					 {certificate, {}}, { signature, {}}})),
+	    ?debug("dlink_bt:authorize(): Sending authorize: ~p", [ Res]),
 	    ok;
 	_ -> ok
     end,
@@ -323,85 +366,68 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	 
 
     %% Send an authorize back to the remote node
-    ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
-	  [LocalServices, NRemoteAddress, NRemotePort]),
+    ?info("dlink_bt:authorize(): Announcing local services: ~p to remote ~p:~p",
+	  [LocalServices, RemoteAddress, RemoteChannel]),
 
-    connection:send(FromPid, 
-		    { service_announce, 2, available,
-		      LocalServices, { signature, {}}}),
+    bt_connection:send(FromPid, 
+		       term_to_binary(
+			 { service_announce, 2, available,
+			   LocalServices, { signature, {}}})),
 
     %% Setup ping interval
-    gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
-    ok;
-
-handle_socket(FromPid, RemoteIP, RemotePort, data, 
-	      { service_announce, 
-		TransactionID,
-		available,
-		Services,
-		Signature }, [CompSpec]) ->
-    ?debug("dlink_tcp:service_announce(available): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-    ?debug("dlink_tcp:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
-    ?debug("dlink_tcp:service_announce(available): TransactionID: ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:service_announce(available): Signature:     ~p", [ Signature ]),
-    ?debug("dlink_tcp:service_announce(available): Service:       ~p", [ Services ]),
-
-    
-    add_services(Services, FromPid),
-    
-    service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
-    ok;
-
-
-handle_socket(FromPid, RemoteIP, RemotePort, data, 
-	      { service_announce, 
-		TransactionID, 
-		unavailable,
-		Services, 
-		Signature}, [CompSpec]) ->
-    ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
-    ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Service:       ~p", [ Services ]),
-
-    %% Register the received services with all relevant components
-
-    
-    %% Delete from our own tables.
-    
-    delete_services(FromPid, Services),
-    service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
-    ok;
-
-
-handle_socket(_FromPid, SetupIP, SetupPort, data, 
-	      { receive_data, ProtocolMod, Data}, [CompSpec]) ->
-%%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
-    ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ProtocolMod:receive_message(CompSpec, Data),
-    ok;
-
-
-handle_socket(_FromPid, SetupIP, SetupPort, data, Data, [_CompSpec]) ->
-    ?warning("dlink_tcp:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ?warning("dlink_tcp:unknown_data(): Unknown data:  ~p",  [ Data]),
+    gen_server:call(?SERVER, { setup_initial_ping, RemoteAddress, RemoteChannel, FromPid }),
     ok.
+
+
+
+handle_socket(FromPid, PeerBTAddr, PeerChannel, data, 
+	      Data, CompSpec) ->
+
+    try binary_to_term(Data) of
+	{ authorize, TransactionID, RemoteAddress, RemoteChannel, 
+	  Protocol, Certificate, Signature}  -> 
+	    process_authorize(FromPid, PeerBTAddr, RemoteChannel,
+			     TransactionID, RemoteAddress, RemoteChannel, 
+			     Protocol,  Certificate, Signature, CompSpec);
+
+	{ service_announce, TransactionID, Available, Services, Signature } ->
+	    process_announce(FromPid, PeerBTAddr, PeerChannel,
+			    TransactionID, Available, Services, 
+			    Signature, CompSpec);
+
+	{ receive_data, ProtocolMod, Data } ->
+	    process_data(FromPid, PeerBTAddr, PeerChannel, 
+			ProtocolMod, Data, CompSpec);
+	ping ->
+	    ?info("dlink_bt:ping(): Pinged from: ~p:~p", [ PeerBTAddr, PeerChannel]),
+	    ok;
+
+	Unknown ->
+	    ?warning("dlink_bt:handle_socket(): Unknown data: ~p", [ Unknown]),
+	    ok
+    catch
+	_:_ ->
+	    ?warning("dlink_bt:handle_socket(data): Data could not be decoded: ~p", 
+		     [ Data]),
+	    ok
+
+    end.
+
 
 
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
-handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
-    ?info("dlink_tcp:closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+handle_socket(FromPid, SetupBTAddr, SetupChannel, closed, CompSpec) ->
+    ?info("dlink_bt:closed(): SetupAddress:  {~p, ~p}", [ SetupBTAddr, SetupChannel ]),
 
-    NetworkAddress = SetupIP  ++ ":" ++ integer_to_list(SetupPort),
+    NetworkAddress = SetupBTAddr  ++ "-" ++ integer_to_list(SetupChannel),
 
     %% Get all service records associated with the given connection
     LostSvcNameList = get_services_by_connection(FromPid),
 
     delete_connection(FromPid),
 
-    %% Check if this was our last connection supporting each given service.
+    %% Check if this was our last connection supchanneling each given service.
     lists:map(
       fun(SvcName) ->
 	      case get_connections_by_service(SvcName) of
@@ -422,19 +448,41 @@ handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
     %% Check if this is a static node. If so, setup a timer for a reconnect
     case lists:member(NetworkAddress, PersistentConnections) of
 	true ->
-	    ?info("dlink_tcp:closed(): Reconnect address:  ~p", [ NetworkAddress ]),
-	    ?info("dlink_tcp:closed(): Reconnect interval: ~p", [ ?DEFAULT_RECONNECT_INTERVAL ]),
-	    [ IP, Port] = string:tokens(NetworkAddress, ":"),
+	    ?info("dlink_bt:closed(): Reconnect address:  ~p", [ NetworkAddress ]),
+	    ?info("dlink_bt:closed(): Reconnect interval: ~p", [ ?DEFAULT_RECONNECT_INTERVAL ]),
+	    [ BTAddr, Channel] = string:tokens(NetworkAddress, "-"),
 
 	    setup_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, 
-				  IP, Port, CompSpec);
+				  BTAddr, Channel, CompSpec);
 	false -> ok
     end,
     ok;
 
-handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
-    ?info("dlink_tcp:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+handle_socket(FromPid, SetupBTAddr, SetupChannel, connected, _ExtraArgs) ->
+    ?info("dlink_bt:handle_socket(connected): {~p, ~p}", [ SetupBTAddr, SetupChannel ]),
+
+    {ok,[{address, Address }]} = bt_drv:local_info([address]),
+
+    bt_connection:send(FromPid, 
+		       term_to_binary(
+			 { authorize, 
+			   1, 
+			   bt_address_to_string(Address), 
+			   SetupChannel, rvi_json, 
+			   { certificate, {}}, { signature, {}} })),
+    ok;
+
+
+handle_socket(_FromPid, SetupBTAddr, SetupChannel, accepted, _ExtraArgs) ->
+    ?info("dlink_bt:handle_socket(accepted): {~p, ~p}", [ SetupBTAddr, SetupChannel ]),
+    ok;
+
+handle_socket(_FromPid, SetupBTAddr, SetupChannel, error, _ExtraArgs) ->
+    ?info("dlink_bt:socket_error(): SetupAddress:  {~p, ~p}", [ SetupBTAddr, SetupChannel ]),
     ok.
+
+
+
 
 
 %% JSON-RPC entry point
@@ -459,7 +507,7 @@ handle_notification("service_unavailable", Args) ->
     ok;
 
 handle_notification(Other, _Args) ->
-    ?info("dlink_tcp:handle_notification(~p): unknown", [ Other ]),
+    ?info("dlink_bt:handle_notification(~p): unknown", [ Other ]),
     ok.
 
 handle_rpc("setup_data_link", Args) ->
@@ -487,18 +535,18 @@ handle_rpc("send_data", Args) ->
     
 
 handle_rpc(Other, _Args) ->
-    ?info("dlink_tcp:handle_rpc(~p): unknown", [ Other ]),
+    ?info("dlink_bt:handle_rpc(~p): unknown", [ Other ]),
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
 handle_cast( {rvi, service_available, [SvcName, local]}, St) ->
-    ?debug("dlink_tcp:service_available(): ~p (local)", [ SvcName ]),
+    ?debug("dlink_bt:service_available(): ~p (local)", [ SvcName ]),
     announce_local_service_(St#st.cs, SvcName, available),
     {noreply, St};
 
 
 handle_cast( {rvi, service_available, [SvcName, Mod]}, St) ->
-    ?debug("dlink_tcp:service_available(): ~p (~p) ignored", [ SvcName, Mod ]),
+    ?debug("dlink_bt:service_available(): ~p (~p) ignored", [ SvcName, Mod ]),
     %% We don't care about remote services available through
     %% other data link modules
     {noreply, St};
@@ -515,24 +563,24 @@ handle_cast( {rvi, service_unavailable, [_SvcName, _]}, St) ->
 
 
 handle_cast(Other, St) ->
-    ?warning("dlink_tcp:handle_cast(~p): unknown", [ Other ]),
+    ?warning("dlink_bt:handle_cast(~p): unknown", [ Other ]),
     {noreply, St}.
 
 
 handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
-    %% Do we already have a connection that support service?
+    %% Do we already have a connection that supchannel service?
     case get_connections_by_service(Service) of
-	[] -> %% Nop[e
+	[] -> %% Nope
 	    case proplists:get_value(target, Opts, undefined) of
 		undefined ->
-		    ?info("dlink_tcp:setup_data_link(~p) Failed: no target given in options.",
+		    ?info("dlink_bt:setup_data_link(~p) Failed: no target given in options.",
 			  [Service]),
 		    { reply, [ok, -1 ], St };
 
 		Addr -> 
-		    [ Address, Port] =  string:tokens(Addr, ":"),
+		    [ Address, Channel] =  string:tokens(Addr, "-"),
 
-		    case connect_remote(Address, list_to_integer(Port), St#st.cs) of
+		    case connect_remote(Address, list_to_integer(Channel), St#st.cs) of
 			ok  ->
 			    { reply, [ok, 2000], St };  %% 2 second timeout
 
@@ -550,8 +598,8 @@ handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
 
 
 handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
-    [ Address, Port] = string:tokens(NetworkAddress, ":"),
-    Res = connection:terminate_connection(Address,Port),
+    [ Address, Channel] = string:tokens(NetworkAddress, "-"),
+    Res = bt_connection:terminate_connection(Address,Channel),
     { reply, [ Res ], St };
 
 
@@ -564,14 +612,16 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 
 	%% FIXME: What to do if we have multiple connections to the same service?
 	[ConnPid | _T] -> 
-	    Res = connection:send(ConnPid, {receive_data, ProtoMod, Data}),
+	    Res = bt_connection:send(ConnPid, 
+				     term_to_binary(
+				       {receive_data, ProtoMod, Data})),
 	    { reply, [ Res ], St}
     end;
 	    
 
 
 
-handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
+handle_call({setup_initial_ping, Address, Channel, Pid}, _From, St) ->
     %% Create a timer to handle periodic pings.
     {ok, ServerOpts } = rvi_common:get_module_config(data_link, 
 						     ?MODULE,
@@ -579,29 +629,29 @@ handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
 						     St#st.cs),
     Timeout = proplists:get_value(ping_interval, ServerOpts, ?DEFAULT_PING_INTERVAL),
 
-    ?info("dlink_tcp:setup_ping(): ~p:~p will be pinged every ~p msec", 
-	  [ Address, Port, Timeout] ),
+    ?info("dlink_bt:setup_ping(): ~p:~p will be pinged every ~p msec", 
+	  [ Address, Channel, Timeout] ),
 										      
-    erlang:send_after(Timeout, self(), { rvi_ping, Pid, Address, Port, Timeout }),
+    erlang:send_after(Timeout, self(), { rvi_ping, Pid, Address, Channel, Timeout }),
 
     {reply, ok, St};
 
 handle_call(Other, _From, St) ->
-    ?warning("dlink_tcp:handle_rpc(~p): unknown", [ Other ]),
+    ?warning("dlink_bt:handle_rpc(~p): unknown", [ Other ]),
     { reply, { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ]}, St}.
 
 
 
 %% Ping time
-handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
+handle_info({ rvi_ping, Pid, Address, Channel, Timeout},  St) ->
 
     %% Check that connection is up
-    case connection:is_connection_up(Pid) of
+    case bt_connection:is_connection_up(Pid) of
 	true ->
-	    ?info("dlink_tcp:ping(): Pinging: ~p:~p", [Address, Port]),
-	    connection:send(Pid, ping),
+	    ?info("dlink_bt:ping(): Pinging: ~p:~p", [Address, Channel]),
+	    bt_connection:send(Pid, term_to_binary(ping)),
 	    erlang:send_after(Timeout, self(), 
-			      { rvi_ping, Pid, Address, Port, Timeout });
+			      { rvi_ping, Pid, Address, Channel, Timeout });
 
 	false ->
 	    ok
@@ -609,13 +659,12 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     {noreply, St};
 
 %% Setup static nodes
-handle_info({ rvi_setup_persitent_connection, IP, Port, CompSpec }, St) ->
-    connect_and_retry_remote(IP, Port, CompSpec),
+handle_info({ rvi_setup_persistent_connection, BTAddr, Channel, CompSpec }, St) ->
+    connect_and_retry_remote(BTAddr, Channel, CompSpec),
     { noreply, St };
 
-
 handle_info(Info, St) ->
-    ?notice("dlink_tcp(): Unkown message: ~p", [ Info]),
+    ?notice("dlink_bt(): Unkown message: ~p", [ Info]),
     {noreply, St}.
 
 terminate(_Reason, _St) ->
@@ -623,10 +672,10 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
-setup_reconnect_timer(MSec, IP, Port, CompSpec) ->
+setup_reconnect_timer(MSec, BTAddr, Channel, CompSpec) ->
     erlang:send_after(MSec, ?MODULE, 
-		      { rvi_setup_persitent_connection, 
-			IP, Port, CompSpec }),
+		      { rvi_setup_persistent_connection, 
+			BTAddr, Channel, CompSpec }),
     ok.
 
 
