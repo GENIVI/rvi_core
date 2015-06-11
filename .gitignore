@@ -1,10 +1,11 @@
-<<<<<<< HEAD
 ebin
 deps
 .eunit
 *.o
 *.beam
 *.plt
+*.pyc
+*~
 erl_crash.dump
 rel/example_project
 .concrete/DEV_MODE

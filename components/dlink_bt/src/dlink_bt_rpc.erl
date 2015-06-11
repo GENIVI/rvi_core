@@ -34,6 +34,7 @@
 
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
+-include_lib("rvi_common/include/rvi_dlink.hrl").
 
 -define(PERSISTENT_CONNECTIONS, persistent_connections).
 -define(DEFAULT_BT_CHANNEL, 1).
@@ -43,6 +44,7 @@
 
 -define(CONNECTION_TABLE, rvi_dlink_bt_connections).
 -define(SERVICE_TABLE, rvi_dlink_bt_services).
+-define(DLINK_BT_VER, "1.0").
 
 %% Multiple registrations of the same service, each with a different connection,
 %% is possible.
@@ -251,15 +253,20 @@ announce_local_service_(CompSpec,
 			[ConnPid | T],
 			Service, Availability) ->
     
+    Status = case Availability of
+		 available -> ?DLINK_ARG_AVAILABLE;
+		 unavailable -> ?DLINK_ARG_UNAVAILABLE
+	     end,
+
     Res = bt_connection:send(ConnPid, 
 			     term_to_json(
 			       { struct, 
 				 [
-				  { "cmd", "service_announce" },
-				  { "tid", 3},
-				  { "status", atom_to_list(Availability) },
-				  { "services", { array, [Service]} },
-				  { "signature", "" }
+				  { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
+				  { ?DLINK_ARG_TRANSACTION_ID, 3},
+				  { ?DLINK_ARG_STATUS, atom_to_list(Status) },
+				  { ?DLINK_ARG_STATUS, { array, [Service]} },
+				  { ?DLINK_ARG_SIGNATURE, "" }
 				 ]
 			       })),
 
@@ -289,8 +296,12 @@ process_data(_FromPid, RemoteBTAddr, RemoteChannel, ProtocolMod, Data, CompSpec)
     ok.
 
 
-process_announce(FromPid, RemoteBTAddr, RemoteChannel,
-		 TransactionID, "available", { array, Services},
+process_announce(FromPid, 
+		 RemoteBTAddr, 
+		 RemoteChannel,
+		 TransactionID, 
+		 "available",
+		 Services,
 		 Signature, CompSpec) ->
     ?debug("dlink_bt:service_announce(available): Address:       ~p-~p", [ RemoteBTAddr, RemoteChannel ]),
     ?debug("dlink_bt:service_announce(available): TransactionID: ~p", [ TransactionID ]),
@@ -308,7 +319,7 @@ process_announce(FromPid,
 		 RemoteChannel,
 		 TransactionID,
 		 "unavailable",
-		 {array, Services},
+		 Services,
 		 Signature ,
 		 CompSpec) ->
     ?debug("dlink_bt:service_announce(unavailable): Address:       ~p-~p",
@@ -361,13 +372,13 @@ process_authorize(FromPid,
 	    Res = bt_connection:send(FromPid, 
 		       term_to_json(
 			 {struct, 		     
-			  [ { "tid", 1 },
-			    { "cmd", "authorize" },
-			    { "addr", bt_address_to_string(Address) },
-			    { "chan",  RemoteChannel },
-			    { "rvi_proto", "rvi_json" },
-			    { "certificate", "" },
-			    { "signature", "" } ]})),
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+			    { ?DLINK_ARG_ADDRESS, bt_address_to_string(Address) },
+			    { ?DLINK_ARG_PORT,  RemoteChannel },
+			    { ?DLINK_ARG_VERSION, ?DLINK_BT_VER },
+			    { ?DLINK_ARG_CERTIFICATE, "" },
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
 	    ?debug("dlink_bt:authorize(): Sending authorize: ~p", [ Res]),
 	    ok;
 	_ -> ok
@@ -385,11 +396,11 @@ process_authorize(FromPid,
     bt_connection:send(FromPid, 
 		       term_to_json(
 			 {struct, 		     
-			  [ { "tid", 1 },
-			    { "cmd", "service_announce" },
-			    { "status", "available" },
-			    { "services", { array, LocalServices }},
-			    { "signature", "" } ]})),
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
+			    { ?DLINK_ARG_STATUS, ?DLINK_ARG_AVAILABLE },
+			    { ?DLINK_ARG_SERVICES, { array, LocalServices }},
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
 
     %% Setup ping interval
     gen_server:call(?SERVER, { setup_initial_ping, PeerBTChannel, RemoteChannel, FromPid }),
@@ -403,33 +414,52 @@ handle_socket(FromPid, PeerBTAddr, PeerChannel, data,
     {ok, {struct, Elems}} = exo_json:decode_string(binary_to_list(Payload)),
     ?debug("dlink_bt:data(): Got ~p", [ Elems ]),
 
-    case opt("cmd", Elems, undefined) of
-	"authorize" ->
-	    [ TransactionID, RemoteAddress, RemoteChannel, 
-	      RVIProtocol, Certificate, Signature ] = 
-		opts(["tid", "addr", "channel", "rvi_proto", 
-		      "certificate", "signature"], Elems, undefined),
+    case opt(?DLINK_ARG_CMD, Elems, undefined) of
+	?DLINK_CMD_AUTHORIZE ->
+	    [ TransactionID, 
+	      RemoteAddress, 
+	      RemoteChannel, 
+	      RVIProtocol,
+	      Certificate, 
+	      Signature ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID, 
+		      ?DLINK_ARG_ADDRESS, 
+		      ?DLINK_ARG_PORT, 
+		      ?DLINK_ARG_VERSION, 
+		      ?DLINK_ARG_CERTIFICATE, 
+		      ?DLINK_ARG_SIGNATURE], 
+		     Elems, undefined),
 
 	    process_authorize(FromPid, PeerBTAddr, RemoteChannel,
 			     TransactionID, RemoteAddress, RemoteChannel, 
 			     RVIProtocol,  Certificate, Signature, CompSpec);
 
-	"service_announce" ->
-	    [ TransactionID, Available, Services, Signature ] = 
-		opts(["tid", "status", "services", "signature"],
+	?DLINK_CMD_SERVICE_ANNOUNCE ->
+	    [ TransactionID, 
+	      Available, 
+	      {array, Services}, 
+	      Signature ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID, 
+		      ?DLINK_ARG_STATUS, 
+		      ?DLINK_ARG_SERVICES, 
+		      ?DLINK_ARG_SIGNATURE],
 		     Elems, undefined),
 	    
 	     	    process_announce(FromPid, PeerBTAddr, PeerChannel,
 				     TransactionID, Available, Services, 
 				     Signature, CompSpec);
-	"receive_data" ->
-	    [ _TransactionID, ProtocolMod, Data ] = 
-		opts(["tid", "proto_mod", "payload"],
+	?DLINK_CMD_RECEIVE ->
+	    [ _TransactionID, 
+	      ProtocolMod, 
+	      Data ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID, 
+		      ?DLINK_ARG_MODULE, 
+		      ?DLINK_ARG_DATA],
 		     Elems, undefined),
 	    process_data(FromPid, PeerBTAddr, PeerChannel,
 			 ProtocolMod, Data, CompSpec);
 	
-	"ping" ->
+	?DLINK_CMD_PING ->
 	    ?info("dlink_bt:ping(): Pinged from: ~p:~p", [ PeerBTAddr, PeerChannel]),
 	    ok;
 
@@ -490,13 +520,13 @@ handle_socket(FromPid, SetupBTAddr, SetupChannel, connected, _ExtraArgs) ->
     bt_connection:send(FromPid, 
 		       term_to_json(
 			 {struct, 		     
-			  [ { "tid", 1 },
-			    { "cmd", "authorize" },
-			    { "addr", bt_address_to_string(Address) },
-			    { "chan",  SetupChannel },
-			    { "rvi_proto", "rvi_json" },
-			    { "certificate", "" },
-			    { "signature", "" } ]})),
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+			    { ?DLINK_ARG_ADDRESS, bt_address_to_string(Address) },
+			    { ?DLINK_ARG_PORT,  SetupChannel },
+			    { ?DLINK_ARG_VERSION, ?DLINK_BT_VER },
+			    { ?DLINK_ARG_CERTIFICATE, "" },
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
     ok;
 
 
@@ -557,7 +587,9 @@ handle_rpc("send_data", Args) ->
     { ok, Service } = rvi_common:get_json_element(["service"], Args),
     { ok,  Data } = rvi_common:get_json_element(["data"], Args),
     { ok,  DataLinkOpts } = rvi_common:get_json_element(["opts"], Args),
-    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts]}),
+    [ Res ]  = gen_server:call(?SERVER, 
+			       { rvi, send_data, 
+				 [ProtoMod, Service, Data, DataLinkOpts]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
     
 
@@ -643,10 +675,10 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 	    Res = bt_connection:send(ConnPid, 
 		       term_to_json(
 			 {struct, 		     
-			  [ { "tid", 1 },
-			    { "cmd", "receive_data" },
-			    { "proto_mod", atom_to_list(ProtoMod) },
-			    { "payload",  base64:encode_to_string(Data) }
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE },
+			    { ?DLINK_ARG_MODULE, atom_to_list(ProtoMod) },
+			    { ?DLINK_ARG_DATA,  base64:encode_to_string(Data) }
 			  ]})),
 				     
 	    { reply, [ Res ], St}
@@ -683,7 +715,11 @@ handle_info({ rvi_ping, Pid, Address, Channel, Timeout},  St) ->
     case bt_connection:is_connection_up(Pid) of
 	true ->
 	    ?info("dlink_bt:ping(): Pinging: ~p:~p", [Address, Channel]),
-	    bt_connection:send(Pid, term_to_json({ struct, [ { "cmd", "ping" }]})),
+	    bt_connection:send(Pid, term_to_json(
+				      { struct, 
+					[ { ?DLINK_ARG_CMD, 
+					    ?DLINK_CMD_PING 
+					  }]})),
 
 	    erlang:send_after(Timeout, self(), 
 			      { rvi_ping, Pid, Address, Channel, Timeout });
