@@ -122,7 +122,7 @@ handle_call({rvi, send_message,
     ?debug("    protocol:send(): opts:            ~p~n", [ProtoOpts]),
     ?debug("    protocol:send(): data_link_mod:   ~p~n", [DataLinkMod]),
     ?debug("    protocol:send(): data_link_opts:  ~p~n", [DataLinkOpts]),
-%%    ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
+    ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
     ?debug("    protocol:send(): certificate:     ~p~n", [Certificate]),
 
@@ -131,7 +131,7 @@ handle_call({rvi, send_message,
 			  [
 			   { "service", ServiceName },
 			   { "timeout", Timeout }, 
-			   { "parameters", {array, Parameters} },
+			   { "parameters", Parameters },
 			   { "signature", Signature },
 			   { "certificate", Certificate }
 			  ]
@@ -153,7 +153,7 @@ handle_cast({rvi, receive_message, [Data]}, St) when is_list(Data)->
 handle_cast({rvi, receive_message, [Payload]}, St) ->
     {ok, {struct, Elems}} = exo_json:decode_string(binary_to_list(Payload)),
 
-    [ ServiceName, Timeout, {array, Parameters}, Signature, Certificate ] = 
+    [ ServiceName, Timeout, Parameters, Signature, Certificate ] = 
 	opts(["service", "timeout", "parameters", 
 	      "signature", "certificate"], Elems, undefined),
 
