@@ -829,25 +829,41 @@ create_transaction_id(St) ->
 calc_relative_tout(UnixTime) ->
     { Mega, Sec, _Micro } = now(),
     Now = Mega * 1000000 + Sec,
-    ?debug("sched:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p", [ UnixTime, Now, UnixTime - Now ]),
 
-    %% Cap the timeout value at something reasonable
-    TOut = 
-	case UnixTime - Now >= 4294967295 of
-	    true -> 
-		?info("sched:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p: "
-		      "Truncated to 4294967295", [ UnixTime, Now, UnixTime - Now ]),
-		4294967295;
 
-	false -> UnixTime - Now
-    end,
-
-    case TOut =< 0 of
-	true ->
-	    -1; %% We have timed out
+    %%
+    %% Slick but ugly.
+    %% If the timeout is more than 24 hrs old when parsed as unix time,
+    %% then we are looking at a relative msec timeout. Convert accordingly
+    %%
+    case UnixTime < Now - 86400 of
+	true ->  %% This is relative
+	    ?debug("sched:calc_relative_tout(): Timouet(~p) is relative in msec.",
+		   [ UnixTime ]),
+	    UnixTime;
 
 	false ->
-	    TOut * 1000 
+	    ?debug("sched:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p", 
+		   [ UnixTime, Now, UnixTime - Now ]),
+
+	    %% Cap the timeout value at something reasonable
+	    TOut = 
+		case UnixTime - Now >= 4294967295 of
+		    true -> 
+			?info("sched:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p: "
+			      "Truncated to 4294967295", [ UnixTime, Now, UnixTime - Now ]),
+			4294967295;
+
+		    false -> UnixTime - Now
+		end,
+
+	    case TOut =< 0 of
+		true ->
+		    -1; %% We have timed out
+
+		false ->
+		    TOut * 1000 %% Convert to msec
+	    end
     end.
 
 %% Handle a callback for a timed out message.
