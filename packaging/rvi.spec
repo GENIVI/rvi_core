@@ -1,16 +1,18 @@
 Summary:    Remote Vehicle Interaction Node, running on top of Erlang,
 Name:       rvi
-Version:    0.3.2
+Version:    0.4.0
 Release:    1
 Group:      App Framework/Application Communication
 License:    Mozilla Public License 2.0
-Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.3.2.tgz
+Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.4.0.tgz
 
 BuildRequires:  make
 BuildRequires:  glib2-devel
 BuildRequires:  rpm
 BuildRequires:  git
 BuildRequires:  erlang
+BuildRequires:  bluez-devel
+
 
 %description
 RVI Node running on Tizen. Needs erlang. See README.md
@@ -38,8 +40,18 @@ ln -fsr $RPM_BUILD_ROOT/usr/lib/systemd/system/rvi.service \
 ln -fsr $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/releases/$RPM_PACKAGE_VERSION/sys.config \
        $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/sys.config 
 
-
 %post
+if [ ! -f /home/app/content/Documents/vin ]
+then
+    uuidgen > /home/app/content/Documents/vin
+    chown app.users /home/app/content/Documents/vin
+    echo "VIN created in /home/app/content/Documents/vin:"
+    echo "   $(cat /home/app/content/Documents/vin)"
+    
+else
+    echo "Will not touch existing VIN in /home/app/content/Documents/vin:"
+    echo "   $(cat /home/app/content/Documents/vin)"
+fi
 /usr/bin/systemctl daemon-reload
 
 %postun
@@ -52,4 +64,4 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 /usr/lib/systemd/system/rvi.service 
 /etc/systemd/system/multi-user.target.wants/rvi.service
-/opt/rvi-0.3.2
+/opt/rvi-0.4.0

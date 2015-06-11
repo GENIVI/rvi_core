@@ -79,3 +79,22 @@ Big data demo moved to its own repo at https://github.com/PDXostc/rvi_bigdata
   We now filter any services associated with a dead tcp connection
   against identically named services registered over other
   connections.
+
+# v0.4.0 #
+
+* <b>Certificate / Signature management</b><br>
+  First implementation of RVI authentication, authorization, and
+  authorization-filtered service discovery.
+
+* <b>Rewrite to better handle multiple components</b><br>
+  Multiple data links and protocols can now be handled
+
+* <b>Replace static rules with routes</b><br>
+  We can now route messages depending on their targeted service names.
+  Each route specify a protocol and data link to use, together with
+  options indicating how that route should be managed.
+
+* <b>Bluetooth</b><br>
+  Using dlink_bt, two RVI nodes can now communicate over an RFCOMM link.
+
+
