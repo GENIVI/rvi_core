@@ -243,6 +243,7 @@ connect_and_retry_remote( BTAddr, Channel, CompSpec) ->
     end.
 
 
+
 announce_local_service_(_CompSpec, [], _Service, _Availability) ->
     ok;
 
@@ -251,8 +252,16 @@ announce_local_service_(CompSpec,
 			Service, Availability) ->
     
     Res = bt_connection:send(ConnPid, 
-			     term_to_binary({service_announce, 3, Availability, 
-					     [Service], { signature, {}}})),
+			     term_to_json(
+			       { struct, 
+				 [
+				  { "cmd", "service_announce" },
+				  { "tid", 3},
+				  { "status", atom_to_list(Availability) },
+				  { "services", { array, [Service]} },
+				  { "signature", "" }
+				 ]
+			       })),
 
     ?debug("dlink_bt:announce_local_service(~p: ~p) -> ~p  Res: ~p", 
 	   [ Availability, Service, ConnPid, Res]),
@@ -278,18 +287,15 @@ process_data(_FromPid, RemoteBTAddr, RemoteChannel, ProtocolMod, Data, CompSpec)
 
 
 process_announce(FromPid, RemoteBTAddr, RemoteChannel,
-		 TransactionID, available, Services,
+		 TransactionID, "available", { array, Services},
 		 Signature, CompSpec) ->
     ?debug("dlink_bt:service_announce(available): Address:       ~p-~p", [ RemoteBTAddr, RemoteChannel ]),
     ?debug("dlink_bt:service_announce(available): TransactionID: ~p", [ TransactionID ]),
     ?debug("dlink_bt:service_announce(available): Signature:     ~p", [ Signature ]),
     ?debug("dlink_bt:service_announce(available): Service:       ~p", [ Services ]),
 
-
     %% Register the received services with all relevant components
-
     add_services(Services, FromPid),
-
     service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
     ok;
 
@@ -298,8 +304,8 @@ process_announce(FromPid,
 		 RemoteBTAddr, 
 		 RemoteChannel,
 		 TransactionID,
-		 unavailable,
-		 Services,
+		 "unavailable",
+		 {array, Services},
 		 Signature ,
 		 CompSpec) ->
     ?debug("dlink_bt:service_announce(unavailable): Address:       ~p-~p",
@@ -313,7 +319,6 @@ process_announce(FromPid,
 
 
     %% Delete from our own tables.
-
     delete_services(FromPid, Services),
     service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
     ok.
@@ -337,7 +342,6 @@ process_authorize(FromPid,
     ?debug("dlink_bt:authorize(): Signature:      ~p",  [ Signature ]),
 
 
-    { LocalAddress, LocalChannel } = rvi_common:node_address_tuple(),
 
     %% If FromPid (the genserver managing the socket) is not yet registered
     %% with the conneciton manager, this is an incoming connection
@@ -350,11 +354,17 @@ process_authorize(FromPid,
 	    ?info("dlink_bt:authorize(): New connection!"),
 	    bt_connection_manager:add_connection(RemoteAddress, RemoteChannel, FromPid),
 	    ?debug("dlink_bt:authorize(): Sending authorize."),
+	    {ok,[{address, Address }]} = bt_drv:local_info([address]),
 	    Res = bt_connection:send(FromPid, 
-				     term_to_binary(
-				       { authorize, 
-					 1, LocalAddress, LocalChannel, rvi_json, 
-					 {certificate, {}}, { signature, {}}})),
+		       term_to_json(
+			 {struct, 		     
+			  [ { "tid", 1 },
+			    { "cmd", "authorize" },
+			    { "addr", bt_address_to_string(Address) },
+			    { "chan",  RemoteChannel },
+			    { "rvi_proto", "rvi_json" },
+			    { "certificate", "" },
+			    { "signature", "" } ]})),
 	    ?debug("dlink_bt:authorize(): Sending authorize: ~p", [ Res]),
 	    ok;
 	_ -> ok
@@ -370,49 +380,60 @@ process_authorize(FromPid,
 	  [LocalServices, RemoteAddress, RemoteChannel]),
 
     bt_connection:send(FromPid, 
-		       term_to_binary(
-			 { service_announce, 2, available,
-			   LocalServices, { signature, {}}})),
+		       term_to_json(
+			 {struct, 		     
+			  [ { "tid", 1 },
+			    { "cmd", "service_announce" },
+			    { "status", "available" },
+			    { "services", { array, LocalServices }},
+			    { "signature", "" } ]})),
 
     %% Setup ping interval
-    gen_server:call(?SERVER, { setup_initial_ping, RemoteAddress, RemoteChannel, FromPid }),
+    gen_server:call(?SERVER, { setup_initial_ping, PeerBTChannel, RemoteChannel, FromPid }),
     ok.
 
 
 
 handle_socket(FromPid, PeerBTAddr, PeerChannel, data, 
-	      Data, CompSpec) ->
+	      Payload, CompSpec) ->
 
-    try binary_to_term(Data) of
-	{ authorize, TransactionID, RemoteAddress, RemoteChannel, 
-	  Protocol, Certificate, Signature}  -> 
+    {ok, {struct, Elems}} = exo_json:decode_string(binary_to_list(Payload)),
+    ?debug("dlink_bt:data(): Got ~p", [ Elems ]),
+
+    case opt("cmd", Elems, undefined) of
+	"authorize" ->
+	    [ TransactionID, RemoteAddress, RemoteChannel, 
+	      RVIProtocol, Certificate, Signature ] = 
+		opts(["tid", "addr", "channel", "rvi_proto", 
+		      "certificate", "signature"], Elems, undefined),
+
 	    process_authorize(FromPid, PeerBTAddr, RemoteChannel,
 			     TransactionID, RemoteAddress, RemoteChannel, 
-			     Protocol,  Certificate, Signature, CompSpec);
+			     RVIProtocol,  Certificate, Signature, CompSpec);
 
-	{ service_announce, TransactionID, Available, Services, Signature } ->
-	    process_announce(FromPid, PeerBTAddr, PeerChannel,
-			    TransactionID, Available, Services, 
-			    Signature, CompSpec);
-
-	{ receive_data, ProtocolMod, Data } ->
-	    process_data(FromPid, PeerBTAddr, PeerChannel, 
-			ProtocolMod, Data, CompSpec);
-	ping ->
+	"service_announce" ->
+	    [ TransactionID, Available, Services, Signature ] = 
+		opts(["tid", "status", "services", "signature"],
+		     Elems, undefined),
+	    
+	     	    process_announce(FromPid, PeerBTAddr, PeerChannel,
+				     TransactionID, Available, Services, 
+				     Signature, CompSpec);
+	"receive_data" ->
+	    [ _TransactionID, ProtocolMod, Payload ] = 
+		opts(["tid", "proto_mod", "paylaod"],
+		     Elems, undefined),
+	    process_data(FromPid, PeerBTAddr, PeerChannel,
+			 ProtocolMod, Payload, CompSpec);
+	
+	"ping" ->
 	    ?info("dlink_bt:ping(): Pinged from: ~p:~p", [ PeerBTAddr, PeerChannel]),
 	    ok;
 
-	Unknown ->
-	    ?warning("dlink_bt:handle_socket(): Unknown data: ~p", [ Unknown]),
+	undefined -> 
+	    ?warning("dlink_bt:data() cmd undefined., ~p", [ Elems ]),
 	    ok
-    catch
-	_:_ ->
-	    ?warning("dlink_bt:handle_socket(data): Data could not be decoded: ~p", 
-		     [ Data]),
-	    ok
-
     end.
-
 
 
 %% We lost the socket connection.
@@ -464,12 +485,15 @@ handle_socket(FromPid, SetupBTAddr, SetupChannel, connected, _ExtraArgs) ->
     {ok,[{address, Address }]} = bt_drv:local_info([address]),
 
     bt_connection:send(FromPid, 
-		       term_to_binary(
-			 { authorize, 
-			   1, 
-			   bt_address_to_string(Address), 
-			   SetupChannel, rvi_json, 
-			   { certificate, {}}, { signature, {}} })),
+		       term_to_json(
+			 {struct, 		     
+			  [ { "tid", 1 },
+			    { "cmd", "authorize" },
+			    { "addr", bt_address_to_string(Address) },
+			    { "chan",  SetupChannel },
+			    { "rvi_proto", "rvi_json" },
+			    { "certificate", "" },
+			    { "signature", "" } ]})),
     ok;
 
 
@@ -613,8 +637,14 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 	%% FIXME: What to do if we have multiple connections to the same service?
 	[ConnPid | _T] -> 
 	    Res = bt_connection:send(ConnPid, 
-				     term_to_binary(
-				       {receive_data, ProtoMod, Data})),
+		       term_to_json(
+			 {struct, 		     
+			  [ { "tid", 1 },
+			    { "cmd", "receive_ddata" },
+			    { "proto_mod", ProtoMod },
+			    { "payload",  Data }
+			  ]})),
+				     
 	    { reply, [ Res ], St}
     end;
 	    
@@ -649,7 +679,8 @@ handle_info({ rvi_ping, Pid, Address, Channel, Timeout},  St) ->
     case bt_connection:is_connection_up(Pid) of
 	true ->
 	    ?info("dlink_bt:ping(): Pinging: ~p:~p", [Address, Channel]),
-	    bt_connection:send(Pid, term_to_binary(ping)),
+	    bt_connection:send(Pid, term_to_json({ struct, [ { "cmd", "ping" }]})),
+
 	    erlang:send_after(Timeout, self(), 
 			      { rvi_ping, Pid, Address, Channel, Timeout });
 
@@ -762,3 +793,16 @@ get_connections(Key, Acc) ->
 	    
 get_connections() ->
     get_connections(ets:first(?CONNECTION_TABLE), []).
+
+
+term_to_json(Term) ->
+    binary_to_list(iolist_to_binary(exo_json:encode(Term))).
+
+opt(K, L, Def) ->
+    case lists:keyfind(K, 1, L) of
+	{_, V} -> V;
+	false  -> Def
+    end.
+
+opts(Keys, Elems, Def) ->
+    [ opt(K, Elems, Def) || K <- Keys].
