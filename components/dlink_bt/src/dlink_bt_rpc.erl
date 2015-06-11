@@ -282,7 +282,10 @@ announce_local_service_(CompSpec, Service, Availability) ->
 
 process_data(_FromPid, RemoteBTAddr, RemoteChannel, ProtocolMod, Data, CompSpec) ->
     ?debug("dlink_bt:receive_data(): SetupAddress: {~p, ~p}", [ RemoteBTAddr, RemoteChannel ]),
-    ProtocolMod:receive_message(CompSpec, Data),
+    ?debug("dlink_bt:receive_data(): ~p:receive_message(~p)", [ ProtocolMod, Data ]),
+    Proto = list_to_atom(ProtocolMod),
+    Proto:receive_message(CompSpec, base64:decode_to_string(Data)),
+
     ok.
 
 
@@ -420,11 +423,11 @@ handle_socket(FromPid, PeerBTAddr, PeerChannel, data,
 				     TransactionID, Available, Services, 
 				     Signature, CompSpec);
 	"receive_data" ->
-	    [ _TransactionID, ProtocolMod, Payload ] = 
-		opts(["tid", "proto_mod", "paylaod"],
+	    [ _TransactionID, ProtocolMod, Data ] = 
+		opts(["tid", "proto_mod", "payload"],
 		     Elems, undefined),
 	    process_data(FromPid, PeerBTAddr, PeerChannel,
-			 ProtocolMod, Payload, CompSpec);
+			 ProtocolMod, Data, CompSpec);
 	
 	"ping" ->
 	    ?info("dlink_bt:ping(): Pinged from: ~p:~p", [ PeerBTAddr, PeerChannel]),
@@ -636,13 +639,14 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 
 	%% FIXME: What to do if we have multiple connections to the same service?
 	[ConnPid | _T] -> 
+	    ?debug("dlink_bt:send(~p): ~s", [ProtoMod, Data]),
 	    Res = bt_connection:send(ConnPid, 
 		       term_to_json(
 			 {struct, 		     
 			  [ { "tid", 1 },
-			    { "cmd", "receive_ddata" },
-			    { "proto_mod", ProtoMod },
-			    { "payload",  Data }
+			    { "cmd", "receive_data" },
+			    { "proto_mod", atom_to_list(ProtoMod) },
+			    { "payload",  base64:encode_to_string(Data) }
 			  ]})),
 				     
 	    { reply, [ Res ], St}
@@ -729,18 +733,23 @@ get_connections_by_service(Service) ->
 add_services(SvcNameList, ConnPid) ->
     %% Create or replace existing connection table entry
     %% with the sum of new and old services.
+    ?debug("dlink_bt:add_services(~p, ~p)", [ ConnPid, SvcNameList]),
     ets:insert(?CONNECTION_TABLE, 
 	       #connection_entry {
 		  connection = ConnPid,
 		  services = SvcNameList ++ get_services_by_connection(ConnPid)
 	      }),
 
-    %% Add the connection to the service entry for each servic.
+    %% Add the connection to the service entry for each service.
     [ ets:insert(?SERVICE_TABLE, 
 	       #service_entry {
 		  service = SvcName,
 		  connections = [ConnPid | get_connections_by_service(SvcName)]
 		 }) || SvcName <- SvcNameList ],
+
+    ?debug("dlink_bt:_services(): CONN_TABLE: ~p", [ get_services_by_connection(ConnPid)]),
+    [ ?debug("  dlink_bt:_services(): SVC_TABLE(~p) : ~p", [ Svc, get_connections_by_service(Svc)]) ||
+	Svc <- SvcNameList ],
     ok.
 
 
