@@ -349,9 +349,9 @@ handle_call({rvi, get_available_services, []}, _From, St) ->
     {reply, service_discovery_rpc:get_all_services(St#st.cs), St};
 
 handle_call({ rvi, handle_local_message, 
-	      [SvcName, Timeout, Parameters] }, _From, St) ->
+	      [SvcName, TimeoutArg, Parameters] }, _From, St) ->
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [SvcName]),
-    ?debug("service_edge_rpc:local_msg: timeout:         ~p", [Timeout]),
+    ?debug("service_edge_rpc:local_msg: timeout:         ~p", [TimeoutArg]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
 
     %%
@@ -362,7 +362,28 @@ handle_call({ rvi, handle_local_message,
     [ok, Certificate, Signature ] = 
 	authorize_rpc:authorize_local_message(St#st.cs, SvcName),
     
+    %%
+    %% Slick but ugly.
+    %% If the timeout is more than 24 hrs old when parsed as unix time,
+    %% then we are looking at a relative msec timeout. Convert accordingly
+    %%
+    { Mega, Sec, _Micro } = now(),
+    Now = Mega * 1000000 + Sec,
+
     
+    Timeout = 
+	case TimeoutArg - Now < -86400 of
+	    true -> %% Relative timeout arg. Convert to unix time msec
+		?debug("service_edge_rpc:local_msg(): Timeout ~p is relative.", 
+		       [TimeoutArg]),
+		(Now * 1000) + TimeoutArg;
+
+	    false -> %% Absolute timoeut. Convert to unix time msec
+		TimeoutArg * 1000
+	end,
+	    
+	    
+
     
     %%
     %% Check if this is a local service by trying to resolve its service name. 
@@ -531,6 +552,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
     wse:call(list_to_pid(WSPidStr), wse:window(),
 	     "message", 
 	     [ "service_name", SvcName ] ++ flatten_ws_args(Args)),
+    ?debug("service_edge:dispatch_to_local_service(message, websock): Done", []),
     ok;
 
 %% Dispatch to regular JSON-RPC over HTTP.
