@@ -422,6 +422,9 @@ process_data(_FromPid,
 
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
+handle_socket(FromPid, undefined, SetupPort, closed, Arg) ->
+    handle_socket(FromPid, "0.0.0.0", SetupPort, closed, Arg);
+
 handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
     ?info("dlink_tcp:closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
 
