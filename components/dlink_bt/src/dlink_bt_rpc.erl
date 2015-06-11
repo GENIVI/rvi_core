@@ -265,7 +265,7 @@ announce_local_service_(CompSpec,
 				  { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
 				  { ?DLINK_ARG_TRANSACTION_ID, 3},
 				  { ?DLINK_ARG_STATUS, Status },
-				  { ?DLINK_ARG_STATUS, { array, [Service]} },
+				  { ?DLINK_ARG_SERVICES, { array, [Service]} },
 				  { ?DLINK_ARG_SIGNATURE, "" }
 				 ]
 			       })),
