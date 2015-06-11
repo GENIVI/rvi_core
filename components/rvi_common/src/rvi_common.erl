@@ -41,9 +41,17 @@
 	]).
 
 -export([start_json_rpc_server/3]).
+-export([extract_json/2]).
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
 -define(NODE_ADDRESS, node_address).
+
+-record(pst, {
+	  buffer = [],
+	  balance = start,
+	  in_string = false,
+	  escaped = false
+	 }).
 
 
 json_rpc_status(0) ->
@@ -652,3 +660,128 @@ start_json_rpc_server(Component, Module, Supervisor) ->
 	    Err
     end.
 	    
+
+
+
+
+count_brackets([], 
+	       #pst { 
+		  buffer = [], 
+		  balance = start } = PSt)  ->
+    { incomplete, PSt#pst {}};
+
+count_brackets([], 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = start } = PSt)  ->
+    count_brackets(Buffer, 
+		   PSt#pst { 
+		     buffer = [], 
+		     balance = start } );
+count_brackets([${ | Rem], 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = start } = PSt)  ->
+    count_brackets(Rem, 
+		   PSt#pst{ 
+		     buffer = [ ${ | Buffer ], 
+		     balance = 1});
+
+%% Drop any initial characters prior to opening bracket
+count_brackets([_ | Rem],
+	       #pst { balance = start } = PSt)  ->
+    count_brackets(Rem, PSt );
+
+%% If balance is back to zero, we have completed a JSON
+%% element.
+count_brackets(Rem, 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = 0 } = PSt) ->
+
+    { complete, lists:reverse(Buffer), 
+      PSt#pst {
+	buffer = Rem,
+	balance = start
+       } 
+    };
+
+%% If we still have balance, but no more input
+%% we have an incomplete element.x
+count_brackets([], PSt) ->
+    { incomplete,  PSt };
+
+
+%% We have a string start or end, and we are not esacped
+%% Flip our in-string state
+count_brackets([$" | Rem],
+	       #pst {
+		  buffer = Buffer, 
+		  in_string = InString,
+		  escaped = false} = PSt) ->
+
+    count_brackets(Rem, PSt#pst { 
+			  buffer = [ $" | Buffer ],
+			  in_string = not InString });
+ 
+
+%% We have an escape character, and we are in a string. Turn on our escape state
+count_brackets([$\\ | Rem],
+	       #pst { 
+		  buffer = Buffer,
+		  in_string = true,
+		  escaped = false } = PSt) ->
+
+    count_brackets(Rem, PSt#pst { 
+			  buffer = [ $\\ | Buffer ],
+			  escaped = true});
+ 
+%% We have an opening bracket and we are not in a string
+count_brackets([${ | Rem], 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = Balance,
+		  in_string = false } = PSt) ->
+
+    count_brackets(Rem,
+		   PSt#pst { 
+		     buffer = [ ${ | Buffer ], 
+		     balance = Balance + 1});
+
+%% We have an closing bracket and we are not in a string
+count_brackets([$} | Rem], 
+	       #pst { 
+		  buffer = Buffer, 
+		  balance = Balance,
+		  in_string = false } = PSt) ->
+
+    count_brackets(Rem,
+		   PSt#pst { 
+		     buffer = [ $} | Buffer ], 
+		     balance = Balance - 1});
+
+%% We have just regular data to feed over.
+%% Make sure to clear the escape state.
+count_brackets([C | Rem],
+	       #pst { buffer = Buffer } = PSt) ->
+
+    count_brackets(Rem, PSt#pst { 
+			  buffer = [ C | Buffer ],
+			  escaped = false
+			 } ).
+    
+extract_json(Buf, PST, Acc) ->
+    case count_brackets(Buf, PST) of
+	{ complete, Processed, NPST} ->
+	    extract_json([], NPST, [ Processed | Acc]);
+
+
+	{ incomplete, NPST} ->
+	    { Acc, NPST }
+    end.
+
+extract_json(Buf, undefined) ->
+    extract_json(Buf, #pst {},[]);
+
+extract_json(Buf, PST) ->
+    extract_json(Buf, PST,[]).
