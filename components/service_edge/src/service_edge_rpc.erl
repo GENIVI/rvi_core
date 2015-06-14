@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+% Mozilla Public License, version 2.0.  The full text of the 
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -14,11 +14,6 @@
 -export([handle_notification/2]).
 -export([handle_websocket/3]).
 
-%%-export([wse_register_service/2]).
-%%-export([wse_unregister_service/2]).
-%%-export([wse_get_available_services/1]).
-%%-export([wse_message/5]).
-%%-export([wse_message/4]).
 
 -export([start_link/0]).
 
@@ -125,7 +120,7 @@ start_websocket() ->
 		    %% FIXME: MONITOR AND RESTART
 		    wse_server:start(Port, 
 				     ?MODULE, handle_websocket, undefined, 
-				     proplists:delete(port, WSOpts)),
+				     [{type, text} | proplists:delete(port, WSOpts)]),
 		    ok
 	    end
     end.
@@ -193,7 +188,7 @@ handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
     { ok, Parameters } = rvi_common:get_json_element(["parameters"], Params),
 
     [ Res, TID ] = gen_server:call(?SERVER, { rvi, handle_local_message, 
-					      [ SvcName, Timeout, Parameters]}),
+					      [ SvcName, Timeout, [{struct, Parameters}]]}),
 
     ?debug("service_edge_rpc:wse_message(~p) Res:      ~p", [ WSock, Res ]),
     { ok, [ { status, rvi_common:json_rpc_status(Res) }, 
@@ -582,7 +577,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
     ?info("service_edge:dispatch_to_local_service(message, websock): ~p", [Args]),
     wse_server:send(list_to_pid(WSPidStr), 
 	     json_rpc_notification("message",
-				   [{ "service_name", SvcName} |Args])),
+				   [{ "service_name", SvcName}, {parameters, { struct, Args}}])),
     %% No response expected.
     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
     ok;
