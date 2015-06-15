@@ -558,7 +558,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_available,
 	  [ WSPidStr,  Services]),
     wse_server:send(list_to_pid(WSPidStr), 
 		    json_rpc_notification("services_available",
-					  ["services", Services])),
+					  [{"services", {array, Services}}])),
     %% No reply
     ok;
 
@@ -569,7 +569,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
 
     wse_server:send(list_to_pid(WSPidStr), 
 	     json_rpc_notification("services_unavailable",
-				   ["services", Services])),
+				   [{"services", {array, Services}}])),
     ok;
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, 
@@ -653,15 +653,22 @@ announce_service_availability(Available, SvcName) ->
 		   [ #service_entry { url = URL } ]  -> [URL];
 		   [] -> []
 	       end,
-			     
+    ets:foldl(fun(Term, _Acc) -> 
+		      io:format("~p: ~p~n", [ ?SERVICE_TABLE, Term]),
+		      ok
+	      end, ok, ?SERVICE_TABLE),
+    ?debug("announce: service: ~p", [ SvcName]),
+    ?debug("announce: Block:   ~p", [ BlockURLs]),
 
     ets:foldl(
       %% Notify if this is not the originating service.
       fun(#service_entry { url = URL }, Acc) ->
 	      %% If the URL is not on the blackout
 	      %% list, send a notification
+	      ?debug("  URL: ~p - Acc : ~p ", [ URL, Acc]),
 	      case lists:member(URL, Acc) of 
 		  false ->
+		      ?debug("DISPATCH: ~p: ~p", [ URL, Cmd]),
 		      dispatch_to_local_service(URL, Cmd, 
 						{struct, [ { services, 
 							     { array, [SvcName]}
