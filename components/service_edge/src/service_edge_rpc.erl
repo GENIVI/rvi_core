@@ -582,6 +582,18 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
     ok;
 
+dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, 
+			 {struct, [{ service_name, SvcName}, { parameters,{array,[{struct, Args}]}}]}) ->
+
+
+    ?info("service_edge:dispatch_to_local_service(message, websock): ~p", [Args]),
+    wse_server:send(list_to_pid(WSPidStr), 
+	     json_rpc_notification("message",
+				   [{ "service_name", SvcName}, {parameters, { struct, Args}}])),
+    %% No response expected.
+    ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
+    ok;
+
 %% Dispatch to regular JSON-RPC over HTTP.
 dispatch_to_local_service(URL, Command, Args) ->
     CmdStr = atom_to_list(Command),
