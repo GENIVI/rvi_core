@@ -41,6 +41,7 @@
 	  remote_addr = "00:00:00:00:00:00",
 	  channel = 0,
 	  rfcomm_ref = undefined,
+	  listen_ref = undefined,
 	  mod = undefined,
 	  func = undefined,
 	  args = undefined
@@ -150,6 +151,7 @@ init({accept, Channel, ListenRef, Mod, Fun, Arg}) ->
     {ok, #st{
 	    channel = Channel,
 	    rfcomm_ref = ARef,
+	    listen_ref = ListenRef,
 	    mod = Mod,
 	    func = Fun,
 	    args = Arg
@@ -282,20 +284,31 @@ handle_info({rfcomm, _ConnRef, {data, Data}},
     {noreply, State};
 
 
-handle_info({rfcomm_closed, ConnRef}, 
+handle_info({rfcomm, ConnRef, closed}, 
 	    #st { remote_addr = BTAddr,
 		  channel = Channel,
+		  listen_ref = ListenRef,
 		  mod = Mod,
 		  func = Fun,
 		  args = Arg } = State) ->
-    ?debug("~p:handle_info(tcp_closed): BTAddr: ~p:~p ", [ ?MODULE, BTAddr, Channel]),
+    ?debug("~p:handle_info(bt_closed): BTAddr: ~p:~p ", [ ?MODULE, BTAddr, Channel]),
     Mod:Fun(self(), BTAddr, Channel, closed, Arg),
     bt_connection_manager:delete_connection_by_pid(self()),
-    rfcomm_close:close(ConnRef),
+    rfcomm:close(ConnRef),
+    
+    %% Fire up a new accept process to take care of the next incomign connectionX
+    gen_server:start_link(?MODULE, {accept, 
+				    Channel, 
+				    ListenRef, 
+				    Mod,
+				    Fun, 
+				    Arg},[]),
+
+    %% Stop this process.
     {stop, normal, State};
 
 
-handle_info({rfcomm_error, ConnRef}, 
+handle_info({rfcomm, ConnRef, error}, 
 	    #st { remote_addr = BTAddr,
 		  channel = Channel,
 		  mod = Mod,
@@ -310,7 +323,7 @@ handle_info({rfcomm_error, ConnRef},
 
 
 handle_info(_Info, State) ->
-    ?warning("~p:handle_cast(): Unknown info: ~p", [ ?MODULE, _Info]),
+    ?warning("~p:handle_info(): Unknown info: ~p", [ ?MODULE, _Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

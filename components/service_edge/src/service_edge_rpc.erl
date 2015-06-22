@@ -364,6 +364,13 @@ handle_call({rvi, get_available_services, []}, _From, St) ->
     ?debug("service_edge_rpc:get_available_services()"),
     {reply, service_discovery_rpc:get_all_services(St#st.cs), St};
 
+
+%%CRASH13:43:57.370 [debug] service_edge_rpc:local_msg: parameters:      [{struct,"{"value":"3"}"}]
+
+%%13:43:57.370 [debug] service_edge_rpc:local_msg: parameters:      [{struct,"{"value":"3"}"}]
+%% [{struct,[{"a","b"}]}]
+%% 13:48:12.943 [debug] service_edge_rpc:local_msg: parameters:      [{struct,[{"a","b"}]}]
+
 handle_call({ rvi, handle_local_message, 
 	      [SvcName, TimeoutArg, Parameters] }, _From, St) ->
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [SvcName]),
@@ -586,7 +593,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
 			 {struct, [{ service_name, SvcName}, { parameters,{array,[{struct, Args}]}}]}) ->
 
 
-    ?info("service_edge:dispatch_to_local_service(message, websock): ~p", [Args]),
+    ?info("service_edge:dispatch_to_local_service(message/alt, websock): ~p", [Args]),
     wse_server:send(list_to_pid(WSPidStr), 
 	     json_rpc_notification("message",
 				   [{ "service_name", SvcName}, {parameters, { struct, Args}}])),
