@@ -187,11 +187,9 @@ handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
     { ok, Timeout } = rvi_common:get_json_element(["timeout"], Params),
     { ok, Parameters } = rvi_common:get_json_element(["parameters"], Params),
 
+    ?debug("service_edge_rpc:handle_websocket(~p) params!:      ~p", [ WSock, Params ]),
     ?debug("service_edge_rpc:handle_websocket(~p) service:      ~p", [ WSock, SvcName ]),
-    ?debug("service_edge_rpc:handle_websocket(~p) params:       ~p", [ WSock, Params ]),
-    ?debug("service_edge_rpc:handle_websocket(~p) params:       ~s", [ WSock, Params ]),
     ?debug("service_edge_rpc:handle_websocket(~p) parameters:   ~p", [ WSock, Parameters ]),
-    ?debug("service_edge_rpc:handle_websocket(~p) parameters:   ~s", [ WSock, Parameters ]),
 
     [ Res, TID ] = gen_server:call(?SERVER, { rvi, handle_local_message, 
 					      [ SvcName, Timeout, [{struct, Parameters}]]}),
