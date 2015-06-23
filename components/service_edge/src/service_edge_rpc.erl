@@ -188,7 +188,7 @@ handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
     { ok, Parameters } = rvi_common:get_json_element(["parameters"], Params),
 
     [ Res, TID ] = gen_server:call(?SERVER, { rvi, handle_local_message, 
-					      [ SvcName, Timeout, [{struct, Parameters}]]}),
+					      [ SvcName, Timeout, Parameters]}),
 
     ?debug("service_edge_rpc:wse_message(~p) Res:      ~p", [ WSock, Res ]),
     { ok, [ { status, rvi_common:json_rpc_status(Res) }, 
