@@ -395,6 +395,14 @@ notify_subscribers(CompSpec, Available, Services, DataLinkModule) ->
 	      unavailable -> service_unavailable
 	  end,
 
+
+    ets:foldl(
+      %% Notify if this is not the originating service.
+      fun(#subscriber_entry { module = Module }, Acc) ->
+	      ?debug("  notify_subscribers module: ~p ", [ Module]),
+	      ok
+      end, ok, ?SUBSCRIBER_TABLE),
+
     %% Initiate with the first module
     notify_single_subscriber(CompSpec, 
 			     ets:first(?SUBSCRIBER_TABLE), 
