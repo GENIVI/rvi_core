@@ -477,7 +477,7 @@ handle_socket(FromPid, SetupBTAddr, SetupChannel, closed, CompSpec) ->
 
     %% Get all service records associated with the given connection
     LostSvcNameList = get_services_by_connection(FromPid),
-    ?info("Will delete services ~n", [ LostSvcNameList]),
+    ?info("Will delete services: ~p~n", [ LostSvcNameList]),
 
     delete_connection(FromPid),
 
@@ -486,13 +486,13 @@ handle_socket(FromPid, SetupBTAddr, SetupChannel, closed, CompSpec) ->
       fun(SvcName) ->
 	      case get_connections_by_service(SvcName) of
 		  [] ->
-		      ?info("correct"),
+		      ?info("No connection"),
 		      service_discovery_rpc:
 			  unregister_services(CompSpec, 
 					      [SvcName], 
 					      ?MODULE);
 		  _ -> 
-		      ?info("correct"),
+		      ?info("connection"),
 		      service_discovery_rpc:
 			  unregister_services(CompSpec, 
 					      [SvcName], 

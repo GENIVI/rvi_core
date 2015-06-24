@@ -445,11 +445,13 @@ handle_call(Other, _From, St) ->
 
 		      
 handle_cast({rvi, service_available, [SvcName, _DataLinkModule] }, St) ->
+    ?debug("service_edge_rpc: Service available: ~p:", [ SvcName]),
     announce_service_availability(available, SvcName),
     { noreply, St };
 
 		      
 handle_cast({rvi, service_unavailable, [SvcName, _DataLinkModule] }, St) ->
+    ?debug("service_edge_rpc: Service unavailable: ~p:", [ SvcName]),
     announce_service_availability(unavailable, SvcName),
     { noreply, St };
 
@@ -603,7 +605,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
     ok;
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, Other) ->
+dispatch_to_local_service([ $w, $s, $: | _WSPidStr], message, Other) ->
     ?warning("service_edge:dispatch_to_local_service(message/alt, websock): UNKNOWN: ~p", [Other]),
     ok;
 
@@ -679,7 +681,7 @@ announce_service_availability(Available, SvcName) ->
 		   [] -> []
 	       end,
     ets:foldl(fun(Term, _Acc) -> 
-		      io:format("~p: ~p~n", [ ?SERVICE_TABLE, Term]),
+		      ?debug("~p: ~p~n", [ ?SERVICE_TABLE, Term]),
 		      ok
 	      end, ok, ?SERVICE_TABLE),
     ?debug("announce: service: ~p", [ SvcName]),
