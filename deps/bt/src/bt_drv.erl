@@ -79,7 +79,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--define(debug, true).
+%% -define(debug, true).
 
 -ifdef(debug).
 -define(dbg(Fmt,As), io:format("~s:~w:" Fmt "\n", [?FILE,?LINE | As])).
@@ -1062,7 +1062,6 @@ handle_info({Port,{data,Data}},State) when Port == State#state.bt_port ->
 			    S#subscription.subscriber !
 				{S#subscription.tag,S#subscription.ref,Decoded},
 			    if Decoded == closed ->
-				    ?dbg("closed",[]),
 				    unmon(S#subscription.monitor),
 				    SList = State#state.subscription -- [S],
 				    State1 = State#state { subscription = SList },
