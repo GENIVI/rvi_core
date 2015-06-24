@@ -1,7 +1,0 @@
-{application, wse,
- [{description, "Erlang web socket server"},
-  {vsn, git},
-  {registered, []},
-  {env, []},
-  {applications,[kernel,stdlib]}
-  ]}.

@@ -16,8 +16,7 @@
   {applications, [
                   kernel,
                   stdlib,
-		  rvi_common,
-		  wse
+		  rvi_common
                  ]},
   {mod, { service_edge_app, []}},
 
