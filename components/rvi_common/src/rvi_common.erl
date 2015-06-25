@@ -400,7 +400,7 @@ remote_service_to_string(Type, Service) ->
 
 local_service_prefix() ->
     Prefix = 
-	case application:get_env(rvi, ?NODE_SERVICE_PREFIX) of
+	case application:get_env(rvi_core, ?NODE_SERVICE_PREFIX) of
 	    {ok, P} when is_atom(P) -> atom_to_list(P);
 	    {ok, P} when is_list(P) -> P;
 	    undefined -> 
@@ -418,7 +418,7 @@ local_service_prefix() ->
 
 
 node_address_string() ->
-    case application:get_env(rvi, ?NODE_ADDRESS) of
+    case application:get_env(rvi_core, ?NODE_ADDRESS) of
 	{ok, P} when is_atom(P) -> atom_to_list(P);
 	{ok, P} when is_list(P) -> P;
 	undefined -> 
@@ -449,7 +449,7 @@ get_component_config_(Component, Default, CompList) ->
     end.
 
 get_component_specification() ->
-    case application:get_env(rvi, components, undefined) of
+    case application:get_env(rvi_core, components, undefined) of
 	undefined -> 
 	    #component_spec { 
 	       service_edge = ?COMP_SPEC_SERVICE_EDGE_DEFAULT,

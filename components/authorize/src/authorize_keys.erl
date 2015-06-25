@@ -302,7 +302,7 @@ match_dest_(_, _) ->
     false.
 
 get_env(K) ->
-    case application:get_env(rvi, K) of
+    case application:get_env(rvi_core, K) of
 	{ok, V} ->
 	    V;
 	_ ->
