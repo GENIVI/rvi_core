@@ -217,8 +217,7 @@ step 2.
 
 2. Device sends authenticate command to server<br>
 The command contains the auth cert together with a node cert showing
-that the device has the right to register register
- ```jlr.com/mobile/1234/receive_bitcoin```.
+that the device has the right to register register ```jlr.com/mobile/1234/receive_bitcoin```.
 
 3. [server responds with its own authenticate]
 
