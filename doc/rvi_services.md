@@ -11,7 +11,6 @@ All services starting with ```$``` are routed to RVI-internal code.
 
 2. Per-service configuration?
 Current setup:
-
 ```
         "jsonrpc": "2.0",
         "id": 1,
@@ -24,7 +23,7 @@ Current setup:
 ```		 
 
 Suggested change:
-
+```
         "jsonrpc": "2.0",
         "id": 1,
         "method": "message",
@@ -34,7 +33,7 @@ Suggested change:
 	        "service" : "jlr.com/vin/123456/body/lock",
             "variable" : ["varname1","varname2"]
          }
-		 
+```		 
 Similar setup for setting configuration.
 
 
