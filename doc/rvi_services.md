@@ -6,7 +6,7 @@ Attribution-ShareAlike 4.0 International.
 # REVIEW NOTES BY MAGNUS:
 1. Shall "internal" services be specially marked?<br>
 How about ```jlr.com/vin/123456/dm/cert_provision``` is renamed
-```jlr.com/vin/123456/dm/$cert_provision```.<br>
+ ```jlr.com/vin/123456/dm/$cert_provision``` .<br>
 All services starting with ```$``` are routed to RVI-internal code.
 
 2. Per-service configuration?
