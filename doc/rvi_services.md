@@ -20,6 +20,7 @@ Current setup:
         "params": {
             "variable" : ["varname1","varname2"]
          }
+		 
 Suggested change:
 
         "jsonrpc": "2.0",
@@ -31,6 +32,7 @@ Suggested change:
 	        "service" : "jlr.com/vin/123456/body/lock",
             "variable" : ["varname1","varname2"]
          }
+		 
 Similar setup for setting configuration.
 
 
