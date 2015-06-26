@@ -139,7 +139,7 @@ The app is started for the first time and connects to the provisioning server.
 2. Device sends authenticate to server<br>
 The command contains the auth cert (device public key) and the single,
 pre-provisioned node certificate giving the device the right to invoke
-```jlr.com/provisioning/setup```
+ ```jlr.com/provisioning/setup```
 
 3. Server sends authenticate to device<br>
 The server's auth cert (server public key) is sent, but no node
@@ -178,16 +178,16 @@ Connection is done over bluetooth, with no Internet connection.
 2. Device sends authenticate to vehicle<br>
 The command contains the auth cert together with the received node
 certificate, proving that it has the right to invoke
-```jlr.com/vin/ABCD/unlock```.<br>
+ ```jlr.com/vin/ABCD/unlock```.<br>
 It also proves that the device has the right to register
-```jlr.com/mobile/1234/status```.
+ ```jlr.com/mobile/1234/status```.
 
 3. Vehicle sends authenticate to device<br>
 The server's auth cert (server public key) is sent, together with a
 pre-provisioned node certificate giving it the rights to register
-```jlr.com/vin/ABCD/unlock```.<br>
+ ```jlr.com/vin/ABCD/unlock```.<br>
 The certificate also gives the vehicle the right to invoke
-```jlr.com/mobile/*/status```.
+ ```jlr.com/mobile/*/status```.
 
 4. Device sends service announce to vehicle<br>
 The command contains ```jlr.com/mobile/1234/status```.<br>
@@ -219,7 +219,7 @@ step 2.
 2. Device sends authenticate command to server<br>
 The command contains the auth cert together with a node cert showing
 that the device has the right to register register
-```jlr.com/mobile/1234/receive_bitcoin```.
+ ```jlr.com/mobile/1234/receive_bitcoin```.
 
 3. [server responds with its own authenticate]
 
