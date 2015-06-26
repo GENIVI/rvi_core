@@ -12,15 +12,17 @@ All services starting with ```$``` are routed to RVI-internal code.
 2. Per-service configuration?
 Current setup:
 
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message",
-        "service": "jlr.com/vin/123456/dm/var_read",
-        "timeout" : 5000,
-        "params": {
-            "variable" : ["varname1","varname2"]
-         }
-		 
+```
+"jsonrpc": "2.0",
+"id": 1,
+"method": "message",
+"service": "jlr.com/vin/123456/dm/var_read",
+"timeout" : 5000,
+"params": {
+    "variable" : ["varname1","varname2"]
+}
+```		 
+
 Suggested change:
 
         "jsonrpc": "2.0",
