@@ -23,6 +23,7 @@ Current setup:
 ```		 
 
 Suggested change:
+
 ```
         "jsonrpc": "2.0",
         "id": 1,
@@ -34,6 +35,7 @@ Suggested change:
             "variable" : ["varname1","varname2"]
          }
 ```		 
+
 Similar setup for setting configuration.
 
 
