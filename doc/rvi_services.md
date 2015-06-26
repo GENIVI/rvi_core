@@ -138,8 +138,7 @@ The app is started for the first time and connects to the provisioning server.
 
 2. Device sends authenticate to server<br>
 The command contains the auth cert (device public key) and the single,
-pre-provisioned node certificate giving the device the right to invoke
- ```jlr.com/provisioning/setup```
+pre-provisioned node certificate giving the device the right to invoke ```jlr.com/provisioning/setup```
 
 3. Server sends authenticate to device<br>
 The server's auth cert (server public key) is sent, but no node
