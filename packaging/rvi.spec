@@ -37,25 +37,10 @@ mkdir -p $RPM_BUILD_ROOT/etc/systemd/system/multi-user.target.wants/
 install ./scripts/rvi.service $RPM_BUILD_ROOT/usr/lib/systemd/system/rvi.service 
 ln -fsr $RPM_BUILD_ROOT/usr/lib/systemd/system/rvi.service \
     $RPM_BUILD_ROOT/etc/systemd/system/multi-user.target.wants/rvi.service
-
 ln -fsr $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/releases/$RPM_PACKAGE_VERSION/sys.config \
        $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/sys.config 
-
-%post
-if [ ! -f /home/app/content/Documents/vin ]
-then
-    uuidgen > /home/app/content/Documents/vin
-    chown app.users /home/app/content/Documents/vin
-    echo "VIN created in /home/app/content/Documents/vin:"
-    echo "   $(cat /home/app/content/Documents/vin)"
-    
-else
-    echo "Will not touch existing VIN in /home/app/content/Documents/vin:"
-    echo "   $(cat /home/app/content/Documents/vin)"
-fi
-/usr/bin/systemctl daemon-reload
-
-%postun
+mkdir -p $RPM_BUILD_ROOT/home/app/content/Documents
+echo "default_vin" > $RPM_BUILD_ROOT/home/app/content/Documents/vin
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -63,6 +48,7 @@ rm -rf $RPM_BUILD_ROOT
 %files 
 %manifest packaging/rvi.manifest 
 %defattr(-,root,root)
+%attr(644,app,users) /home/app/content/Documents/vin
 /usr/lib/systemd/system/rvi.service 
 /etc/systemd/system/multi-user.target.wants/rvi.service
 /opt/rvi-0.4.0
