@@ -138,21 +138,25 @@ The app is started for the first time and connects to the provisioning server.
 
 2. Device sends authenticate to server<br>
 The command contains the auth cert (device public key) and the single,
-pre-provisioned node certificate giving the device the right to invoke ```jlr.com/provisioning/setup```
-
+pre-provisioned node certificate giving the device the right to
+invoke ```jlr.com/provisioning/setup``` and the right to 
+register ```jlr.com/mobile/123456/dm/cert_provision```.<br>
+See [Device Management](#Device Management) for details
+                        
 3. Server sends authenticate to device<br>
 The server's auth cert (server public key) is sent, but no node
 certificates, thus giving the server no rights to register or invoke
 services with the device.
 
 4. Device sends a service announce to server<br>
-The command is empty (and can be omitted) since the device has no
-services to register.
+The command contains the single service ```jlr.com/mobile/123456/dm/cert_provision```,
+which can be invoked by the provisioning service to install a new
+certificate on the device.
 
 5. Server sends a service announce to device<br>
 The command contains the service ```jlr.com/provisioning/setup```.
 
-6. Device invokes ```jlr.com/provisioning/setup on server```<br>
+6. Device invokes ```jlr.com/provisioning/setup``` on server<br>
 The sole argument is the device ID, which is 1234.  The command is
 validated by the server through the pre-provisioned cert.
 
@@ -161,12 +165,24 @@ The created cert gives the holder the right to invoke ```jlr.com/vin/ABCD/unlock
 The certificate also gives the holder the right to register jlr.com/mobile/1234/status.<br>
 The certificate is signed by root cert and encrypted with device public key from step 2.<br>
 
-8. Side band transmission of node certificate to device<br>
-Server sends encrypted certificate to device through SMS or similar,
-using the device ID from step 4 as the destination address.
+8. Sideband token transmission from provisioning service to device<br>
+The provsioning server transmits a 128 bit random token to the device
+using a sideband channel such as SMS or similar.
 
-9. Devices receives, decrypts, and stores certificate<br>
-The device now has the certificate to present to the vehicle for lock/unlock.<br>
+10. Device invokes ```jlr.com/provisioning/request_certificate``` on server<br>
+The device provides its public key and the token received in step 9 as
+arguments to the call.
+
+11. Provisioning service invokes ```jlr.com/mobile/123456/dm/cert_provision```<br>
+The provisioning service invokes certificate provisioning service on
+the device, announced by the device to the service in step 4, to
+install the certificate created in step 7.
+
+12. Device unpacks and stores certificate<br>
+The device decrypts the certificate using its private key, validates
+the signature against a locally installed root certificate.
+
+
 
 
 #### Device authentication / authorization.<br>
