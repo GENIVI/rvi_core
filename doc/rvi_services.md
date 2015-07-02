@@ -141,7 +141,7 @@ The command contains the auth cert (device public key) and the single,
 pre-provisioned node certificate giving the device the right to
 invoke ```jlr.com/provisioning/setup``` and the right to 
 register ```jlr.com/mobile/123456/dm/cert_provision```.<br>
-See [Device Management](#Device Management) for details
+See [Device Management](#device-management) for details.
                         
 3. Server sends authenticate to device<br>
 The server's auth cert (server public key) is sent, but no node
@@ -192,17 +192,14 @@ Connection is done over bluetooth, with no Internet connection.
 
 2. Device sends authenticate to vehicle<br>
 The command contains the auth cert together with the received node
-certificate, proving that it has the right to invoke
- ```jlr.com/vin/ABCD/unlock```.<br>
+certificate, proving that it has the right to invoke  ```jlr.com/vin/ABCD/unlock```.
 It also proves that the device has the right to register
- ```jlr.com/mobile/1234/status```.
+<br> ```jlr.com/mobile/1234/status```.
 
 3. Vehicle sends authenticate to device<br>
 The server's auth cert (server public key) is sent, together with a
-pre-provisioned node certificate giving it the rights to register
- ```jlr.com/vin/ABCD/unlock```.<br>
-The certificate also gives the vehicle the right to invoke
- ```jlr.com/mobile/*/status```.
+pre-provisioned node certificate giving it the rights to register  ```jlr.com/vin/ABCD/unlock```.<br>
+The certificate also gives the vehicle the right to invoke ```jlr.com/mobile/*/status```.
 
 4. Device sends service announce to vehicle<br>
 The command contains ```jlr.com/mobile/1234/status```.<br>
