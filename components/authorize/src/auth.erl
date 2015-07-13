@@ -1,5 +1,5 @@
 %% -*- mode: erlang; indent-tabs-mode: nil; -*-
--module(author).
+-module(auth).
 
 -define(verbose(Fmt, Args), case verbose() of true ->
 				    io:fwrite(Fmt, Args);
