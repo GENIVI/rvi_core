@@ -22,9 +22,12 @@
 %%% Created :  9 Feb 2014 by Tony Rogvall <tony@rogvall.se>
 
 -module(wse_server).
+-include_lib("lager/include/log.hrl").
 
--export([start/0, start/1, start/2, stop/1]).
+-export([start/4, start/5,  stop/1]).
 -export([ws_loop/3]).
+-export([send/2]).
+-export([close/1]).
 
 -compile(export_all).
 
@@ -35,15 +38,7 @@
 -define(WS_OP_PING,   9).
 -define(WS_OP_PONG,   10).
 
--define(WSE_DEFAULT_PORT, 1234).
-
--record(event,
-	{
-	  iref,      %% global integer reference
-	  from,      %% [owner local reference | event owner pid]
-	  how=once,  %% once | all | none
-	  data       %% local data for events
-	}).
+-define(WSE_DEFAULT_PORT, 8808).
 
 -record(ws_header,
 	{
@@ -72,30 +67,21 @@
 	  fs   = [],            %% fragments
 	  wait = [],            %% #event
 	  header,               %% ws_header
-	  gc_table              %% ets table of objects
+	  cb = {undefined, undefined, undefined }
 	}).
 
 
--define(log(F,W,As),
-	io:format("~s:~w: " ++ (W)++" "++(F)++"\n", [?MODULE, ?LINE | (As)])).	
-%%-define(debug(F,As), ?log(F,"debug",As)).
--define(debug(F,A), ok).
--define(info(F,As),  ?log(F,"info", As)).
--define(warn(F,As),  ?log(F,"warn", As)).
--define(error(F,As), ?log(F,"error", As)).
 
 %% start()
 %%  This should be in another module for clarity
 %%  but is included here to make the example self-contained
 
-start() -> start_([]).
 
-start(Port) when is_integer(Port) -> 
-    start_([{port,Port}]);
-start([AtomPort]) when is_atom(AtomPort) ->
-    start(list_to_integer(atom_to_list(AtomPort))).
+start(Port, M, F, A) when is_integer(Port) -> 
+    start_([{cb, {M,F,A}}, {port,Port}]).
 
-start(Port,Opts) when is_integer(Port) -> start_([{port,Port}|Opts]).
+start(Port,M,F,A, Opts) when is_integer(Port) -> 
+    start_([{port,Port}, {cb, {M,F,A}}] ++ Opts).
 
 start_(Opts) -> spawn(fun() -> init(Opts) end).
 
@@ -118,6 +104,8 @@ init(Opts) ->
     process_flag(trap_exit, true),
     listen_loop(Listen,Opts).
 
+
+
 listen_loop(Listen,Opts) ->
     ?debug("Listen loop ~p\n", [Listen]),
     Parent = self(),
@@ -130,13 +118,13 @@ accept_loop(Listen,Opts,Pid) ->
 	{Pid,ok} ->
 	    ?MODULE:listen_loop(Listen,Opts);
 	{Pid,Error} ->
-	    ?warn("process ~p error: ~p\n", [Pid, Error]),
+	    ?warning("process ~p error: ~p\n", [Pid, Error]),
 	    ?MODULE:listen_loop(Listen,Opts);
 	{'EXIT',Pid,Reason} ->
-	    ?warn("process ~p crashed: ~p\n", [Pid, Reason]),
+	    ?warning("process ~p crashed: ~p\n", [Pid, Reason]),
 	    ?MODULE:listen_loop(Listen,Opts);
 	{'EXIT',OtherPid,Reason} ->
-	    ?warn("other process ~p crashed: ~p\n", [OtherPid, Reason]),
+	    ?debug("other process ~p exited: ~p\n", [OtherPid, Reason]),
 	    ?MODULE:accept_loop(Listen, Opts, Pid);
 	stop ->
 	    gen_tcp:close(Listen),
@@ -155,28 +143,40 @@ accept(Parent, Listen, Opts) ->
 	Error ->
 	    Parent ! {self(), Error}
     end.
-%%
-%% Simple BERT
-%%
-bert_encode(Term) ->
-    term_to_binary(Term).
 
-bert_decode(Bin) ->
-    binary_to_term(Bin).
+
+send(Pid, Data) ->
+    try 
+	Pid ! { send, Data },
+	ok
+    catch
+	error:Reason ->
+	    ?info("wse_server:send(~p) failed : ~s\n", [Pid, Reason]),
+	    {error, Reason}
+    end.
+
+
+close(Pid) ->
+    try 
+	Pid ! close,
+	ok
+    catch
+	_:_ -> %% Already closed
+	    ok
+    end.
+
 
 %%
 ws_encode(Term,?WS_OP_BINARY) ->
-    bert_encode(Term);
+    Term;
 ws_encode(Term,?WS_OP_TEXT) ->
-    base64:encode(bert_encode(Term)).
+    Term.
 
-ws_decode(Data,?WS_OP_BINARY) -> {mesg,bert_decode(Data)};
-ws_decode(Data,?WS_OP_TEXT) ->   {mesg,bert_decode(base64:decode(Data))};
-ws_decode(Data, ?WS_OP_PING) ->  {ping, Data};
-ws_decode(Data, ?WS_OP_PONG) ->  {pong,Data};
-ws_decode(Data, ?WS_OP_CLOSE) -> {close,Data}.
-
-
+ws_decode(Data, ?WS_OP_BINARY) -> {mesg, Data};
+ws_decode(Data, ?WS_OP_TEXT) ->   {mesg, Data};
+ws_decode(Data, ?WS_OP_PING) ->   {ping, Data};
+ws_decode(Data, ?WS_OP_PONG) ->   {pong, Data};
+ws_decode(Data, ?WS_OP_CLOSE) ->  {close,Data}.
 
 ws_handshake(Socket,Opts) ->
     receive
@@ -184,11 +184,11 @@ ws_handshake(Socket,Opts) ->
 	    ?debug("got ws request ~p", [_Req]),
 	    ws_handshake(Socket, Uri, Opts);
 	{http, _Socket, Req={http_request, _, _, _}} ->
-	    ?warn("reject ws request ~p", [Req]),
+	    ?warning("reject ws request ~p", [Req]),
 	    %% send error reply!
 	    ws_error({error, bad_request});
 	Any ->
-	    ?warn("reject ws data ~p", [Any]),
+	    ?warning("reject ws data ~p", [Any]),
 	    ws_error({error, no_data})
     end.
 
@@ -236,7 +236,7 @@ ws_handshake(Socket, _Uri, Opts) ->
 		     pingInterval=PingInterval,
 		     pongTimeout=PongTimeout,
 		     header = F,
-		     gc_table = ets:new(gc_table, [])
+		     cb = proplists:get_value(cb, Opts, {undefined, undefined, undefined})
 		    },
 	    S1 = start_ping_timer(S0),
 	    ws_loop(<<>>, Socket, S1);
@@ -278,40 +278,17 @@ ws_recv_headers(S, F, Timeout) ->
 	    {error, timeout}
     end.
 
-%%
-%% Reply on event
-%% if reply returns true then the event should stay
-%% otherwise the event should be deleted
-%%
-reply(E, Reply) ->
-    if E#event.how == none ->
-	    false;
-       true ->
-	    [Ref|Pid] = E#event.from,
-	    Pid ! {reply,Ref,Reply},
-	    E#event.how == all
-    end.
 
-
-next_ref(Ref) ->
-    Ref1 = (Ref+1) band 16#ffffffff,
-    if Ref1 == 0 ->
-	    1;
-       true ->
-	    Ref1
-    end.
 
 ws_loop(Buf, Socket, S) ->
     receive
 	%% WebSocket stuff
 	{tcp, Socket, Data} ->
-	    %% ?debug("tcp ~w: ~p", [Socket, Data]),
+	     ?debug("tcp ~w: ~p", [Socket, Data]),
 	    ws_data(Buf, Data, Socket, S);
 
 	{tcp_closed, Socket} ->
 	    ?debug("tcp_closed ~w", [Socket]),
-	    %% reply to all remaining callers
-	    lists:foreach(fun(E) -> reply(E, {error,closed}) end, S#s.wait),
 	    exit(closed);
 
 	{'EXIT',Pid,Reason} ->
@@ -323,24 +300,9 @@ ws_loop(Buf, Socket, S) ->
 		    ?debug("exit from ~w reason=~p\n", [Pid, Reason]),
 		    ws_loop(Buf, Socket, S)
 	    end;
-
-	{collect,ID} ->
-	    case ets:update_counter(S#s.gc_table, ID, -1) of
-		0 -> 
-		    ?debug("garbage collect: delete ~w\n", [ID]),
-		    IRef = S#s.iref,
-		    Data = ws_encode({async,IRef,{delete,ID}},S#s.type),
-		    gen_tcp:send(Socket,  ws_make_server_frame(Data,S#s.type)),
-		    S1 = S#s { iref=next_ref(IRef) },
-		    ets:delete(S#s.gc_table, ID),
-		    ws_loop(Buf, Socket, S1);
-		_I ->
-		    ?debug("garbage collect: ~w ref=~w\n", [ID,_I]),
-		    ws_loop(Buf, Socket, S)
-	    end;
 	
 	Message ->
-	    ?debug("handle_local: ~p", [Message]),
+	    ?debug("handle_local: ~p - ~p", [Message, S]),
 	    case handle_local(Message, Socket, S) of
 		{noreply,S1} ->
 		    ws_loop(Buf, Socket, S1);
@@ -351,21 +313,23 @@ ws_loop(Buf, Socket, S) ->
 	    end
     end.
 
+	
+
 ws_data(Buf, Data, Socket, S) ->
     case <<Buf/binary, Data/binary>> of
 	%% masked data
 	<<Fin:1,_Rsv:3,Op:4,1:1,126:7,L:16,M:4/binary,Frag:L/binary,Buf1/binary>> ->
-	    %% ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
+	    ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
 	    Frag1 = ws_mask(M, Frag),
 	    S1 = ws_fragment(Socket, Fin, Op, Frag1, S),
 	    ws_data(Buf1, <<>>, Socket, S1);
 	<<Fin:1,_Rsv:3,Op:4,1:1,127:7,L:64,M:4/binary,Frag:L/binary,Buf1/binary>> ->
-	    %% ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
+	    ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
 	    Frag1 = ws_mask(M, Frag),
 	    S1 = ws_fragment(Socket,Fin, Op, Frag1, S),
 	    ws_data(Buf1, <<>>, Socket, S1);
 	<<Fin:1,_Rsv:3,Op:4,1:1,L:7,M:4/binary,Frag:L/binary,Buf1/binary>> ->
-	    %% ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
+	     ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
 	    Frag1 = ws_mask(M, Frag),
 	    S1 = ws_fragment(Socket,Fin, Op, Frag1, S),
 	    ws_data(Buf1, <<>>, Socket, S1);
@@ -400,10 +364,11 @@ ws_mask(<<M:32>>, Frag) ->
 
 ws_fragment(Socket,1, Op, Frag, S) ->
     Payload = iolist_to_binary(lists:reverse([Frag|S#s.fs])),
-    %% ?debug("op=~w, unmasked payload = ~p", [ws_opcode(Op),Payload]),
+    ?debug("op=~w, unmasked payload = ~p", [ws_opcode(Op),Payload]),
     Message = ws_decode(Payload,Op),
     ?debug("handle_remote: ~p", [Message]),
     handle_remote(Message, Socket, S#s { fs=[] });
+
 ws_fragment(_Socket, 0, _Op, Frag, S) ->
     %% ?debug("collect fragment: Op=~w, Frag=~p", [_Op,Frag]),
     S#s { fs = [Frag|S#s.fs ]}.
@@ -441,62 +406,15 @@ ws_make_frame(Fin, Op, Mask, Data) ->
     end.
 
     
-handle_local({rsync,From,Request},Socket,S0) ->
-    IRef = S0#s.iref,
-    Data = ws_encode({rsync,IRef,Request},S0#s.type),
-    gen_tcp:send(Socket, ws_make_server_frame(Data,S0#s.type)),
-    Event = #event{iref=IRef,from=From},
-    Wait1 = [Event|S0#s.wait],
-    {noreply,S0#s { iref=next_ref(IRef), wait=Wait1 }};
-handle_local({nsync,From,Request},Socket,S0) ->
-    IRef = S0#s.iref,
-    Data = ws_encode({nsync,IRef,Request},S0#s.type),
-    gen_tcp:send(Socket,  ws_make_server_frame(Data,S0#s.type)),
-    Event = #event{iref=IRef,from=From,how=none},
-    Wait1 = [Event|S0#s.wait],
-    {noreply,S0#s { iref=next_ref(IRef), wait=Wait1 }};
-handle_local({async,_From,Request},Socket,S0) ->
-    IRef = S0#s.iref,
-    Data = ws_encode({async,IRef,Request},S0#s.type),
-    gen_tcp:send(Socket,  ws_make_server_frame(Data,S0#s.type)),
-    {noreply,S0#s { iref=next_ref(IRef) }};
-handle_local({dsync,From,Request},Socket,S0) ->
-    IRef = S0#s.iref,
-    Data = ws_encode({dsync,IRef,Request},S0#s.type),
-    gen_tcp:send(Socket, ws_make_server_frame(Data,S0#s.type)),
-    Event = #event{iref=IRef,from=From},
-    Wait1 = [Event|S0#s.wait],
-    {noreply,S0#s { iref=next_ref(IRef), wait=Wait1 }};
-handle_local({close,From,Reason},Socket,S0) ->
-    reply(#event { from=From} , ok),
-    lists:foreach(fun(E) -> reply(E, {error, closed}) end, S0#s.wait),
-    CloseData = if is_atom(Reason) -> atom_to_binary(Reason, latin1);
-		   true -> <<"unknown">>
-		end,
-    gen_tcp:send(Socket, ws_make_server_frame(CloseData,?WS_OP_CLOSE)),
-    {noreply,S0#s { closing=server }};
+handle_local({ send,Data},Socket,S0) ->
+    ?debug("wse_server:send(): ~p", [ Data]),
+    gen_tcp:send(Socket, ws_make_server_frame(Data, S0#s.type)),
+    { noreply,S0 };
 
-handle_local({create_event,From,How,Data},_Socket,S0) ->
-    IRef = S0#s.iref,
-    Event = #event { iref=IRef, from=From, how=How, data=Data},
-    Wait1 = [Event|S0#s.wait],
-    reply(Event, {ok, IRef}),
-    {noreply,S0#s { iref=next_ref(IRef), wait=Wait1 }};
-
-handle_local({header, From},_Socket,S0=#s{header = Header}) ->
-    ?debug("header: all\n", []),    
-    reply(#event {from=From}, {ok, Header#ws_header.hs}),
-    {noreply,S0};
-
-handle_local({header, ItemName, From},_Socket,S0=#s{header = Header}) ->
-    ?debug("header: ~p\n", [ItemName]),    
-    case lists:keyfind(ItemName, 1, Header#ws_header.hs) of
-	{ItemName, ItemValue} ->
-	    reply(#event {from=From}, {ok, ItemValue});
-	false ->
-	    reply(#event {from=From}, {error, unknown_header_item})
-    end,
-    {noreply,S0};
+handle_local(close,Socket,S0) ->
+    ?debug("wse_server:close()"),
+    gen_tcp:send(Socket, ws_make_server_frame(<<"unknown">>,?WS_OP_CLOSE)),
+    {noreply, S0#s { closing=server }};
 
 handle_local({timeout,Ref,ping},Socket,S0) when S0#s.ping_ref =:= Ref ->
     %% ping the browser!
@@ -512,7 +430,7 @@ handle_local({timeout,Ref,pong},_Socket,S0) when S0#s.pong_tmr =:= Ref ->
     {stop, not_responding};
 
 handle_local(Other,_Socket,S0) ->
-    ?warn("handle_local: got ~p~n",[Other]),
+    ?warning("handle_local: got ~p~n",[Other]),
     {noreply,S0}.
 
 %%
@@ -522,6 +440,7 @@ handle_remote({ping,Data}, Socket, S0) ->
     %% ?debug("got ping ~p, sending pong ~p", [Data]),
     gen_tcp:send(Socket, ws_make_server_frame(Data,?WS_OP_PONG)),
     S0;
+
 handle_remote({pong,Data}, _Socket, S0) ->
     if Data =:= S0#s.ping_data ->
 	    %% ?debug("got pong reply: ~p", [Data]),
@@ -531,6 +450,7 @@ handle_remote({pong,Data}, _Socket, S0) ->
 	    ?debug("got heartbeat pong: ~p", [Data]),
 	    S0
     end;
+
 handle_remote({close,Data}, Socket, S0) ->
     if S0#s.closing =:= server ->
 	    ?debug("got close ~p, both sides closed", [Data]),
@@ -541,127 +461,14 @@ handle_remote({close,Data}, Socket, S0) ->
 	    gen_tcp:send(Socket, ws_make_server_frame(Data,?WS_OP_CLOSE)),
 	    S0#s { closing = client }
     end;
-handle_remote({mesg, Mesg0}, Socket, S0) ->
-    Mesg = install_resource_objects(Mesg0, S0#s.gc_table),
-    handle_mesg(Mesg, Socket, S0).
 
-
-handle_mesg({reply,IRef,Reply}, _Socket, S0) ->
-    case lists:keytake(IRef, #event.iref, S0#s.wait) of
-	false ->
-	    ?debug("got reply ~w = ~w (ignored)\n", [IRef,Reply]),
-	    S0;
-	{value,Event,Wait1} ->
-	    ?debug("got reply ~w = ~w (~w)\n", [IRef,Reply,Event]),
-	    reply(Event, Reply),
-	    S0#s { wait=Wait1}
-    end;
-handle_mesg({noreply,IRef},_Socket,S0) ->
-    case lists:keytake(IRef, #event.iref, S0#s.wait) of
-	false ->
-	    S0;
-	{value,_Event,Wait1} ->
-	    S0#s { wait=Wait1}
-    end;
-handle_mesg({notify,IRef,RemoteData},_Socket,S0) ->
-    ?info("notify: ~w ~p\n", [IRef,RemoteData]),
-    case lists:keytake(IRef,#event.iref, S0#s.wait) of
-	false ->
-	    S0;
-	{value,E,Wait1} ->
-	    [_Ref|Pid] = E#event.from,
-	    Pid ! {notify,IRef,E#event.data,RemoteData},
-	    if E#event.how == all ->
-		    S0;
-	       true ->
-		    S0#s { wait=Wait1}
-	    end
-    end;
-handle_mesg({info,_Data},_Socket,S0) ->
-    ?debug("info: ~p\n", [_Data]),
-    S0;
-handle_mesg({start,M,F,As},_Socket,S0) ->
-    _Pid = spawn_link(M,F,[self()|As]),
-    ?debug("wse process ~w:~w/~w, started, pid=~p\n", [M,F,length(As),_Pid]),
-    S0;
-handle_mesg({register,Name},_Socket,S0) ->
-    ?debug("register ~p\n", [Name]),
-    try register(Name,self()) of
-	true -> S0
-    catch
-	error:Reason ->
-	    ?info("register of ~p failed : ~s\n", [Name, Reason]),
-	    S0
-    end;
-handle_mesg({unregister}, _Socket, S0) ->
-    case process_info(self(), registered_name) of
-	[] -> S0;
-	{registered_name,Name} ->
-	    ?debug("unregister ~p\n", [Name]),
-	    catch (unregister(Name)),
-	    S0
-    end;
-handle_mesg({call,IRef,M,F,As},Socket,S0) ->
-    %% maybe direct this to gen_server call on spawned processes?
-    try apply(M,F,As) of
-	Value ->
-	    Data = ws_encode({reply,IRef,{ok,Value}},S0#s.type),
-	    gen_tcp:send(Socket,  ws_make_server_frame(Data,S0#s.type)),
-	    S0
-    catch
-	error:Reason ->
-	    Data = ws_encode({reply,IRef,{error,Reason}},S0#s.type),
-	    gen_tcp:send(Socket,  ws_make_server_frame(Data,S0#s.type)),
-	    S0
-    end;
-handle_mesg({cast,_IRef,M,F,As},_Socket,S0) ->
-    %% maybe direct this to gen_server cast on spawned processes?
-    catch (apply(M,F,As)),
-    S0;
+handle_remote({mesg, Mesg}, _Socket, #s { cb = {M,F,A} } = S) ->
+    %% Parameters are delivered as JSON. Decode into tuple
+    _Pid = spawn_link(M,F,[self(), Mesg, A ]),
+    S.
 handle_mesg(_Other, _Socket, S0) ->
     ?debug("unknown mesg ~p\n", [_Other]),
     S0.
-
-%% 
-%% Transform a message sent from java script so that
-%% {object,N}   => {objec,N,resource()}
-%% {function,N} => {function,N,resource()}
-%%
-install_resource_objects(Message, GcTable) ->
-    install_(Message, GcTable).
-
-install_(X, _GcTable) when is_number(X) -> X;
-install_(X, _GcTable) when is_atom(X) -> X;
-install_(X, _GcTable) when is_binary(X) -> X;
-install_(X, GcTable) when is_list(X) ->
-    try erlang:io_list_size(X) of
-	_ -> X
-    catch
-	error:_ -> install_list_(X, [], GcTable)
-    end;
-install_({object,ID}, GcTable) when is_integer(ID) ->
-    ets:insert_new(GcTable, {ID,0}),
-    ets:update_counter(GcTable,ID,1),
-    %% _RID is not relly needed so we use ID instead! (still unique)
-    {resource,_RID,Ref} = resource:notify_when_destroyed(self(),
-							 {collect,ID}),
-    {object,ID,Ref};
-install_(X={object,_}, _GcTable) -> X;
-	
-install_(X, GcTable) when is_tuple(X) ->
-    install_tuple_(size(X), X, [], GcTable).
-
-install_tuple_(0, _X, Acc, _GcTable) -> 
-    list_to_tuple(Acc);
-install_tuple_(I, X, Acc, GcTable) ->
-    Y = install_(element(I,X), GcTable),
-    install_tuple_(I-1, X, [Y|Acc], GcTable).
-
-install_list_([], Acc, _GcTable) -> 
-    lists:reverse(Acc);
-install_list_([H|T], Acc, GcTable) ->
-    Y = install_(H, GcTable),
-    install_list_(T, [Y|Acc], GcTable).
 
 
 start_ping_timer(S0) ->

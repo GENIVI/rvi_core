@@ -31,7 +31,6 @@
 	 disconnect_data_link/2,
 	 send_data/5]).
 
-
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
 -include_lib("rvi_common/include/rvi_dlink.hrl").
@@ -408,23 +407,31 @@ handle_socket(FromPid, PeerBTAddr, PeerChannel, data,
 handle_socket(FromPid, SetupBTAddr, SetupChannel, closed, CompSpec) ->
     ?info("dlink_bt:closed(): SetupAddress:  {~p, ~p}", [ SetupBTAddr, SetupChannel ]),
 
-    NetworkAddress = SetupBTAddr  ++ "-" ++ integer_to_list(SetupChannel),
+    NetworkAddress = bt_address_to_string(SetupBTAddr)  ++ "-" ++ integer_to_list(SetupChannel),
 
     %% Get all service records associated with the given connection
     LostSvcNameList = get_services_by_connection(FromPid),
+    ?info("Will delete services: ~p~n", [ LostSvcNameList]),
 
     delete_connection(FromPid),
 
-    %% Check if this was our last connection supchanneling each given service.
+    %% Check if this was our last connection for each given service.
     lists:map(
       fun(SvcName) ->
 	      case get_connections_by_service(SvcName) of
 		  [] ->
+		      ?info("No connection"),
 		      service_discovery_rpc:
 			  unregister_services(CompSpec, 
 					      [SvcName], 
 					      ?MODULE);
-		  _ -> ok
+		  _ -> 
+		      ?info("connection"),
+		      service_discovery_rpc:
+			  unregister_services(CompSpec, 
+					      [SvcName], 
+					      ?MODULE)
+
 	      end
       end, LostSvcNameList),
 
@@ -444,6 +451,7 @@ handle_socket(FromPid, SetupBTAddr, SetupChannel, closed, CompSpec) ->
 				  BTAddr, Channel, CompSpec);
 	false -> ok
     end,
+
     ok;
 
 handle_socket(FromPid, SetupBTAddr, SetupChannel, connected, CompSpec) ->
