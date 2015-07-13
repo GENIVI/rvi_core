@@ -303,17 +303,9 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    false
     end;
 
-handle_socket(FromPid, IP, Port, data, 
-	      { service_announce, TransactionID, JWT } = _Data, [CompSpec]) ->
-    ?debug("dlink_tcp_rpc:handle_socket(~p,~p,~p,data,~p)~n",
-	   [FromPid, IP, Port, _Data]),
-    Conn = {RemoteIP, RemotePort} =
-	case connection_manager:find_connection_by_pid(FromPid) of
-	    {ok, IP1, Port1} ->
-		{IP1, Port1};
-	    not_found ->
-		{IP, Port}
-	end,
+handle_socket(FromPid, RemoteIP, RemotePort, data, 
+	      { service_announce, TransactionID, JWT }, [CompSpec]) ->
+    Conn = {RemoteIP, RemotePort},
     case authorize_rpc:validate_message(CompSpec, JWT, Conn) of
 	[ok, Msg] ->
 	    handle_availability_msg(
@@ -349,9 +341,8 @@ handle_socket(FromPid, IP, Port, data,
 handle_socket(_FromPid, SetupIP, SetupPort, data, 
 	      { receive_data, ProtocolMod, Data}, [CompSpec]) ->
 %%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
-    ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p} "
-	   "ProtocolMod = ~p~n", [ SetupIP, SetupPort, ProtocolMod ]),
-    ProtocolMod:receive_message(CompSpec, {SetupIP, SetupPort}, Data),
+    ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ProtocolMod:receive_message(CompSpec, Data),
     ok;
 
 
@@ -504,7 +495,7 @@ handle_rpc("setup_data_link", Args) ->
 
     {ok, [ {status, rvi_common:json_rpc_status(Res)} , { timeout, Timeout }]};
 
-handle_rpc("disconnect_data_link", Args) ->
+handle_rpc("disconenct_data_link", Args) ->
     { ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     [Res] = gen_server:call(?SERVER, { rvi, disconnect_data_link, [NetworkAddress]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
