@@ -21,11 +21,6 @@
 -export([authorize_local_message/2,
 	 authorize_remote_message/4]).
 
-%% for testing & development
--export([sign/1, sign_default_cert/0]).
--export([public_key/0, public_key_json/0,
-	 private_key/0]).
-
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
 
@@ -131,22 +126,6 @@ authorize_remote_message(CompSpec, Service, Signature, Certificate) ->
 		       [status], CompSpec).
 
 
-%% For testing while developing cert functionality
-sign(Term) ->
-    %% Use private key of authorize_rpc to make a JWT token
-    gen_server:call(?SERVER, {sign, Term}).
-
-sign_default_cert() ->
-    gen_server:call(?SERVER, sign_default_cert).
-
-public_key() ->
-    gen_server:call(?SERVER, public_key).
-
-public_key_json() ->
-    gen_server:call(?SERVER, public_key_json).
-
-private_key() ->
-    gen_server:call(?SERVER, private_key).
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
@@ -188,21 +167,6 @@ handle_call({rvi, authorize_remote_message,
 
     %% FIXME: Implement
     {reply, [ ok ], State};
-
-handle_call({sign, Term}, _From, #st{private_key = Key} = State) ->
-    {reply, authorize_sig:encode_jwt(Term, Key), State};
-
-handle_call(sign_default_cert, _From, #st{private_key = Key} = State) ->
-    {reply, authorize_sig:encode_jwt(get_certificate_body(default), Key), State};
-
-handle_call(public_key, _From, #st{public_key = Key} = State) ->
-    {reply, Key, State};
-
-handle_call(public_key_json, _From, #st{public_key = Key} = State) ->
-    {reply, authorize_keys:public_key_to_json(Key), State};
-
-handle_call(private_key, _From, #st{private_key = Key} = State) ->
-    {reply, Key, State};
 
 handle_call(Other, _From, State) ->
     ?warning("authorize_rpc:handle_call(~p): unknown", [ Other ]),
