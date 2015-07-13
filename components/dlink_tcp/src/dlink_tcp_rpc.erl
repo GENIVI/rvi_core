@@ -110,7 +110,7 @@ start_connection_manager() ->
     case listener:add_listener(Pid, IP, Port, CompSpec) of
 	ok ->
 	    ?notice("---- RVI Node External Address: ~s", 
-		    [ application:get_env(rvi_core, node_address, undefined)]);
+		    [ application:get_env(rvi, node_address, undefined)]);
 
 	Err -> 	
 	    ?error("dlink_tcp:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
