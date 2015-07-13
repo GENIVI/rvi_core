@@ -37,10 +37,9 @@
 -include_lib("rvi_common/include/rvi_dlink.hrl").
 
 -define(PERSISTENT_CONNECTIONS, persistent_connections).
--define(SERVER_OPTS, server_opts).
--define(DEFAULT_TCP_PORT, 9999).
+-define(DEFAULT_BERT_RPC_PORT, 9999).
 -define(DEFAULT_RECONNECT_INTERVAL, 5000).
--define(DEFAULT_TCP_ADDRESS, "0.0.0.0").
+-define(DEFAULT_BERT_RPC_ADDRESS, "0.0.0.0").
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
 -define(SERVER, ?MODULE).
 -define(DLINK_TCP_VERSION, "1.0").
@@ -94,11 +93,11 @@ start_connection_manager() ->
     CompSpec = rvi_common:get_component_specification(),
     {ok, BertOpts } = rvi_common:get_module_config(data_link, 
 						   ?MODULE, 
-						   ?SERVER_OPTS, 
+						   server_opts, 
 						   [], 
 						   CompSpec),
-    IP = proplists:get_value(ip, BertOpts, ?DEFAULT_TCP_ADDRESS),
-    Port = proplists:get_value(port, BertOpts, ?DEFAULT_TCP_PORT),
+    IP = proplists:get_value(ip, BertOpts, ?DEFAULT_BERT_RPC_ADDRESS),
+    Port = proplists:get_value(port, BertOpts, ?DEFAULT_BERT_RPC_PORT),
     
     ?info("dlink_tcp:init_rvi_component(~p): Starting listener.", [self()]),
 
@@ -529,7 +528,7 @@ handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     %% Create a timer to handle periodic pings.
     {ok, ServerOpts } = rvi_common:get_module_config(data_link, 
 						     ?MODULE,
-						     ?SERVER_OPTS, [], 
+						     bert_rpc_server, [], 
 						     St#st.cs),
     Timeout = proplists:get_value(ping_interval, ServerOpts, ?DEFAULT_PING_INTERVAL),
 
