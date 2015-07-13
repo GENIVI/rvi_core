@@ -10,7 +10,7 @@
 # Makefile for the RVI node.
 # 
 
-.PHONY:	all deps compile clean rpm rpmclean test
+.PHONY:	all deps compile clean rpm rpmclean
 
 
 VERSION=0.4.0
@@ -38,9 +38,6 @@ rpmclean:
 		./rpm/RPMS/* \
 		./rpm/SOURCES/* \
 		./rpm/SRPMS/*
-
-test: compile
-	rebar ct
 
 # Create a SOURCES tarball for RPM
 rpm_tarball: rpmclean clean
