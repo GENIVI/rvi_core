@@ -230,7 +230,7 @@ handle_call( { rvi, schedule_message,
     %% Queue the message
     {_, NSt2 }= queue_message(SvcName, 
 			      TransID, 
-			      rvi_routing:get_service_routes(SvcName), %% Can be [] (no route)
+			      rvi_routing:get_service_routes(SvcName), %% Can be no_route
 			      Timeout, 
 			      Parameters, 
 			      Signature, 
@@ -484,27 +484,28 @@ queue_message(SvcName,
     %% Once up, the data link will invoke service_availble()
     %% to indicate that the service is available for the given DL.
     %% 
-    Msg = #message {
-	     transaction_id = TransID, 
-	     service = SvcName,
-	     timeout = Timeout,
-	     data_link = { DLMod, DLOpt },
-	     protocol = { ProtoMod, ProtoOpt },
-	     routes =  RemainingRoutes,
-	     timeout_tref = 0,
-	     parameters = Parameters, 
-	     signature = Signature,
-	     certificate = Certificate
-	    }, 
-    
     case DLMod:setup_data_link(St#st.cs, SvcName, DLOpt) of
 	[ ok, DLTimeout ] ->
 
 	    TOut = select_timeout(calc_relative_tout(Timeout), DLTimeout),
 	    ?debug("sched:q(~p:~s): ~p seconds to compe up.", 
-		   [ DLMod, SvcName, TOut / 1000.0]),
+		   [ DLMod, SvcName, TOut / 1000.0]),         
 
-	    store_message(SvcRec, DLMod, Msg, TOut),
+	    store_message(SvcRec,
+			  DLMod,
+			  #message {
+			     transaction_id = TransID, 
+			     service = SvcName,
+			     timeout = Timeout,
+			     data_link = { DLMod, DLOpt },
+			     protocol = { ProtoMod, ProtoOpt },
+			     routes =  RemainingRoutes,
+			     timeout_tref = 0,
+			     parameters = Parameters, 
+			     signature = Signature,
+			     certificate = Certificate
+			    }, 
+			  TOut),
 	    {ok, St};
 
 	[ already_connected, _] ->
@@ -514,7 +515,20 @@ queue_message(SvcName,
 
 	    %% Will re-queue message if cannot send.
 	    { _, NSt } = 
-		send_message(DLMod, DLOpt, ProtoMod, ProtoOpt, Msg, St),
+		send_message(DLMod, DLOpt,
+			     ProtoMod, ProtoOpt,
+			     #message {
+				transaction_id = TransID, 
+				timeout = Timeout,
+				service = SvcName,
+				data_link = { DLMod, DLOpt },
+				protocol = { ProtoMod, ProtoOpt },
+				routes =  RemainingRoutes,
+				timeout_tref = 0,
+				parameters = Parameters, 
+				signature = Signature,
+				certificate = Certificate
+			       }, St),
 	    { ok, NSt };
 
 
