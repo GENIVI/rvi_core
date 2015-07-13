@@ -156,7 +156,8 @@ class RVI(SimpleJSONRPCServer):
     # Redefined shutdown method that first unregisters all services.
     #
     def shutdown(self):
-        for svc in self.registered_services.keys():
+        shutdown_list = self.registered_services.keys()
+        for svc in shutdown_list:
             self.unregister_service(svc)
 
         SimpleJSONRPCServer.shutdown(self)

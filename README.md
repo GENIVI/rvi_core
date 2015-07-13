@@ -3,7 +3,7 @@ Copyright (C) 2014-2015 Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-# REMOTE VEHICLE INTERACTION (RVI) 0.3 #
+# REMOTE VEHICLE INTERACTION (RVI) 0.4 #
 
 This document gives a brief introduction to the codebase of the RVI
 project and explains the reasoning behind some of the technical
@@ -29,7 +29,7 @@ The RVI mailing list is available at:
 [AGL](http://lists.linuxfoundation.org/mailman/listinfo/automotive-eg-rvi)
 
 The RVI wiki is available at:  
-[AGL](https://wiki2.automotivelinux.org/eg-rvi/)
+[AGL](https://wiki.automotivelinux.org/eg-rvi/)
 
 
 # PROJECT MISSION STATEMENT #

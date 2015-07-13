@@ -19,6 +19,7 @@
 -behaviour(gen_server).
 -include_lib("lager/include/log.hrl").
 
+
 %% API
 
 %% gen_server callbacks
@@ -43,7 +44,7 @@
 	  mod = undefined,
 	  func = undefined,
 	  args = undefined,
-	  buffer = undefined
+	  pst = undefined %%  Payload state
 	 }).
 
 %%%===================================================================
@@ -139,7 +140,7 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
 	    mod = Mod,
 	    func = Fun,
 	    args = Arg,
-	    buffer = undefined
+	    pst = undefined
 	   }}.
 
 
@@ -225,23 +226,24 @@ handle_info({tcp, Sock, Data},
 		  mod = Mod,
 		  func = Fun,
 		  args = Arg,
-		  buffer = Buffer} = State) ->
+		  pst = PST} = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
 
-    case count_brackets(Data, Buffer) of
-	{ incomplete, NBuffer } ->
-	    ?debug("~p:handle_info(data incomplete): Data: ~p", [ ?MODULE, Data]),
+    case rvi_common:extract_json(Data, PST) of
+	{ [], NPST } ->
+	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
 	    inet:setopts(Sock, [{active, once}]),
-	    {noreply, State#st { buffer = NBuffer} };
+	    {noreply, State#st { pst = NPST} };
 
-	{complete, Processed, NBuffer } ->
-	    ?debug("~p:handle_info(data complete): Data: ~p", [ ?MODULE, Data]),
+	{ JSONElements, NPST } ->
+	    ?debug("~p:handle_info(data complete): Processed: ~p", [ ?MODULE, JSONElements]),
 	    FromPid = self(),
-	    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
-				   data, Processed, Arg) end),
+	    spawn(fun() -> [ Mod:Fun(FromPid, IP, Port, 
+				     data, SingleElem, Arg) || SingleElem <- JSONElements ]
+		  end),
 	    inet:setopts(Sock, [ { active, once } ]),
-	    {noreply, State#st { buffer = NBuffer} }
+	    {noreply, State#st { pst = NPST} }
     end;
 
 
@@ -305,29 +307,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-count_brackets([${ | Rem], { Processed, start} ) ->
-    count_brackets(Rem,  { [ ${ | Processed ], 1});
-
-%% Drop any initial characters prior to opening bracket
-count_brackets([_ | Rem], { Processed, start }) ->
-    count_brackets(Rem, { Processed, start });
-
-count_brackets(Rem, { Processed, 0 }) ->
-    { complete,  lists:reverse(Processed), {Rem, start} };
-
-count_brackets([], { Processed, Count }) ->
-    { incomplete,  { Processed, Count } };
-
-count_brackets([${ | Rem], {Processed, Count}) ->
-    count_brackets(Rem, {[ ${ | Processed ], Count + 1});
-
-count_brackets([$} | Rem], {Processed, Count}) ->
-    count_brackets(Rem, {[ $} | Processed ], Count - 1});
-
-count_brackets([C | Rem], {Processed, Count}) ->
-    count_brackets(Rem, {[ C | Processed ], Count});
-
-count_brackets(New, undefined) ->
-    count_brackets(New, { [], start}).
-    
