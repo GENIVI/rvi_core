@@ -365,7 +365,7 @@ handle_call({ rvi, handle_local_message,
     [ok, Signature ] = 
 	authorize_rpc:authorize_local_message(
 	  St#st.cs, SvcName, [{service_name, SvcName},
-			      {timeout, TimeoutArg},
+			      {timeout, Timeout},
 			      {parameters, Parameters}]),
 
     %%
