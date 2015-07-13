@@ -26,6 +26,7 @@
 
 alias realpath="python -c 'import os, sys; print os.path.realpath(sys.argv[1])'"
 SELF_DIR=$(dirname $(realpath "$0"))
+TOP_DIR=$(dirname $SELF_DIR)
 
 SETUP_GEN=$SELF_DIR/setup_gen  # Ulf's kitchen sink setup utility
 
@@ -93,36 +94,42 @@ if [ -z "${CONFIG_NAME}" ] ; then
 fi
 
 
-export ERL_LIBS=$PWD/components:$PWD/deps:$ERL_LIBS:$PWD 
+export ERL_LIBS=$TOP_DIR/components:$TOP_DIR/deps:
+echo "ERL_LIBS=$ERL_LIBS"
 echo  "Setting up node $NODE_NAME."
 rm -rf $NODE_NAME
-$SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME
-
-if [ "${build_type}" = "dev" ]
+setupres=$( $SETUP_GEN $NODE_NAME $CONFIG_NAME $NODE_NAME -pa $TOP_DIR/ebin )
+if [ -z "${setupres}" ]
 then
-    echo "RVI Node $NODE_NAME has been setup."
-    echo "Launch with $SELF_DIR/rvi_node.sh -n $NODE_NAME"
-    exit
-else
-    echo "Building stand alone release for $NODE_NAME"
-    # Copy the newly created config file.
-    rm -rf rel/$NODE_NAME
-    cp $NODE_NAME/sys.config rel/files/sys.config
-    ./rebar generate 
-    # Rename the release after the node name
-    mv rel/rvi_core rel/$NODE_NAME
-    echo "Stand alone release for $NODE_NAME created under project "
-    echo "root directory's ./rel/$NODE_NAME."
-    echo
-    echo "Start:              ./rel/$NODE_NAME/bin/rvi start"
-    echo "Attach console:     ./rel/$NODE_NAME/bin/rvi attach"
-    echo "Stop:               ./rel/$NODE_NAME/bin/rvi stop"
-    echo "Start console mode: ./rel/$NODE_NAME/bin/rvi console"
-    echo 
-    echo "Start dev mode:     ./rvi_node.sh -n $NODE_NAME"
-    echo 
-    echo "./rel/$NODE_NAME can be copied and installed on its destination host."
 
+    if [ "${build_type}" = "dev" ]
+    then
+	echo "RVI Node $NODE_NAME has been setup."
+	echo "Launch with $SELF_DIR/rvi_node.sh -n $NODE_NAME"
+	exit
+    else
+	echo "Building stand alone release for $NODE_NAME"
+	# Copy the newly created config file.
+	rm -rf rel/$NODE_NAME
+	cp $NODE_NAME/sys.config rel/files/sys.config
+	./rebar generate 
+	# Rename the release after the node name
+	mv rel/rvi_core rel/$NODE_NAME
+	echo "Stand alone release for $NODE_NAME created under project "
+	echo "root directory's ./rel/$NODE_NAME."
+	echo
+	echo "Start:              ./rel/$NODE_NAME/bin/rvi start"
+	echo "Attach console:     ./rel/$NODE_NAME/bin/rvi attach"
+	echo "Stop:               ./rel/$NODE_NAME/bin/rvi stop"
+	echo "Start console mode: ./rel/$NODE_NAME/bin/rvi console"
+	echo 
+	echo "Start dev mode:     ./rvi_node.sh -n $NODE_NAME"
+	echo 
+	echo "./rel/$NODE_NAME can be copied and installed on its destination host."
+    fi
+else
+    >&2 echo $setupres
+    exit 1
 fi
 
 exit 0
