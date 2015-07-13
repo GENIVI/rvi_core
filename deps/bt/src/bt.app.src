@@ -1,0 +1,11 @@
+
+{application, bt,
+ [{description, "Bluetooth driver"},
+  {vsn, git},
+  {registered, [bt_drv]},
+  {mod,{bt_app,[]}},
+  {env, []},
+  {applications,[kernel,stdlib]}
+  ]}.
+
+  

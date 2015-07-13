@@ -241,8 +241,6 @@ handle_cast({rvi, register_services, [Services, DataLinkModule] }, St) ->
 		       available, 
 		       Services, 
 		       DataLinkModule),
-
-
     {noreply, St };
 
 
@@ -280,7 +278,7 @@ code_change(_OldVsn, St, _Extra) ->
 
 
 register_single_service_(Service, DataLinkModule) ->
-    ?info("svc_disc:register_remote_service_(~p:~p)", 
+    ?info("svc_disc:register_single_service_(~p:~p)", 
 	  [DataLinkModule,Service]),
 
     %% Delete any previous instances of the given entry, in case
@@ -370,24 +368,25 @@ get_services_by_module_(Module) ->
 
 
 
-send_notification(_CompSpec, '$end_of_table', _SubsFun,
-		  _DataLinkModule, _Services) ->
+notify_single_subscriber(_CompSpec, '$end_of_table', _SubsFun,
+			 _DataLinkModule, _Services) ->
     ok;
 
-send_notification(CompSpec, SubsModule, SubsFun, 
-		  DataLinkModule, Services) ->
+notify_single_subscriber(CompSpec, SubsModule, SubsFun, 
+			 DataLinkModule, Services) ->
 
     %% Invoke subscriber for each service that has been updated.
-    ?debug("notify_subscribers(~p:~p) ~p:~p()", [ DataLinkModule, Services, SubsModule, SubsFun]),
+    ?debug("notify_single_subscriber(~p:~p) ~p:~p()", 
+	   [SubsModule, SubsFun, DataLinkModule, Services ]),
     [ SubsModule:SubsFun(CompSpec, SvcName, DataLinkModule) || SvcName <- Services],
 
     %% Move on to the next subscribing module
-    send_notification(CompSpec, 
-		      ets:next(?SUBSCRIBER_TABLE, SubsModule), SubsFun,
-		      DataLinkModule, Services).
-    
+    notify_single_subscriber(CompSpec, 
+			     ets:next(?SUBSCRIBER_TABLE, SubsModule), SubsFun,
+			     DataLinkModule, Services).
+
 notify_subscribers(CompSpec, Available, Services, DataLinkModule) -> 
-    
+
     ?debug("notify_subscribers(~p:~p) ~p", [ DataLinkModule, Services, Available]),
 
     %% Figure out the function to invoke
@@ -397,11 +396,11 @@ notify_subscribers(CompSpec, Available, Services, DataLinkModule) ->
 	  end,
 
     %% Initiate with the first module
-    send_notification(CompSpec, 
-		      ets:first(?SUBSCRIBER_TABLE), 
-		      Fun, 
-		      DataLinkModule, 
-		      Services).
+    notify_single_subscriber(CompSpec, 
+			     ets:first(?SUBSCRIBER_TABLE), 
+			     Fun, 
+			     DataLinkModule, 
+			     Services).
 
 
 

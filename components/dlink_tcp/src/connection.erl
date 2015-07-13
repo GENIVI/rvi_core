@@ -42,7 +42,8 @@
 	  sock = undefined,
 	  mod = undefined,
 	  func = undefined,
-	  args = undefined
+	  args = undefined,
+	  buffer = undefined
 	 }).
 
 %%%===================================================================
@@ -54,6 +55,7 @@ setup(IP, Port, Sock, Mod, Fun, Arg) ->
     case gen_server:start_link(connection, {IP, Port, Sock, Mod, Fun, Arg},[]) of
 	{ ok, GenSrvPid } = Res ->
 	    gen_tcp:controlling_process(Sock, GenSrvPid),
+	    gen_server:cast(GenSrvPid, {activate_socket, Sock}),
 	    Res;
 
 	Err ->
@@ -62,7 +64,7 @@ setup(IP, Port, Sock, Mod, Fun, Arg) ->
 
 send(Pid, Data) when is_pid(Pid) ->
     gen_server:cast(Pid, {send, Data}).
-    
+
 send(IP, Port, Data) ->
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ok, Pid} ->
@@ -77,7 +79,7 @@ send(IP, Port, Data) ->
 
 terminate_connection(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, terminate_connection).
-    
+
 terminate_connection(IP, Port) ->
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ok, Pid} ->
@@ -98,7 +100,7 @@ is_connection_up(IP, Port) ->
 	_Err -> 
 	    false
     end.
-    
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -129,7 +131,6 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
     ?debug("connection:init(): Module:   ~p", [Mod]),
     ?debug("connection:init(): Function: ~p", [Fun]),
     ?debug("connection:init(): Arg:      ~p", [Arg]),
-    inet:setopts(Sock, [{active, once}]),
     %% Grab socket control
     {ok, #st{
 	    ip = IP,
@@ -137,7 +138,8 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
 	    sock = Sock,
 	    mod = Mod,
 	    func = Fun,
-	    args = Arg
+	    args = Arg,
+	    buffer = undefined
 	   }}.
 
 
@@ -159,7 +161,7 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
 
 handle_call(terminate_connection, _From,  St) ->
     ?debug("~p:handle_call(terminate_connection): Terminating: ~p", 
-	     [ ?MODULE, {St#st.ip, St#st.port}]),
+	   [ ?MODULE, {St#st.ip, St#st.port}]),
 
     {stop, Reason, NSt} = handle_info({tcp_closed, St#st.sock}, St),
     {stop, Reason, ok, NSt};
@@ -181,11 +183,17 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({send, Data},  St) ->
     ?debug("~p:handle_call(send): Sending: ~p", 
-	     [ ?MODULE, Data]),
+	   [ ?MODULE, Data]),
 
-    gen_tcp:send(St#st.sock, term_to_binary(Data)),
+    gen_tcp:send(St#st.sock, Data),
 
     {noreply, St};
+
+handle_cast({activate_socket, Sock}, State) ->
+    Res = inet:setopts(Sock, [{active, once}]),
+    ?debug("connection:activate_socket(): ~p", [Res]),
+    {noreply, State};
+    
 
 handle_cast(_Msg, State) ->
     ?warning("~p:handle_cast(): Unknown call: ~p", [ ?MODULE, _Msg]),
@@ -207,6 +215,7 @@ handle_info({tcp, Sock, Data},
 	    #st { ip = undefined } = St) ->
     {ok, {IP, Port}} = inet:peername(Sock),
     NSt = St#st { ip = inet_parse:ntoa(IP), port = Port },
+    ?warning("YESSSS"),
     handle_info({tcp, Sock, Data}, NSt);
  
 
@@ -215,24 +224,26 @@ handle_info({tcp, Sock, Data},
 		  port = Port,
 		  mod = Mod,
 		  func = Fun,
-		  args = Arg } = State) ->
+		  args = Arg,
+		  buffer = Buffer} = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
 
-    try binary_to_term(Data) of
-	Term ->
-	    ?debug("~p:handle_info(data): Term: ~p", [ ?MODULE, Term]),
+    case count_brackets(Data, Buffer) of
+	{ incomplete, NBuffer } ->
+	    ?debug("~p:handle_info(data incomplete): Data: ~p", [ ?MODULE, Data]),
+	    inet:setopts(Sock, [{active, once}]),
+	    {noreply, State#st { buffer = NBuffer} };
+
+	{complete, Processed, NBuffer } ->
+	    ?debug("~p:handle_info(data complete): Data: ~p", [ ?MODULE, Data]),
 	    FromPid = self(),
 	    spawn(fun() -> Mod:Fun(FromPid, IP, Port, 
-				   data, Term, Arg) end)
-    catch
-	_:_ ->
-	    ?warning("~p:handle_info(data): Data could not be decoded: ~pp", 
-		     [ ?MODULE, Data])
+				   data, Processed, Arg) end),
+	    inet:setopts(Sock, [ { active, once } ]),
+	    {noreply, State#st { buffer = NBuffer} }
+    end;
 
-    end,
-    inet:setopts(Sock, [{active, once}]),
-    {noreply, State};
 
 
 handle_info({tcp_closed, Sock}, 
@@ -294,3 +305,29 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+count_brackets([${ | Rem], { Processed, start} ) ->
+    count_brackets(Rem,  { [ ${ | Processed ], 1});
+
+%% Drop any initial characters prior to opening bracket
+count_brackets([_ | Rem], { Processed, start }) ->
+    count_brackets(Rem, { Processed, start });
+
+count_brackets(Rem, { Processed, 0 }) ->
+    { complete,  lists:reverse(Processed), {Rem, start} };
+
+count_brackets([], { Processed, Count }) ->
+    { incomplete,  { Processed, Count } };
+
+count_brackets([${ | Rem], {Processed, Count}) ->
+    count_brackets(Rem, {[ ${ | Processed ], Count + 1});
+
+count_brackets([$} | Rem], {Processed, Count}) ->
+    count_brackets(Rem, {[ $} | Processed ], Count - 1});
+
+count_brackets([C | Rem], {Processed, Count}) ->
+    count_brackets(Rem, {[ C | Processed ], Count});
+
+count_brackets(New, undefined) ->
+    count_brackets(New, { [], start}).
+    

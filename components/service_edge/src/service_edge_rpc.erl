@@ -194,6 +194,7 @@ wse_message(Ws, SvcName, Timeout, JSONParameters) ->
     [ Res, TID ] = gen_server:call(?SERVER, { rvi, handle_local_message, 
 					      [ SvcName, Timeout, Parameters]}),
 
+    ?debug("service_edge_rpc:wse_message(~p) Res:      ~p", [ Ws, Res ]),
     { ok, [ { status, rvi_common:json_rpc_status(Res) }, 
 	    { transaction_id, TID} ] }.
 
@@ -348,9 +349,9 @@ handle_call({rvi, get_available_services, []}, _From, St) ->
     {reply, service_discovery_rpc:get_all_services(St#st.cs), St};
 
 handle_call({ rvi, handle_local_message, 
-	      [SvcName, Timeout, Parameters] }, _From, St) ->
+	      [SvcName, TimeoutArg, Parameters] }, _From, St) ->
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [SvcName]),
-    ?debug("service_edge_rpc:local_msg: timeout:         ~p", [Timeout]),
+    ?debug("service_edge_rpc:local_msg: timeout:         ~p", [TimeoutArg]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
 
     %%
@@ -361,6 +362,28 @@ handle_call({ rvi, handle_local_message,
     [ok, Certificate, Signature ] = 
 	authorize_rpc:authorize_local_message(St#st.cs, SvcName),
     
+    %%
+    %% Slick but ugly.
+    %% If the timeout is more than 24 hrs old when parsed as unix time,
+    %% then we are looking at a relative msec timeout. Convert accordingly
+    %%
+    { Mega, Sec, _Micro } = now(),
+    Now = Mega * 1000000 + Sec,
+
+    
+    Timeout = 
+	case TimeoutArg - Now < -86400 of
+	    true -> %% Relative timeout arg. Convert to unix time msec
+		?debug("service_edge_rpc:local_msg(): Timeout ~p is relative.", 
+		       [TimeoutArg]),
+		(Now * 1000) + TimeoutArg;
+
+	    false -> %% Absolute timoeut. Convert to unix time msec
+		TimeoutArg * 1000
+	end,
+	    
+	    
+
     
     %%
     %% Check if this is a local service by trying to resolve its service name. 
@@ -393,6 +416,7 @@ handle_call(Other, _From, St) ->
     { reply, [ invalid_command ], St}.
 
 
+		      
 handle_cast({rvi, service_available, [SvcName, _DataLinkModule] }, St) ->
     announce_service_availability(available, SvcName),
     { noreply, St };
@@ -401,6 +425,7 @@ handle_cast({rvi, service_available, [SvcName, _DataLinkModule] }, St) ->
 handle_cast({rvi, service_unavailable, [SvcName, _DataLinkModule] }, St) ->
     announce_service_availability(unavailable, SvcName),
     { noreply, St };
+
 
 		      
 handle_cast({rvi, handle_remote_message, 
@@ -503,36 +528,40 @@ flatten_ws_args(Args) ->
 
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_available, 
-			  [{ services, Services}] ) ->
-    ?info("service_edge:dispatch_to_local_service(service_available, websock): ~p", [ Services]),
+			  {struct, [{ services, { array, Services}}]} ) ->
+    ?info("service_edge:dispatch_to_local_service(service_available, websock, ~p): ~p", 
+	  [ WSPidStr,  Services]),
     wse:call(list_to_pid(WSPidStr), wse:window(),
 	     "services_available", 
 	     [ "services", Services ]),
     ok;
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable, 
-			  [{ services, Services}] ) ->
-    ?info("service_edge:dispatch_to_local_service(service_unavailable, websock): ~p", [ Services]),
+			  {struct, [{ services, { array, Services}}]} ) ->
+    ?info("service_edge:dispatch_to_local_service(service_unavailable, websock, ~p): ~p", 
+	  [ WSPidStr, Services]),
+
     wse:call(list_to_pid(WSPidStr), wse:window(),
 	     "services_unavailable", 
 	     [ "services", Services ]),
     ok;
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, 
-			 [{ service_name, SvcName}, { parameters, Args}] ) ->
+			 {struct, [{ service_name, SvcName}, { parameters, Args}]} ) ->
     ?info("service_edge:dispatch_to_local_service(message, websock): ~p", [Args]),
     wse:call(list_to_pid(WSPidStr), wse:window(),
 	     "message", 
 	     [ "service_name", SvcName ] ++ flatten_ws_args(Args)),
+    ?debug("service_edge:dispatch_to_local_service(message, websock): Done", []),
     ok;
 
 %% Dispatch to regular JSON-RPC over HTTP.
 dispatch_to_local_service(URL, Command, Args) ->
     CmdStr = atom_to_list(Command),
-    Res = rvi_common:send_json_request(URL, CmdStr, Args),
     ?debug("dispatch_to_local_service():  Command:         ~p",[ CmdStr]),
     ?debug("dispatch_to_local_service():  Args:            ~p",[ Args]),
     ?debug("dispatch_to_local_service():  URL:             ~p",[ URL]),
+    Res = rvi_common:send_json_request(URL, CmdStr, Args),
     ?debug("dispatch_to_local_service():  Result:          ~p",[ Res]),
     Res.
 
@@ -585,21 +614,37 @@ announce_service_availability(Available, SvcName) ->
 	      unavailable -> services_unavailable
 	  end,
 
+    %% See if we the service is already registered as a local
+    %% service. If so, make sure that we don't send a service
+    %% available to the URL tha originated the newly registered service.
+    %%
+    %% We also want to make sure that we don't send the notification
+    %% to a local service more than once. 
+    %% We will build up a list of blocked URLs not to resend to
+    %% as we go along
+    BlockURLs = case ets:lookup(?SERVICE_TABLE, SvcName)  of
+		   [ #service_entry { url = URL } ]  -> [URL];
+		   [] -> []
+	       end,
+			     
+
     ets:foldl(
       %% Notify if this is not the originating service.
-      fun(#service_entry { 
-	     service = ServiceEntry,
-	     url = URL }, _Acc) when 
-		ServiceEntry =/= SvcName ->
+      fun(#service_entry { url = URL }, Acc) ->
+	      %% If the URL is not on the blackout
+	      %% list, send a notification
+	      case lists:member(URL, Acc) of 
+		  false ->
+		      dispatch_to_local_service(URL, Cmd, 
+						{struct, [ { services, 
+							     { array, [SvcName]}
+							   }
+							 ]}),
+		      %% Add the current URL to the blackout list
+		      [URL | Acc]; 
 
-	      dispatch_to_local_service(URL, Cmd, 
-					{struct, [ { services, 
-						     { array, [SvcName]}
-						   }
-						 ]}),
-	      [];
-
-	 %% This is the originating service regsitering itself. Ignore.
-	 (_, _) -> []
-
-      end, [], ?SERVICE_TABLE).
+		  %% URL is on blackout list
+		  true -> 
+		      Acc
+	      end
+      end, BlockURLs, ?SERVICE_TABLE).

@@ -31,9 +31,9 @@
 	 disconnect_data_link/2,
 	 send_data/5]).
 
-
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
+-include_lib("rvi_common/include/rvi_dlink.hrl").
 
 -define(PERSISTENT_CONNECTIONS, persistent_connections).
 -define(DEFAULT_BERT_RPC_PORT, 9999).
@@ -41,6 +41,7 @@
 -define(DEFAULT_BERT_RPC_ADDRESS, "0.0.0.0").
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
 -define(SERVER, ?MODULE). 
+-define(DLINK_TCP_VERSION, "1.0"). 
 
 -define(CONNECTION_TABLE, rvi_dlink_tcp_connections).
 -define(SERVICE_TABLE, rvi_dlink_tcp_services).
@@ -91,7 +92,7 @@ start_connection_manager() ->
     CompSpec = rvi_common:get_component_specification(),
     {ok, BertOpts } = rvi_common:get_module_config(data_link, 
 						   ?MODULE, 
-						   bert_rpc_server, 
+						   server_opts, 
 						   [], 
 						   CompSpec),
     IP = proplists:get_value(ip, BertOpts, ?DEFAULT_BERT_RPC_ADDRESS),
@@ -189,7 +190,7 @@ connect_remote(IP, Port, CompSpec) ->
 	    ?info("dlink_tcp:connect_remote(): Connecting ~p:~p",
 		  [IP, Port]),
 
-	    case gen_tcp:connect(IP, Port, [binary, {packet, 4}]) of
+	    case gen_tcp:connect(IP, Port, [list, {packet, 0}]) of
 		{ ok, Sock } -> 
 		    ?info("dlink_tcp:connect_remote(): Connected ~p:~p", 
 			   [IP, Port]),
@@ -201,9 +202,15 @@ connect_remote(IP, Port, CompSpec) ->
 		    %% Send authorize
 		    { LocalIP, LocalPort} = rvi_common:node_address_tuple(),
 		    connection:send(Pid, 
-				    { authorize, 
-				      1, LocalIP, LocalPort, rvi_binary, 
-				      { certificate, {}}, { signature, {}} }),
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+			    { ?DLINK_ARG_ADDRESS, LocalIP},
+			    { ?DLINK_ARG_PORT,  LocalPort },
+			    { ?DLINK_ARG_VERSION, ?DLINK_TCP_VERSION },
+			    { ?DLINK_ARG_CERTIFICATE, "" },
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
 		    ok;
 		
 		{error, Err } -> 
@@ -241,9 +248,18 @@ announce_local_service_(CompSpec,
 			[ConnPid | T],
 			Service, Availability) ->
     
+    Status = case Availability of
+		 available -> ?DLINK_ARG_AVAILABLE;
+		 unavailable -> ?DLINK_ARG_UNAVAILABLE
+	     end,
     Res = connection:send(ConnPid, 
-			  {service_announce, 3, Availability, 
-			   [Service], { signature, {}}}),
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
+			    { ?DLINK_ARG_STATUS, Status },
+			    { ?DLINK_ARG_SERVICES, { array, [ Service ] }},
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
 
     ?debug("dlink_tcp:announce_local_service(~p: ~p) -> ~p  Res: ~p", 
 	   [ Availability, Service, ConnPid, Res]),
@@ -258,23 +274,20 @@ announce_local_service_(CompSpec, Service, Availability) ->
 			    get_connections(),
 			    Service, Availability).
 
-
-handle_socket(_FromPid, PeerIP, PeerPort, data, ping, [_CompSpec]) ->
-    ?info("dlink_tcp:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),
-    ok;
-
-handle_socket(FromPid, PeerIP, PeerPort, data, 
-	      { authorize, 
-		TransactionID, 
-		RemoteAddress, 
-		RemotePort, 
-		Protocol, 
-		Certificate,
-		Signature}, [CompSpec]) ->
+process_authorize(FromPid, 
+		  PeerIP, 
+		  PeerPort,
+		  TransactionID, 
+		  RemoteAddress, 
+		  RemotePort, 
+		  ProtoVersion, 
+		  Certificate,
+		  Signature, 
+		  CompSpec) ->
 
     ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
     ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
-    ?info("dlink_tcp:authorize(): Protocol:       ~p", [ Protocol ]),
+    ?info("dlink_tcp:authorize(): Protocol Ver:   ~p", [ ProtoVersion ]),
     ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
     ?debug("dlink_tcp:authorize(): Certificate:    ~p", [ Certificate ]),
     ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
@@ -309,9 +322,15 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
 	    ?debug("dlink_tcp:authorize(): Sending authorize."),
 	    Res = connection:send(FromPid, 
-			    { authorize, 
-			      1, LocalAddress, LocalPort, rvi_binary, 
-			      {certificate, {}}, { signature, {}}}),
+				  term_to_json(
+				    {struct, 		     
+				     [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+				       { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+				       { ?DLINK_ARG_ADDRESS, LocalAddress},
+				       { ?DLINK_ARG_PORT,  LocalPort },
+				       { ?DLINK_ARG_VERSION, ?DLINK_TCP_VERSION },
+				       { ?DLINK_ARG_CERTIFICATE, "" },
+				       { ?DLINK_ARG_SIGNATURE, "" } ]})),
 	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
 	    ok;
 	_ -> ok
@@ -327,24 +346,32 @@ handle_socket(FromPid, PeerIP, PeerPort, data,
 	  [LocalServices, NRemoteAddress, NRemotePort]),
 
     connection:send(FromPid, 
-		    { service_announce, 2, available,
-		      LocalServices, { signature, {}}}),
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE }, 
+			    { ?DLINK_ARG_STATUS, ?DLINK_ARG_AVAILABLE },
+			    { ?DLINK_ARG_SERVICES, { array, LocalServices }},
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
 
     %% Setup ping interval
     gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
-    ok;
+    ok.
 
-handle_socket(FromPid, RemoteIP, RemotePort, data, 
-	      { service_announce, 
-		TransactionID,
-		available,
-		Services,
-		Signature }, [CompSpec]) ->
+
+process_announce(FromPid, 
+		 RemoteIP, 
+		 RemotePort, 
+		 TransactionID,
+		 ?DLINK_ARG_AVAILABLE, 
+		 Services,
+		 Signature,
+		 CompSpec) ->
     ?debug("dlink_tcp:service_announce(available): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
     ?debug("dlink_tcp:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
     ?debug("dlink_tcp:service_announce(available): TransactionID: ~p", [ TransactionID ]),
     ?debug("dlink_tcp:service_announce(available): Signature:     ~p", [ Signature ]),
-    ?debug("dlink_tcp:service_announce(available): Service:       ~p", [ Services ]),
+    ?debug("dlink_tcp:service_announce(available): Services:      ~p", [ Services ]),
 
     
     add_services(Services, FromPid),
@@ -353,17 +380,20 @@ handle_socket(FromPid, RemoteIP, RemotePort, data,
     ok;
 
 
-handle_socket(FromPid, RemoteIP, RemotePort, data, 
-	      { service_announce, 
-		TransactionID, 
-		unavailable,
-		Services, 
-		Signature}, [CompSpec]) ->
+process_announce(FromPid, 
+		 RemoteIP, 
+		 RemotePort, 
+		 TransactionID,
+		 ?DLINK_ARG_UNAVAILABLE,  
+		 Services,
+		 Signature,
+		 CompSpec) ->
+
     ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
     ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
     ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
     ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
-    ?debug("dlink_tcp:service_announce(unavailable): Service:       ~p", [ Services ]),
+    ?debug("dlink_tcp:service_announce(unavailable): Services:      ~p", [ Services ]),
 
     %% Register the received services with all relevant components
 
@@ -372,25 +402,29 @@ handle_socket(FromPid, RemoteIP, RemotePort, data,
     
     delete_services(FromPid, Services),
     service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
-    ok;
+    ok.
 
 
-handle_socket(_FromPid, SetupIP, SetupPort, data, 
-	      { receive_data, ProtocolMod, Data}, [CompSpec]) ->
+process_data(_FromPid, 
+	     SetupIP, 
+	     SetupPort, 
+	     ProtocolMod,
+	     Data, 
+	     CompSpec) ->
 %%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
     ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ProtocolMod:receive_message(CompSpec, Data),
-    ok;
-
-
-handle_socket(_FromPid, SetupIP, SetupPort, data, Data, [_CompSpec]) ->
-    ?warning("dlink_tcp:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ?warning("dlink_tcp:unknown_data(): Unknown data:  ~p",  [ Data]),
+    Proto = list_to_atom(ProtocolMod),
+    Proto:receive_message(CompSpec, base64:decode_to_string(Data)),
     ok.
+
+
 
 
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
+handle_socket(FromPid, undefined, SetupPort, closed, Arg) ->
+    handle_socket(FromPid, "0.0.0.0", SetupPort, closed, Arg);
+
 handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
     ?info("dlink_tcp:closed(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
 
@@ -437,6 +471,68 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
     ok.
 
 
+handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
+    {ok, {struct, Elems}} = exo_json:decode_string(Payload),
+    ?debug("dlink_tcp:data(): Got ~p", [ Elems ]),
+
+    case opt(?DLINK_ARG_CMD, Elems, undefined) of
+	?DLINK_CMD_AUTHORIZE ->
+	    [ TransactionID, 
+	      RemoteAddress, 
+	      RemotePort, 
+	      ProtoVersion, 
+	      Certificate, 
+	      Signature ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID,
+		      ?DLINK_ARG_ADDRESS,
+		      ?DLINK_ARG_PORT,
+		      ?DLINK_ARG_VERSION, 
+		      ?DLINK_ARG_CERTIFICATE,
+		      ?DLINK_ARG_SIGNATURE],
+		     Elems, undefined),
+
+	    process_authorize(FromPid, PeerIP, PeerPort, 
+			      TransactionID, RemoteAddress, RemotePort, 
+			      ProtoVersion,  Certificate, Signature, CompSpec);
+
+	?DLINK_CMD_SERVICE_ANNOUNCE ->
+	    [ TransactionID, 
+	      Status, 
+	      { array, Services }, 
+	      Signature ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID,
+		      ?DLINK_ARG_STATUS,
+		      ?DLINK_ARG_SERVICES,
+		      ?DLINK_ARG_SIGNATURE],
+		     Elems, undefined),
+
+	    process_announce(FromPid, PeerIP, PeerPort,
+			     TransactionID, Status, Services, 
+			     Signature, CompSpec);
+	?DLINK_CMD_RECEIVE ->
+	    [ _TransactionID, 
+	      ProtoMod, 
+	      Data ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID,
+		      ?DLINK_ARG_MODULE,
+		      ?DLINK_ARG_DATA],
+		     Elems, undefined),
+	    process_data(FromPid, PeerIP, PeerPort,
+			 ProtoMod, Data, CompSpec);
+	
+	?DLINK_CMD_PING ->
+	    ?info("dlink_bt:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),
+	    ok;
+
+	undefined -> 
+	    ?warning("dlink_bt:data() cmd undefined., ~p", [ Elems ]),
+	    ok
+    end.
+
+    
+
+
+
 %% JSON-RPC entry point
 %% CAlled by local exo http server
 handle_notification("service_available", Args) ->
@@ -480,9 +576,10 @@ handle_rpc("disconenct_data_link", Args) ->
 handle_rpc("send_data", Args) ->
     { ok, ProtoMod } = rvi_common:get_json_element(["proto_mod"], Args),
     { ok, Service } = rvi_common:get_json_element(["service"], Args),
-    { ok,  Data } = rvi_common:get_json_element(["data"], Args),
+    { ok,  Data } = rvi_common:get_json_element([?DLINK_ARG_DATA], Args),
     { ok,  DataLinkOpts } = rvi_common:get_json_element(["opts"], Args),
-    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts]}),
+    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, 
+					  [ProtoMod, Service, Data, DataLinkOpts]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
     
 
@@ -564,7 +661,14 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 
 	%% FIXME: What to do if we have multiple connections to the same service?
 	[ConnPid | _T] -> 
-	    Res = connection:send(ConnPid, {receive_data, ProtoMod, Data}),
+	    Res = connection:send(ConnPid, 
+				  term_to_json(
+				    { struct, 		     
+				      [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+					{ ?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE },
+					{ ?DLINK_ARG_MODULE, atom_to_list(ProtoMod) },
+					{ ?DLINK_ARG_DATA, base64:encode_to_string(Data) }
+				      ]})),
 	    { reply, [ Res ], St}
     end;
 	    
@@ -575,7 +679,7 @@ handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     %% Create a timer to handle periodic pings.
     {ok, ServerOpts } = rvi_common:get_module_config(data_link, 
 						     ?MODULE,
-						     bert_rpc_server, [], 
+						     server_opts, [], 
 						     St#st.cs),
     Timeout = proplists:get_value(ping_interval, ServerOpts, ?DEFAULT_PING_INTERVAL),
 
@@ -599,7 +703,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     case connection:is_connection_up(Pid) of
 	true ->
 	    ?info("dlink_tcp:ping(): Pinging: ~p:~p", [Address, Port]),
-	    connection:send(Pid, ping),
+	    connection:send(Pid, term_to_json({ struct, [{ ?DLINK_ARG_CMD, ?DLINK_CMD_PING }]})),
 	    erlang:send_after(Timeout, self(), 
 			      { rvi_ping, Pid, Address, Port, Timeout });
 
@@ -680,8 +784,6 @@ delete_services(ConnPid, SvcNameList) ->
 		 }) || SvcName <- SvcNameList ],
     ok.
 
-
-
 delete_connection(Conn) ->
     %% Create or replace existing connection table entry
     %% with the sum of new and old services.
@@ -713,3 +815,15 @@ get_connections(Key, Acc) ->
 	    
 get_connections() ->
     get_connections(ets:first(?CONNECTION_TABLE), []).
+
+term_to_json(Term) ->
+    binary_to_list(iolist_to_binary(exo_json:encode(Term))).
+
+opt(K, L, Def) ->
+    case lists:keyfind(K, 1, L) of
+	{_, V} -> V;
+	false  -> Def
+    end.
+
+opts(Keys, Elems, Def) ->
+    [ opt(K, Elems, Def) || K <- Keys].

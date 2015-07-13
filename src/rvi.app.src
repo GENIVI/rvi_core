@@ -11,7 +11,7 @@
 {application, rvi,
  [
   {description, ""},
-  {vsn, "0.3.2"},
+  {vsn, "0.4.0"},
   {registered, []},
   {applications, [
                   kernel,
@@ -23,6 +23,9 @@
 		  service_edge,
 		  authorize,
 		  dlink_tcp,
+		  bt,
+		  dlink_bt,
+		  proto_json,
 		  proto_bert
                  ]},
   {mod, { rvi_app, []}}

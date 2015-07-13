@@ -437,7 +437,7 @@ queue_message(SvcName,
 	      Certificate, 
 	      St) ->
 
-    TOut = calc_relative_tout(Timeout),
+    TOut = calc_relative_tout(Timeout), 
     ?debug("sched:q(~s): No more routes. Will orphan for ~p seconds.",  
 	   [ SvcName, TOut / 1000.0]),         
     %% Stash in Service / orphaned 
@@ -825,31 +825,25 @@ create_transaction_id(St) ->
     %% schedulers?
     { ID, St#st { next_transaction_id = ID + 1 }}.
 
-%% Calculate a relative timeout based on the UnixTime TS we are provided with.
-calc_relative_tout(UnixTime) ->
-    { Mega, Sec, _Micro } = now(),
-    Now = Mega * 1000000 + Sec,
-    ?debug("sched:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p", [ UnixTime, Now, UnixTime - Now ]),
+%% Calculate a relative timeout based on the Msec UnixTime TS we are
+%% provided with.
+calc_relative_tout(UnixTimeMS) ->
+    { Mega, Sec, Micro } = now(),
+    Now = Mega * 1000000000 + Sec * 1000 + trunc(Micro / 1000) ,
+    ?debug("sched:calc_relative_tout(): TimeoutUnixMS(~p) - Now(~p) = ~p", 
+	   [ UnixTimeMS, Now, UnixTimeMS - Now ]),
+
 
     %% Cap the timeout value at something reasonable
-    TOut = 
-	case UnixTime - Now >= 4294967295 of
-	    true -> 
-		?info("sched:calc_relative_tout(): Timeout(~p) - Now(~p) = ~p: "
-		      "Truncated to 4294967295", [ UnixTime, Now, UnixTime - Now ]),
-		4294967295;
-
-	false -> UnixTime - Now
-    end,
+    TOut = UnixTimeMS - Now,
 
     case TOut =< 0 of
 	true ->
 	    -1; %% We have timed out
 
 	false ->
-	    TOut * 1000 
+	    TOut
     end.
-
 %% Handle a callback for a timed out message.
 
 do_timeout_callback(CompSpec, SvcName, TransID) ->
