@@ -16,76 +16,6 @@
 %%=============================================================================
 
 %% @doc Setup utility for erlang applications
-%%
-%% This API contains:
-%% * Support functions for system install ({@link find_hooks/0},
-%%   {@link run_hooks/0}, {@link lib_dirs/0}).
-%% * Functions for managing and inspecting the system environment
-%%   ({@link home/0}, {@link log_dir/0}, {@link data_dir/0},
-%%    {@link verify_directories/0}, {@link verify_dir/0}).
-%% * Support functions for application environments ({@link get_env/2},
-%%   {@link get_all_env/1}, {@link find_env_vars/1}, {@link expand_value/2}).
-%% * Functions for controlling dynamic load/upgrade of applications
-%%   ({@link find_app/1}, {@link pick_vsn/3}, {@link reload_app/1},
-%%    {@link patch_app/1}).
-%%
-%% == Variable expansion ==
-%%
-%% Setup supports variable substitution in application environments. It provides
-%% some global variables, `"$HOME", "$DATA_DIR", "$LOG_DIR"', corresponding to
-%% the API functions {@link home/0}, {@link data_dir/0} and {@link log_dir},
-%% as well as some application-specific variables, `"$APP", "$PRIV_DIR",
-%% "$LIB_DIR".
-%%
-%% The normal way to use these variables is by embedding them in file names,
-%% e.g. `{my_logs, "$LOG_DIR/$APP"}', but a variable can also be referenced as:
-%% * ``{'$value',Var}'' - The variable's value is used as-is (which means that
-%%   ``{'$value', "$APP"}'' expands to an atom corresponding to the current
-%%   app name.)
-%% * ``{'$string', Var}'' - The value is represented as a string (list). If the
-%%   value isn't a "string type", `io_lib:format("~w",[Value])' is used.
-%% * ``{'$binary', Var}'' - Like ``'$string''', but using binary representation.
-%%
-%% Custom variables can be defined by using either:
-%% * *global scope* - The `setup' environment variable `vars', containing a
-%%   list of `{VarName, Definition}' tuples
-%% * *application-local scope* - Defining an application-local environment
-%%   variable ``'$setup_vars''', on the same format as above.
-%%
-%% The `VarName' shall be a string, e.g. `"MYVAR"' (no `$' prefix).
-%% `Definition' can be one of:
-%% * `{value, Val}' - the value of the variable is exactly `Val'
-%% * `{expand, Val}' - `Val' is expanded in its turn
-%% * `{apply, M, F, A}' - Use the return value of `apply(M, F, A)'.
-%%
-%% When using a variable expansion, either insert the variable reference in
-%% a string (or binary), or use one of the following formats:
-%% * ``'{'$value', Var}''' - Use value as-is
-%% * ``'{'$string', Var}''' - Use the string representation of the value
-%% * ``'{'$binary', Var}''' - Use the binary representation of the value.
-%%
-%% == Customizing setup ==
-%% The following environment variables can be used to customize `setup':
-%% * `{home, Dir}' - The topmost directory of the running system. This should
-%%    be a writeable area.
-%% * `{data_dir, Dir}' - A directory where applications are allowed to create
-%%    their own subdirectories and save data. Default is `Home/data.Node'.
-%% * `{log_dir, Dir}' - A directory for logging. Default is `Home/log.Node'.
-%% * `{stop_when_done, true|false}' - When invoking `setup' for an install,
-%%    `setup' normally remains running, allowing for other operations to be
-%%    performed from the shell or otherwise. If `{stop_when_done, true}', the
-%%    node is shut down once `setup' is finished.
-%% * `{abort_on_error, true|false}' - When running install or upgrade hooks,
-%%    `setup' will normally keep going even if some hooks fail. A more strict
-%%    semantics can be had by setting `{abort_on_error, true}', in which case
-%%    `setup' will raise an exception if an error occurs.
-%% * `{mode, atom()}' - Specifies the context for running 'setup'. Default is
-%%   `normal'. The `setup' mode has special significance, since it's the default
-%%    mode for setup hooks, if no other mode is specified. In theory, one may
-%%    specify any atom value, but it's probably wise to stick to the values
-%%    'normal', 'setup' and 'upgrade' as global contexts, and instead trigger
-%%    other mode hooks by explicitly calling {@link run_hooks/1}.
-%% @end
 -module(setup).
 -behaviour(application).
 
@@ -97,12 +27,10 @@
          data_dir/0,
          verify_directories/0,
          verify_dir/1,
-         mode/0,
          find_hooks/0, find_hooks/1, find_hooks/2,
          run_hooks/0, run_hooks/1, run_hooks/2,
          find_env_vars/1,
-         get_env/2, get_env/3,
-         get_all_env/1,
+         get_env/2,
          expand_value/2,
          patch_app/1,
          find_app/1, find_app/2,
@@ -117,10 +45,6 @@
 -export([run_setup/2]).
 
 -include_lib("kernel/include/file.hrl").
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
 
 %% @spec start(Type, Args) -> {ok, pid()}
 %% @doc Application start function.
@@ -141,10 +65,10 @@ stop(_) ->
 %% @end
 %%
 home() ->
-    case app_get_env(setup, home) of
+    case application:get_env(setup, home) of
         U when U == {ok, undefined};
                U == undefined ->
-            CWD = cwd(),
+            {ok, CWD} = file:get_cwd(),
             D = filename:absname(CWD),
             application:set_env(setup, home, D),
             D;
@@ -168,7 +92,7 @@ data_dir() ->
     setup_dir(data_dir, "data." ++ atom_to_list(node())).
 
 setup_dir(Key, Default) ->
-    case app_get_env(setup, Key) of
+    case application:get_env(setup, Key) of
         U when U == {ok, undefined};
                U == undefined ->
             D = filename:absname(filename:join(home(), Default)),
@@ -180,8 +104,7 @@ setup_dir(Key, Default) ->
 
 %% @spec verify_directories() -> ok
 %% @doc Ensures that essential directories exist and are writable.
-%% Currently, the directories corresponding to {@link home/0},
-%% {@link log_dir/0} and {@link data_dir/0} are verified.
+%% Currently, only the log directory is verified.
 %% @end
 %%
 verify_directories() ->
@@ -207,16 +130,19 @@ ok(Other) ->
 %% @spec find_env_vars(Env) -> [{AppName, Value}]
 %% @doc Searches all loaded apps for instances of the `Env' environment variable.
 %%
-%% The environment variables are expanded according to the rules outlined in
-%% {@section Variable expansion}
+%% The environment variables may contain instances of
+%% `$APP', `$PRIV_DIR', `$LIB_DIR', `$DATA_DIR', `$LOG_DIR', `$HOME',
+%% inside strings or binaries, and these will be replaced with actual values
+%% for the current system (`$APP' simply expands to the name of the current
+%% application).
 %% @end
 find_env_vars(Env) ->
     GEnv = global_env(),
     lists:flatmap(
       fun({A,_,_}) ->
-              case app_get_env(A, Env) of
+              case application:get_env(A, Env) of
                   {ok, Val} when Val =/= undefined ->
-                      NewEnv = private_env(A, GEnv),
+                      NewEnv = GEnv ++ private_env(A),
                       [{A, expand_env(NewEnv, Val)}];
                   _ ->
                       []
@@ -224,94 +150,22 @@ find_env_vars(Env) ->
       end, application:loaded_applications()).
 
 get_env(A, Key) ->
-    case app_get_env(A, Key) of
+    case application:get_env(A, Key) of
         {ok, Val} ->
             {ok, expand_value(A, Val)};
         Other ->
             Other
     end.
 
-get_env(A, Key, Default) ->
-    case get_env(A, Key) of
-        {ok, Val} ->
-            Val;
-        _ ->
-            Default
-    end.
-
--spec get_all_env(atom()) -> [{atom(), any()}].
-%% @doc Like `application:get_all_env/1', but with variable expansion.
-%%
-%% The variable expansion is performed according to the rules outlined in
-%% {@section Variable expansion}.
-%% @end
-get_all_env(A) ->
-    Vars = private_env(A),
-    [{K, expand_env(Vars, V)} ||
-        {K, V} <- application:get_all_env(A)].
-
--spec expand_value(atom(), any()) -> any().
-%% @doc Expand `Value' using global variables and the variables of `App'
-%%
-%% The variable expansion is performed according to the rules outlined in
-%% {@section Variable expansion}.
-%% @end
 expand_value(App, Value) ->
-    expand_env(private_env(App), Value).
+    expand_env(global_env() ++ private_env(App), Value).
+
 
 global_env()  ->
-    Acc = [{K, fun() -> env_value(K) end} ||
-              K <- ["DATA_DIR", "LOG_DIR", "HOME"]],
-    custom_global_env(Acc).
-
-custom_global_env(Acc) ->
-    lists:foldl(fun custom_env1/2, Acc,
-                [{K,V} || {K,V} <- app_get_env(setup, vars, []),
-                          is_list(K)]).
-
+    [{K, env_value(K)} || K <- ["DATA_DIR", "LOG_DIR", "HOME"]].
 private_env(A) ->
-    private_env(A, global_env()).
+    [{K, env_value(K, A)} || K <- ["APP", "PRIV_DIR", "LIB_DIR"]].
 
-private_env(A, GEnv) ->
-    Acc = [{K, fun() -> env_value(K, A) end} ||
-              K <- ["APP", "PRIV_DIR", "LIB_DIR"]],
-    custom_private_env(A, Acc ++ GEnv).
-
-custom_private_env(A, Acc) ->
-    lists:foldl(fun custom_env1/2, Acc, 
-                [{K, V} ||
-                    {K,V} <- app_get_env(A, '$setup_vars', []),
-                    is_list(K)]).
-
-%% Wrapped for tracing purposes
-app_get_env(A, K) ->
-    application:get_env(A, K).
-
-%% Wrapped for tracing purposes
-app_get_env(A, K, Default) ->
-    %% Apparently, some still use setup on R15B ...
-    case application:get_env(A, K) of
-        {ok, Val} -> Val;
-        _ ->
-            Default
-    end.
-
-%% Wrapped for tracing purposes
-app_get_key(A, K) ->
-    application:get_key(A, K).
-
-custom_env1({K, V}, Acc) ->
-    [{K, fun() -> custom_env_value(K, V, Acc) end} | Acc].
-
-expand_env(Vs, {T,"$" ++ S}) when T=='$value'; T=='$string'; T=='$binary' ->
-    case {lists:keyfind(S, 1, Vs), T} of
-        {false, '$value'}  -> undefined;
-        {false, '$string'} -> "";
-        {false, '$binary'} -> <<"">>;
-        {{_,V}, '$value'}  -> V();
-        {{_,V}, '$string'} -> binary_to_list(stringify(V()));
-        {{_,V}, '$binary'} -> stringify(V())
-    end;
 expand_env(Vs, T) when is_tuple(T) ->
     list_to_tuple([expand_env(Vs, X) || X <- tuple_to_list(T)]);
 expand_env(Vs, L) when is_list(L) ->
@@ -328,37 +182,16 @@ expand_env(_, X) ->
 
 do_expand_env(X, Vs, Type) ->
     lists:foldl(fun({K, Val}, Xx) ->
-                        re:replace(Xx, [$\\, $$ | K],
-                                   stringify(Val()), [{return,Type}])
+                        re:replace(Xx, [$\\, $$ | K], Val, [{return,Type}])
                 end, X, Vs).
 
 env_value("LOG_DIR") -> log_dir();
 env_value("DATA_DIR") -> data_dir();
 env_value("HOME") -> home().
 
-env_value("APP", A) -> A;
+env_value("APP", A) -> atom_to_list(A);
 env_value("PRIV_DIR", A) -> priv_dir(A);
 env_value("LIB_DIR" , A) -> lib_dir(A).
-
-custom_env_value(_K, {value, V}, _Vs) ->
-    V;
-custom_env_value(_K, {expand, V}, Vs) ->
-    expand_env(Vs, V);
-custom_env_value(K, {apply, M, F, A}, _Vs) ->
-    %% Not ideal, but don't want to introduce exceptions in get_env()
-    try apply(M, F, A)
-    catch
-        error:_ ->
-            {error, {custom_setup_env, K}}
-    end.
-
-%% This function is more general than to_string/1 below
-stringify(V) ->
-    try iolist_to_binary(V)
-    catch
-        error:badarg ->
-            iolist_to_binary(io_lib:format("~w", [V]))
-    end.
 
 priv_dir(A) ->
     case code:priv_dir(A) of
@@ -443,7 +276,7 @@ patch_app(A, Vsn, LibDirs) ->
 pick_vsn(_, Dirs, latest) ->
     lists:last(Dirs);
 pick_vsn(A, Dirs, next) ->
-    case app_get_key(A, vsn) of
+    case application:get_key(A, vsn) of
         {ok, Cur} ->
             case lists:dropwhile(fun({V, _}) -> V =/= Cur end, Dirs) of
                 [_, {_, _} = Next |_] -> Next;
@@ -577,10 +410,10 @@ reload_app(A, ToVsn) ->
 %% {@link pick_vsn/3}.
 %% @end
 reload_app(A, ToVsn0, LibDirs) ->
-    case app_get_key(A, vsn) of
+    case application:get_key(A, vsn) of
         undefined ->
             ok = application:load(A),
-            {ok, Modules} = app_get_key(A, modules),
+            {ok, Modules} = application:get_key(A, modules),
             _ = [c:l(M) || M <- Modules],
             {ok, []};
         {ok, FromVsn} ->
@@ -645,7 +478,7 @@ make_appup_script(A, OldVsn, NewPath) ->
         {NewVsn, Script} ->
             {NewVsn, Script, NewApp};
         false ->
-            {ok, OldMods} = app_get_key(A, modules),
+            {ok, OldMods} = application:get_key(A, modules),
             {modules, NewMods} = lists:keyfind(modules, 1, NewAppTerms),
             {vsn, NewVsn} = lists:keyfind(vsn, 1, NewAppTerms),
             {DelMods,AddMods,ChgMods} = {OldMods -- NewMods,
@@ -737,8 +570,8 @@ run_setup_(Parent, _Args) ->
     Hooks = find_hooks(Mode),
     run_selected_hooks(Hooks),
     io:fwrite("Setup finished processing hooks ...~n", []),
-    case app_get_env(setup, stop_when_done) of
-        {ok, true} when Mode =/= normal ->
+    case application:get_env(stop_when_done) of
+        {ok, true} ->
             io:fwrite("Setup stopping...~n", []),
             timer:sleep(timer:seconds(5)),
             rpc:eval_everywhere(init,stop,[0]);
@@ -749,9 +582,8 @@ run_setup_(Parent, _Args) ->
 %% @spec find_hooks() -> [{PhaseNo, [{M,F,A}]}]
 %% @doc Finds all custom setup hooks in all applications.
 %% The setup hooks must be of the form
-%% ``{'$setup_hooks', [{PhaseNo, {M, F, A}} | {Mode, [{PhaseNo, {M,F,A}}]}]}'',
+%% <pre>{'$setup_hooks', [{PhaseNo, {M, F, A}}]}</pre>,
 %% where PhaseNo should be (but doesn't have to be) an integer.
-%% If `Mode' is not specified, the hook will pertain to the `setup' mode.
 %%
 %% The hooks will be called in order:
 %% - The phase numbers will be sorted.
@@ -781,23 +613,30 @@ find_hooks(Mode) when is_atom(Mode) ->
 find_hooks(Mode, Applications) ->
     lists:foldl(
       fun(A, Acc) ->
-              case app_get_env(A, '$setup_hooks') of
+              case application:get_env(A, '$setup_hooks') of
                   {ok, Hooks} ->
                       lists:foldl(
-                        fun({Mode1, [{_, {_,_,_}}|_] = L}, Acc1)
-                              when Mode1 =:= Mode ->
-                                find_hooks_(Mode, A, L, Acc1);
-                           ({Mode1, [{_, [{_, _, _}|_]}|_] = L}, Acc1)
-                              when Mode1 =:= Mode ->
-                                find_hooks_(Mode, A, L, Acc1);
-                           ({N, {_, _, _} = MFA}, Acc1) when Mode=:=setup ->
-                                orddict:append(N, MFA, Acc1);
-                           ({N, [{_, _, _}|_] = L}, Acc1)
-                              when Mode=:=setup ->
+                        fun({Mode1, L}, Acc1) when is_atom(Mode1), is_list(L) ->
                                 lists:foldl(
-                                  fun(MFA, Acc2) ->
-                                          orddict:append(N, MFA, Acc2)
+                                  fun({N, {_,_,_} = MFA}, Acc2) ->
+                                          orddict:append(N, MFA, Acc2);
+                                     ({N, MFAs}, Acc2) when is_list(MFAs) ->
+                                          lists:foldl(
+                                            fun({_,_,_} = MFA1, Acc3) ->
+                                                    orddict:append(
+                                                      N, MFA1, Acc3);
+                                               (Other1, Acc3) ->
+                                                    io:fwrite(
+                                                      "Invalid hook: ~p~n"
+                                                      "  App  : ~p~n"
+                                                      "  Mode : ~p~n"
+                                                      "  Phase: ~p~n",
+                                                      [Other1, A, Mode1, N]),
+                                                    Acc3
+                                            end, Acc2, MFAs)
                                   end, Acc1, L);
+                           ({N, {_, _, _} = MFA}, Acc1) when Mode==setup ->
+                                orddict:append(N, MFA, Acc1);
                            (_, Acc1) ->
                                 Acc1
                         end, Acc, Hooks);
@@ -806,35 +645,8 @@ find_hooks(Mode, Applications) ->
               end
       end, orddict:new(), Applications).
 
-find_hooks_(Mode, A, L, Acc1) ->
-    lists:foldl(
-      fun({N, {_,_,_} = MFA}, Acc2) ->
-              orddict:append(N, MFA, Acc2);
-         ({N, [{_,_,_}|_] = MFAs}, Acc2) when is_list(MFAs) ->
-              lists:foldl(
-                fun({_,_,_} = MFA1, Acc3) ->
-                        orddict:append(
-                          N, MFA1, Acc3);
-                   (Other1, Acc3) ->
-                        io:fwrite(
-                          "Invalid hook: ~p~n"
-                          "  App  : ~p~n"
-                          "  Mode : ~p~n"
-                          "  Phase: ~p~n",
-                          [Other1, A, Mode, N]),
-                        Acc3
-                end, Acc2, MFAs)
-      end, Acc1, L).
-
--spec mode() -> normal | atom().
-%% @doc Returns the current "setup mode".
-%%
-%% The mode can be defined using the `setup' environment variable `mode'.
-%% The default value is `normal'. The mode is used to select which setup
-%% hooks to execute when starting the `setup' application.
-%% @end
 mode() ->
-    case app_get_env(setup, mode) of
+    case application:get_env(mode) of
         {ok, M} ->
             M;
         _ ->
@@ -843,26 +655,18 @@ mode() ->
 
 %% @spec run_hooks() -> ok
 %% @doc Execute all setup hooks for current mode in order.
-%%
-%% See {@link find_hooks/0} for details on the order of execution.
 %% @end
 run_hooks() ->
     run_hooks(applications()).
 
 %% @spec run_hooks(Applications) -> ok
 %% @doc Execute setup hooks for current mode in `Applications' in order.
-%%
-%% See {@link find_hooks/0} for details on the order of execution.
 %% @end
 run_hooks(Apps) ->
     run_hooks(mode(), Apps).
 
 %% @spec run_hooks(Mode, Applications) -> ok
 %% @doc Execute setup hooks for `Mode' in `Applications' in order
-%%
-%% Note that no assumptions can be made about which process each setup hook
-%% runs in, nor whether it runs in the same process as the previous hook.
-%% See {@link find_hooks/0} for details on the order of execution.
 %% @end
 run_hooks(Mode, Apps) ->
     Hooks = find_hooks(Mode, Apps),
@@ -878,7 +682,7 @@ run_hooks(Mode, Apps) ->
 %% @end
 %%
 run_selected_hooks(Hooks) ->
-    AbortOnError = case app_get_env(setup, abort_on_error) of
+    AbortOnError = case application:get_env(setup, abort_on_error) of
                        {ok, F} when is_boolean(F) -> F;
                        {ok, Other} ->
                            io:fwrite("Invalid abort_on_error flag (~p)~n"
@@ -951,7 +755,21 @@ format_arg(A) ->
 %% @end
 %%
 applications() ->
-    Apps = [A || {A, _, _} <- application:loaded_applications()],
+    Apps = case init:get_argument(boot) of
+               {ok, [[Boot]]} ->
+                   Script = Boot ++ ".script",
+                   case file:consult(Script) of
+                       {ok, [{script, _, Commands}]} ->
+                           [A || {apply, {application, load, [{application, A, _}]}}
+                                 <- Commands];
+                       Error ->
+                           error_logger:format("Unable to read boot script (~s): ~p~n",
+                                               [Script, Error]),
+                           [A || {A, _, _} <- application:loaded_applications()]
+                   end;
+               _ ->
+                   [A || {A, _, _} <- application:loaded_applications()]
+           end,
     group_applications(Apps).
 
 %% Sort apps in preorder traversal order.
@@ -959,32 +777,19 @@ applications() ->
 %% next top application. Normally, there will be no included apps, in which
 %% case the list will maintain its original order.
 %%
-group_applications(Apps) ->
-    group_applications(Apps, []).
-
-group_applications([H | T], Acc) ->
-    case app_get_key(H, included_applications) of
+group_applications([H | T]) ->
+    case application:get_key(H, included_applications) of
         {ok, []} ->
-            group_applications(T, [{H,[]}|Acc]);
+            [H | group_applications(T)];
         {ok, Incls} ->
             AllIncls = all_included(Incls),
-            group_applications(T -- AllIncls,
-                               [{H, AllIncls}
-                                | lists:foldl(
-                                    fun(A,Acc1) ->
-                                            lists:keydelete(A,1,Acc1)
-                                    end, Acc, AllIncls)])
+            [H | AllIncls] ++ group_applications(T -- AllIncls)
     end;
-group_applications([], Acc) ->
-    unfold(lists:reverse(Acc)).
-
-unfold([{A,Incl}|T]) ->
-    [A|Incl] ++ unfold(T);
-unfold([]) ->
+group_applications([]) ->
     [].
 
 all_included([H | T]) ->
-    case app_get_key(H, included_applications) of
+    case application:get_key(H, included_applications) of
         {ok, []} ->
             [H | all_included(T)];
         {ok, Incls} ->
@@ -1009,7 +814,7 @@ keep_release(RelVsn) ->
     OnlyLoaded = LoadedNames -- RunningNames,
     Included = lists:flatmap(
                  fun(A) ->
-                         case app_get_key(A, included_applications) of
+                         case application:get_key(A, included_applications) of
                              {ok, []} ->
                                  [];
                              {ok, As} ->
@@ -1075,7 +880,7 @@ otp_root() ->
 %% Modified from code_server:get_user_lib_dirs():
 
 %% @spec lib_dirs() -> [string()]
-%% @equiv union(lib_dirs("ERL_SETUP_LIBS"), lib_dirs("ERL_LIBS"))
+%% @equiv lib_dirs(concat("ERL_SETUP_LIBS", "ERL_LIBS"))
 lib_dirs() ->
     A = lib_dirs("ERL_SETUP_LIBS"),
     B = lib_dirs("ERL_LIBS"),
@@ -1309,64 +1114,3 @@ script_vars(Vs) ->
     lists:foldl(fun({K,V}, Acc) ->
                         erl_eval:add_binding(K, V, Acc)
                 end, erl_eval:new_bindings(), Vs).
-
-
-%% Unit tests
--ifdef(TEST).
-
-setup_test_() ->
-    {foreach,
-     fun() ->
-             application:load(setup)
-     end,
-     fun(_) ->
-             application:stop(setup),
-             application:unload(setup)
-     end,
-     [
-      ?_test(t_find_hooks()),
-      ?_test(t_expand_vars())
-     ]}.
-
-t_find_hooks() ->
-    application:set_env(setup, '$setup_hooks',
-                        [{100, [{a, hook, [100,1]},
-                                {a, hook, [100,2]}]},
-                         {200, [{a, hook, [200,1]}]},
-                         {upgrade, [{100, [{a, upgrade_hook, [100,1]}]}]},
-                         {setup, [{100, [{a, hook, [100,3]}]}]},
-                         {normal, [{300, {a, normal_hook, [300,1]}}]}
-                        ]),
-    NormalHooks = find_hooks(normal),
-    [{300, [{a, normal_hook, [300,1]}]}] = NormalHooks,
-    UpgradeHooks = find_hooks(upgrade),
-    [{100, [{a, upgrade_hook, [100,1]}]}] = UpgradeHooks,
-    SetupHooks = find_hooks(setup),
-    [{100, [{a,hook,[100,1]},
-            {a,hook,[100,2]},
-            {a,hook,[100,3]}]},
-     {200, [{a,hook,[200,1]}]}] = SetupHooks,
-    ok.
-
-t_expand_vars() ->
-    %% global env
-    application:set_env(setup, vars, [{"PLUS", {apply,erlang,'+',[1,2]}},
-                                      {"FOO", {value, {foo,1}}}]),
-    %% private env, stdlib
-    application:set_env(stdlib, '$setup_vars',
-                        [{"MINUS", {apply,erlang,'-',[4,3]}},
-                         {"BAR", {value, "bar"}}]),
-    application:set_env(setup, v1, "/$BAR/$PLUS/$MINUS/$FOO"),
-    application:set_env(setup, v2, {'$value', "$FOO"}),
-    application:set_env(stdlib, v1, {'$string', "$FOO"}),
-    application:set_env(stdlib, v2, {'$binary', "$FOO"}),
-    application:set_env(stdlib, v3, {"$PLUS", "$MINUS", "$BAR"}),
-    %% $BAR and $MINUS are not in setup's context
-    {ok, "/$BAR/3/$MINUS/{foo,1}"} = setup:get_env(setup, v1),
-    {ok, {foo,1}} = setup:get_env(setup, v2),
-    {ok, "{foo,1}"} = setup:get_env(stdlib, v1),
-    {ok, <<"{foo,1}">>} = setup:get_env(stdlib,v2),
-    {ok, {"3", "1", "bar"}} = setup:get_env(stdlib,v3),
-    ok.
-
--endif.

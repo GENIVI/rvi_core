@@ -31,7 +31,6 @@
 	 disconnect_data_link/2,
 	 send_data/5]).
 
-
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
 -include_lib("rvi_common/include/rvi_dlink.hrl").
@@ -41,8 +40,8 @@
 -define(DEFAULT_RECONNECT_INTERVAL, 5000).
 -define(DEFAULT_BERT_RPC_ADDRESS, "0.0.0.0").
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
--define(SERVER, ?MODULE).
--define(DLINK_TCP_VERSION, "1.0").
+-define(SERVER, ?MODULE). 
+-define(DLINK_TCP_VERSION, "1.0"). 
 
 -define(CONNECTION_TABLE, rvi_dlink_tcp_connections).
 -define(SERVICE_TABLE, rvi_dlink_tcp_services).
@@ -182,7 +181,6 @@ send_data(CompSpec, ProtoMod, Service, DataLinkOpts, Data) ->
 %% Connect to a remote RVI node.
 %%
 connect_remote(IP, Port, CompSpec) ->
-    ?info("connect_remote(~p, ~p)~n", [IP, Port]),
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ ok, _Pid } ->
 	    already_connected;
@@ -203,18 +201,16 @@ connect_remote(IP, Port, CompSpec) ->
 
 		    %% Send authorize
 		    { LocalIP, LocalPort} = rvi_common:node_address_tuple(),
-                    connection:send(
-                      Pid,
-                      term_to_json(
-                        {struct, [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
-                                   { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
-                                   { ?DLINK_ARG_ADDRESS, LocalIP },
-                                   { ?DLINK_ARG_PORT, LocalPort },
-                                   { ?DLINK_ARG_VERSION, ?DLINK_TCP_VERSION },
-                                   { ?DLINK_ARG_CERTIFICATES,
-                                     {array, get_certificates(CompSpec)} },
-                                   { ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) }
-                                 ]})),
+		    connection:send(Pid, 
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+			    { ?DLINK_ARG_ADDRESS, LocalIP},
+			    { ?DLINK_ARG_PORT,  LocalPort },
+			    { ?DLINK_ARG_VERSION, ?DLINK_TCP_VERSION },
+			    { ?DLINK_ARG_CERTIFICATE, "" },
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
 		    ok;
 		
 		{error, Err } -> 
@@ -223,6 +219,7 @@ connect_remote(IP, Port, CompSpec) ->
 		    not_available
 	    end
     end.
+		    
 
 connect_and_retry_remote( IP, Port, CompSpec) ->
     ?info("dlink_tcp:connect_and_retry_remote(): ~p:~p", 
@@ -251,16 +248,18 @@ announce_local_service_(CompSpec,
 			[ConnPid | T],
 			Service, Availability) ->
     
-    [ ok, JWT ] = authorize_rpc:sign_message(
-		    CompSpec, availability_msg(Availability, [Service])),
-    Res = connection:send(
-            ConnPid,
-            term_to_json(
-              {struct,
-               [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
-                 { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
-                 { ?DLINK_ARG_SIGNATURE, JWT }
-               ]})),
+    Status = case Availability of
+		 available -> ?DLINK_ARG_AVAILABLE;
+		 unavailable -> ?DLINK_ARG_UNAVAILABLE
+	     end,
+    Res = connection:send(ConnPid, 
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
+			    { ?DLINK_ARG_STATUS, Status },
+			    { ?DLINK_ARG_SERVICES, { array, [ Service ] }},
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
 
     ?debug("dlink_tcp:announce_local_service(~p: ~p) -> ~p  Res: ~p", 
 	   [ Availability, Service, ConnPid, Res]),
@@ -274,6 +273,152 @@ announce_local_service_(CompSpec, Service, Availability) ->
     announce_local_service_(CompSpec, 
 			    get_connections(),
 			    Service, Availability).
+
+process_authorize(FromPid, 
+		  PeerIP, 
+		  PeerPort,
+		  TransactionID, 
+		  RemoteAddress, 
+		  RemotePort, 
+		  ProtoVersion, 
+		  Certificate,
+		  Signature, 
+		  CompSpec) ->
+
+    ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
+    ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
+    ?info("dlink_tcp:authorize(): Protocol Ver:   ~p", [ ProtoVersion ]),
+    ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:authorize(): Certificate:    ~p", [ Certificate ]),
+    ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
+
+
+    { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
+
+    %% If the remote address and port are both reported as "0.0.0.0" and 0,
+    %% then the client connects from behind a firewall and cannot
+    %% accept return connections. In these cases, we will tie the
+    %% gonnection to the peer address provided in PeerIP and PeerPort
+    { NRemoteAddress, NRemotePort} =
+	case { RemoteAddress, RemotePort } of
+	    { "0.0.0.0", 0 } ->
+		
+		?info("dlink_tcp:authorize(): Remote is behind firewall. Will use ~p:~p", 
+		      [ PeerIP, PeerPort]),
+		{ PeerIP, PeerPort };
+
+	    _ -> { RemoteAddress, RemotePort}
+	end,
+
+    %% If FromPid (the genserver managing the socket) is not yet registered
+    %% with the conneciton manager, this is an incoming connection
+    %% from the client. We should respond with our own authorize followed by
+    %% a service announce
+    
+    %% FIXME: Validate certificate and signature before continuing.
+    case connection_manager:find_connection_by_pid(FromPid) of
+	not_found ->
+	    ?info("dlink_tcp:authorize(): New connection!"),
+	    connection_manager:add_connection(NRemoteAddress, NRemotePort, FromPid),
+	    ?debug("dlink_tcp:authorize(): Sending authorize."),
+	    Res = connection:send(FromPid, 
+				  term_to_json(
+				    {struct, 		     
+				     [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+				       { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+				       { ?DLINK_ARG_ADDRESS, LocalAddress},
+				       { ?DLINK_ARG_PORT,  LocalPort },
+				       { ?DLINK_ARG_VERSION, ?DLINK_TCP_VERSION },
+				       { ?DLINK_ARG_CERTIFICATE, "" },
+				       { ?DLINK_ARG_SIGNATURE, "" } ]})),
+	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
+	    ok;
+	_ -> ok
+    end,
+
+    %% Send our own servide announcement to the remote server
+    %% that just authorized to us.
+    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
+	 
+
+    %% Send an authorize back to the remote node
+    ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
+	  [LocalServices, NRemoteAddress, NRemotePort]),
+
+    connection:send(FromPid, 
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE }, 
+			    { ?DLINK_ARG_STATUS, ?DLINK_ARG_AVAILABLE },
+			    { ?DLINK_ARG_SERVICES, { array, LocalServices }},
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
+
+    %% Setup ping interval
+    gen_server:call(?SERVER, { setup_initial_ping, NRemoteAddress, NRemotePort, FromPid }),
+    ok.
+
+
+process_announce(FromPid, 
+		 RemoteIP, 
+		 RemotePort, 
+		 TransactionID,
+		 ?DLINK_ARG_AVAILABLE, 
+		 Services,
+		 Signature,
+		 CompSpec) ->
+    ?debug("dlink_tcp:service_announce(available): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
+    ?debug("dlink_tcp:service_announce(available): Remote Port:   ~p", [ RemotePort ]),
+    ?debug("dlink_tcp:service_announce(available): TransactionID: ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:service_announce(available): Signature:     ~p", [ Signature ]),
+    ?debug("dlink_tcp:service_announce(available): Services:      ~p", [ Services ]),
+
+    
+    add_services(Services, FromPid),
+    
+    service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
+    ok;
+
+
+process_announce(FromPid, 
+		 RemoteIP, 
+		 RemotePort, 
+		 TransactionID,
+		 ?DLINK_ARG_UNAVAILABLE,  
+		 Services,
+		 Signature,
+		 CompSpec) ->
+
+    ?debug("dlink_tcp:service_announce(unavailable): Address:       ~p:~p", [ RemoteIP, RemotePort ]),
+    ?debug("dlink_tcp:service_announce(unavailable): Remote Port:   ~p", [ RemotePort ]),
+    ?debug("dlink_tcp:service_announce(unavailable): TransactionID: ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:service_announce(unavailable): Signature:     ~p", [ Signature ]),
+    ?debug("dlink_tcp:service_announce(unavailable): Services:      ~p", [ Services ]),
+
+    %% Register the received services with all relevant components
+
+    
+    %% Delete from our own tables.
+    
+    delete_services(FromPid, Services),
+    service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
+    ok.
+
+
+process_data(_FromPid, 
+	     SetupIP, 
+	     SetupPort, 
+	     ProtocolMod,
+	     Data, 
+	     CompSpec) ->
+%%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
+    ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    Proto = list_to_atom(ProtocolMod),
+    Proto:receive_message(CompSpec, base64:decode_to_string(Data)),
+    ok.
+
+
+
 
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
@@ -325,69 +470,69 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
     ?info("dlink_tcp:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     ok.
 
+
 handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
     ?debug("dlink_tcp:data(): Payload ~p", [Payload ]),
     {ok, {struct, Elems}} = exo_json:decode_string(Payload),
-
     ?debug("dlink_tcp:data(): Got ~p", [ Elems ]),
 
     case opt(?DLINK_ARG_CMD, Elems, undefined) of
-        ?DLINK_CMD_AUTHORIZE ->
-            [ TransactionID,
-              RemoteAddress,
-              RemotePort,
-              ProtoVersion,
-	      Certificates,
-              Signature ] =
-                opts([?DLINK_ARG_TRANSACTION_ID,
-                      ?DLINK_ARG_ADDRESS,
-                      ?DLINK_ARG_PORT,
-                      ?DLINK_ARG_VERSION,
-		      ?DLINK_ARG_CERTIFICATES,
-                      ?DLINK_ARG_SIGNATURE],
-                     Elems, undefined),
+	?DLINK_CMD_AUTHORIZE ->
+	    [ TransactionID, 
+	      RemoteAddress, 
+	      RemotePort, 
+	      ProtoVersion, 
+	      Certificate, 
+	      Signature ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID,
+		      ?DLINK_ARG_ADDRESS,
+		      ?DLINK_ARG_PORT,
+		      ?DLINK_ARG_VERSION, 
+		      ?DLINK_ARG_CERTIFICATE,
+		      ?DLINK_ARG_SIGNATURE],
+		     Elems, undefined),
 
-            process_authorize(FromPid, PeerIP, PeerPort,
-                              TransactionID, RemoteAddress, RemotePort,
-                              ProtoVersion, Signature, Certificates, CompSpec);
+	    process_authorize(FromPid, PeerIP, PeerPort, 
+			      TransactionID, RemoteAddress, RemotePort, 
+			      ProtoVersion,  Certificate, Signature, CompSpec);
 
-        ?DLINK_CMD_SERVICE_ANNOUNCE ->
-            [ TransactionID,
-              ProtoVersion,
-              Signature ] =
-                opts([?DLINK_ARG_TRANSACTION_ID,
-                      ?DLINK_ARG_VERSION,
-                      ?DLINK_ARG_SIGNATURE],
-                     Elems, undefined),
+	?DLINK_CMD_SERVICE_ANNOUNCE ->
+	    [ TransactionID, 
+	      Status, 
+	      { array, Services }, 
+	      Signature ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID,
+		      ?DLINK_ARG_STATUS,
+		      ?DLINK_ARG_SERVICES,
+		      ?DLINK_ARG_SIGNATURE],
+		     Elems, undefined),
 
-	    Conn = {PeerIP, PeerPort},
-            case authorize_rpc:validate_message(CompSpec, Signature, Conn) of
-                [ok, Msg] ->
-                    process_announce(Msg, FromPid, PeerIP, PeerPort,
-                                     TransactionID, ProtoVersion, CompSpec);
-                _ ->
-                    ?debug("Couldn't validate availability msg from ~p", [Conn])
-            end;
+	    process_announce(FromPid, PeerIP, PeerPort,
+			     TransactionID, Status, Services, 
+			     Signature, CompSpec);
+	?DLINK_CMD_RECEIVE ->
+	    [ _TransactionID, 
+	      ProtoMod, 
+	      Data ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID,
+		      ?DLINK_ARG_MODULE,
+		      ?DLINK_ARG_DATA],
+		     Elems, undefined),
+	    process_data(FromPid, PeerIP, PeerPort,
+			 ProtoMod, Data, CompSpec);
+	
+	?DLINK_CMD_PING ->
+	    ?info("dlink_bt:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),
+	    ok;
 
-        ?DLINK_CMD_RECEIVE ->
-            [ _TransactionID,
-              ProtoMod,
-              Data ] =
-                opts([?DLINK_ARG_TRANSACTION_ID,
-                      ?DLINK_ARG_MODULE,
-                      ?DLINK_ARG_DATA],
-                     Elems, undefined),
-            process_data(FromPid, PeerIP, PeerPort,
-                         ProtoMod, Data, CompSpec);
-
-        ?DLINK_CMD_PING ->
-            ?info("dlink_tcp:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort ]),
-            ok;
-
-        undefined ->
-            ?warning("dlink_tcp:data() cmd undefined, ~p", [ Elems ]),
-            ok
+	undefined -> 
+	    ?warning("dlink_bt:data() cmd undefined., ~p", [ Elems ]),
+	    ok
     end.
+
+    
+
+
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
@@ -424,7 +569,7 @@ handle_rpc("setup_data_link", Args) ->
 
     {ok, [ {status, rvi_common:json_rpc_status(Res)} , { timeout, Timeout }]};
 
-handle_rpc("disconnect_data_link", Args) ->
+handle_rpc("disconenct_data_link", Args) ->
     { ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     [Res] = gen_server:call(?SERVER, { rvi, disconnect_data_link, [NetworkAddress]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
@@ -432,9 +577,10 @@ handle_rpc("disconnect_data_link", Args) ->
 handle_rpc("send_data", Args) ->
     { ok, ProtoMod } = rvi_common:get_json_element(["proto_mod"], Args),
     { ok, Service } = rvi_common:get_json_element(["service"], Args),
-    { ok,  Data } = rvi_common:get_json_element(["data"], Args),
+    { ok,  Data } = rvi_common:get_json_element([?DLINK_ARG_DATA], Args),
     { ok,  DataLinkOpts } = rvi_common:get_json_element(["opts"], Args),
-    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts]}),
+    [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, 
+					  [ProtoMod, Service, Data, DataLinkOpts]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
     
 
@@ -473,7 +619,6 @@ handle_cast(Other, St) ->
 
 handle_call({rvi, setup_data_link, [ Service, Opts ]}, _From, St) ->
     %% Do we already have a connection that support service?
-    ?info("dlink_tcp: setup_data_link (~p, ~p)~n", [Service, Opts]),
     case get_connections_by_service(Service) of
 	[] -> %% Nop[e
 	    case proplists:get_value(target, Opts, undefined) of
@@ -517,7 +662,14 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 
 	%% FIXME: What to do if we have multiple connections to the same service?
 	[ConnPid | _T] -> 
-	    Res = connection:send(ConnPid, {receive_data, ProtoMod, Data}),
+	    Res = connection:send(ConnPid, 
+				  term_to_json(
+				    { struct, 		     
+				      [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+					{ ?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE },
+					{ ?DLINK_ARG_MODULE, atom_to_list(ProtoMod) },
+					{ ?DLINK_ARG_DATA, base64:encode_to_string(Data) }
+				      ]})),
 	    { reply, [ Res ], St}
     end;
 	    
@@ -528,7 +680,7 @@ handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     %% Create a timer to handle periodic pings.
     {ok, ServerOpts } = rvi_common:get_module_config(data_link, 
 						     ?MODULE,
-						     bert_rpc_server, [], 
+						     server_opts, [], 
 						     St#st.cs),
     Timeout = proplists:get_value(ping_interval, ServerOpts, ?DEFAULT_PING_INTERVAL),
 
@@ -552,7 +704,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     case connection:is_connection_up(Pid) of
 	true ->
 	    ?info("dlink_tcp:ping(): Pinging: ~p:~p", [Address, Port]),
-	    connection:send(Pid, ping),
+	    connection:send(Pid, term_to_json({ struct, [{ ?DLINK_ARG_CMD, ?DLINK_CMD_PING }]})),
 	    erlang:send_after(Timeout, self(), 
 			      { rvi_ping, Pid, Address, Port, Timeout });
 
@@ -562,8 +714,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     {noreply, St};
 
 %% Setup static nodes
-handle_info({ rvi_setup_persistent_connection, IP, Port, CompSpec }, St) ->
-    ?info("rvi_setup_persistent_connection, ~p, ~p~n", [IP, Port]),
+handle_info({ rvi_setup_persitent_connection, IP, Port, CompSpec }, St) ->
     connect_and_retry_remote(IP, Port, CompSpec),
     { noreply, St };
 
@@ -579,9 +730,10 @@ code_change(_OldVsn, St, _Extra) ->
 
 setup_reconnect_timer(MSec, IP, Port, CompSpec) ->
     erlang:send_after(MSec, ?MODULE, 
-		      { rvi_setup_persistent_connection, 
+		      { rvi_setup_persitent_connection, 
 			IP, Port, CompSpec }),
     ok.
+
 
 get_services_by_connection(ConnPid) ->
     case ets:lookup(?CONNECTION_TABLE, ConnPid) of
@@ -633,116 +785,6 @@ delete_services(ConnPid, SvcNameList) ->
 		 }) || SvcName <- SvcNameList ],
     ok.
 
-availability_msg(Availability, Services) ->
-    {struct, [{ ?DLINK_ARG_STATUS, status_string(Availability) },
-	      { ?DLINK_ARG_SERVICES, {array, Services} }]}.
-
-status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
-status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
-
-process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
-		  RemotePort, ProtoVersion, Signature, Certificates, CompSpec) ->
-    ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
-    ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
-    ?info("dlink_tcp:authorize(): Protocol Ver:   ~p", [ ProtoVersion ]),
-    ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
-
-    { _NRemoteAddress, _NRemotePort} = Conn =
-        case { RemoteAddress, RemotePort } of
-            { "0.0.0.0", 0 } ->
-
-                ?info("dlink_tcp:authorize(): Remote is behind firewall. Will use ~p:~p",
-                      [ PeerIP, PeerPort]),
-                { PeerIP, PeerPort };
-            _ -> { RemoteAddress, RemotePort}
-        end,
-
-    case validate_auth_jwt(Signature, Certificates, Conn, CompSpec) of
-        true ->
-            connection_authorized(FromPid, Conn, CompSpec);
-        false ->
-            %% close connection (how?)
-            false
-    end.
-
-send_authorize(Pid, CompSpec) ->
-    {LocalIP, LocalPort} = rvi_common:node_address_tuple(),
-    connection:send(Pid, 
-		    term_to_json(
-		      {struct, 		     
-		       [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
-			 { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
-			 { ?DLINK_ARG_ADDRESS, LocalIP },
-			 { ?DLINK_ARG_PORT,  integer_to_list(LocalPort) },
-			 { ?DLINK_ARG_VERSION, ?DLINK_TCP_VERSION },
-			 { ?DLINK_ARG_CERTIFICATES, {array, get_certificates(CompSpec)} },
-			 { ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) } ]})).
-
-connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
-    %% If FromPid (the genserver managing the socket) is not yet registered
-    %% with the conneciton manager, this is an incoming connection
-    %% from the client. We should respond with our own authorize followed by
-    %% a service announce
-    case connection_manager:find_connection_by_pid(FromPid) of
-	not_found ->
-	    ?info("dlink_tcp:authorize(): New connection!"),
-	    connection_manager:add_connection(RemoteIP, RemotePort, FromPid),
-	    ?debug("dlink_tcp:authorize(): Sending authorize."),
-            Res = send_authorize(FromPid, CompSpec),
-	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
-	    ok;
-	_ -> ok
-    end,
-
-    %% Send our own servide announcement to the remote server
-    %% that just authorized to us.
-    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
-
-    [ ok, FilteredServices ] = authorize_rpc:filter_by_destination(
-                                 CompSpec, LocalServices, Conn),
-
-    %% Send an authorize back to the remote node
-    ?info("dlink_tcp:authorize(): Announcing local services: ~p to remote ~p:~p",
-	  [FilteredServices, RemoteIP, RemotePort]),
-
-    [ ok, JWT ] = authorize_rpc:sign_message(
-                    CompSpec, availability_msg(available, FilteredServices)),
-    connection:send(FromPid,
-                    term_to_json(
-                      {struct,
-                       [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
-                         { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
-                         { ?DLINK_ARG_SIGNATURE, JWT } ]})),
-
-    %% Setup ping interval
-    gen_server:call(?SERVER, { setup_initial_ping, RemoteIP, RemotePort, FromPid }),
-    ok.
-
-process_data(_FromPid, RemoteIP, RemotePort, ProtocolMod, Data, CompSpec) ->
-    ?debug("dlink_tcp:receive_data(): RemoteAddr: {~p, ~p}", [ RemoteIP, RemotePort ]),
-    ?debug("dlink_tcp:receive_data(): ~p:receive_message(~p)", [ ProtocolMod, Data ]),
-    Proto = list_to_existing_atom(ProtocolMod),
-    Proto:receive_message(CompSpec, {RemoteIP, RemotePort},
-			  base64:decode_to_string(Data)).
-
-process_announce(Msg, FromPid, IP, Port, TID, _Vsn, CompSpec) ->
-    [ Avail,
-      {array, Svcs} ] =
-        opts([ ?DLINK_ARG_STATUS, ?DLINK_ARG_SERVICES ], Msg, undefined),
-    ?debug("dlink_tcp:service_announce(~p): Address:       ~p:~p", [Avail,IP,Port]),
-    ?debug("dlink_tcp:service_announce(~p): TransactionID: ~p", [Avail,TID]),
-    ?debug("dlink_tcp:service_announce(~p): Services:      ~p", [Avail,Svcs]),
-    case Avail of
-	?DLINK_ARG_AVAILABLE ->
-	    add_services(Svcs, FromPid),    
-	    service_discovery_rpc:register_services(CompSpec, Svcs, ?MODULE);
-	?DLINK_ARG_UNAVAILABLE ->
-	    delete_services(FromPid, Svcs),
-	    service_discovery_rpc:unregister_services(CompSpec, Svcs, ?MODULE)
-    end,
-    ok.
-
 delete_connection(Conn) ->
     %% Create or replace existing connection table entry
     %% with the sum of new and old services.
@@ -774,33 +816,6 @@ get_connections(Key, Acc) ->
 	    
 get_connections() ->
     get_connections(ets:first(?CONNECTION_TABLE), []).
-
-
-get_authorize_jwt(CompSpec) ->
-    case authorize_rpc:get_authorize_jwt(CompSpec) of
-	[ok, JWT] ->
-	    JWT;
-	[not_found] ->
-	    ?error("No authorize JWT~n", []),
-	    error(cannot_authorize)
-    end.
-
-get_certificates(CompSpec) ->
-    case authorize_rpc:get_certificates(CompSpec) of
-	[ok, Certs] ->
-	    Certs;
-	[not_found] ->
-	    ?error("No certificate found~n", []),
-	    error(no_certificate_found)
-    end.
-
-validate_auth_jwt(JWT, Certs, Conn, CompSpec) ->
-    case authorize_rpc:validate_authorization(CompSpec, JWT, Certs, Conn) of
-	[ok] ->
-	    true;
-	[not_found] ->
-	    false
-    end.
 
 term_to_json(Term) ->
     binary_to_list(iolist_to_binary(exo_json:encode(Term))).

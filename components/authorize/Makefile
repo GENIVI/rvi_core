@@ -1,4 +1,4 @@
-.PHONY:	all deps compile setup clean doc escript
+.PHONY:	all deps compile setup clean doc
 
 
 NAME=authorize
@@ -9,16 +9,13 @@ SETUP_GEN=$(shell ./find_setup_gen.sh)
 all: deps compile
 
 deps:
-	./rebar get-deps
+	rebar get-deps
 
 compile:
-	./rebar compile
-
-escript:
-	ERL_LIBS=$(PWD)/..:$(PWD)/../../deps:$(ERL_LIBS) ./rebar escriptize
+	rebar compile
 
 recomp:
-	./rebar compile skip_deps=true
+	rebar compile skip_deps=true
 
 setup:
 	ERL_LIBS=$(PWD)/deps:$(ERL_LIBS):$(PWD) \
@@ -33,10 +30,10 @@ run: setup
 	erl -boot setup/start -config setup/sys
 
 doc:
-        REBAR_DOC=1 ./rebar skip_deps=true get-deps doc
+        REBAR_DOC=1 rebar skip_deps=true get-deps doc
 
 clean:
-	./rebar clean
+	rebar clean
 
 
 
