@@ -1,4 +1,3 @@
-%% -*- erlang -*-
 %%
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
@@ -29,13 +28,5 @@
 		  proto_json,
 		  proto_bert
                  ]},
-  {mod, { rvi_app, []}},
-  {env,
-   [
-    %% The following settings default to a self-signing node (good for testing)
-    %% Override these values in the setup config.
-    {provisioning_key, "$PRIV_DIR/keys/self_provisioning_key.pem"},
-    {authorize_jwt, "$PRIV_DIR/keys/authorize.jwt"},
-    {cert_dir, "$DATA_DIR/certs"}
-   ]}
+  {mod, { rvi_app, []}}
  ]}.
