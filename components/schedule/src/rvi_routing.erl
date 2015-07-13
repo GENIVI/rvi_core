@@ -73,7 +73,7 @@ start_link() ->
 %%--------------------------------------------------------------------
 
 init([]) ->
-    {ok, Routes } = application:get_env(rvi_core, ?ROUTING_RULES),
+    {ok, Routes } = application:get_env(rvi, ?ROUTING_RULES),
 
     {ok, #st {
 	    routes = Routes

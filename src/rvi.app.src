@@ -8,7 +8,7 @@
 
 
 %% -*- erlang -*-
-{application, rvi_core,
+{application, rvi,
  [
   {description, ""},
   {vsn, "0.4.0"},
