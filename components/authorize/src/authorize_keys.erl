@@ -12,7 +12,8 @@
 -export([get_certificates/0,
 	 get_certificates/1]).
 -export([validate_message/2]).
--export([filter_by_destination/2]).
+-export([filter_by_destination/2,
+	 find_cert_by_destination/1]).
 -export([public_key_to_json/1,
 	 json_to_public_key/1]).
 
@@ -109,6 +110,9 @@ get_certificates(Conn) ->
 filter_by_destination(Services, Conn) ->
     gen_server:call(?MODULE, {filter_by_destination, Services, Conn}).
 
+find_cert_by_destination(Service) ->
+    gen_server:call(?MODULE, {find_cert_by_destination, Service}).
+
 provisioning_key() ->
     gen_server:call(?MODULE, provisioning_key).
 
@@ -148,7 +152,8 @@ handle_call(Req, From, S) ->
     try handle_call_(Req, From, S)
     catch
 	error:Err ->
-	    ?warning("ERROR - authorize_keys:handle_call(~p): ~p~n", [Req,Err]),
+	    ?warning("ERROR - authorize_keys:handle_call(~p): ~p~n~p~n",
+		     [Req, Err, erlang:get_stacktrace()]),
 	    {reply, error, S}
     end.
 
@@ -178,6 +183,11 @@ handle_call_({filter_by_destination, Services, Conn} =R, _From, State) ->
     Filtered = filter_by_destination_(Services, Conn),
     ?debug("Filtered = ~p~n", [Filtered]),
     {reply, Filtered, State};
+handle_call_({find_cert_by_destination, Service} = R, _From, State) ->
+    ?debug("authorize_keys:handle_call(~p,...)~n", [R]),
+    Res = find_cert_by_destination_(Service),
+    ?debug("Res = ~p~n", [Res]),
+    {reply, Res, State};
 handle_call_(_, _, S) ->
     {reply, error, S}.
 
@@ -226,6 +236,46 @@ filter_svcs_by_dest_([S|Svcs], Dests) ->
     end;
 filter_svcs_by_dest_([], _) ->
     [].
+
+find_cert_by_destination_(Service) ->
+    SvcParts = split_path(strip_prot(Service)),
+    LocalCerts = ets:select(?CERTS, [{ {{local,'_'}, '$1'}, [], ['$1'] }]),
+    case lists:foldl(
+	   fun(#cert{destinations = Dests} = C, {Max, _} = Acc) ->
+		   case match_length(Dests, SvcParts) of
+		       L when L > Max ->
+			   {L, C};
+		       _ ->
+			   Acc
+		   end
+	   end, {0, none}, LocalCerts) of
+	{0, none} ->
+	    {error, not_found};
+	{_, Found} ->
+	    {ok, Found#cert.jwt}
+    end.
+
+match_length(Dests, Svc) ->
+    R = lists:foldl(fun(D, Max) ->
+			    DParts = split_path(strip_prot(D)),
+			    erlang:max(match_length_(DParts, Svc), Max)
+		    end, 0, Dests),
+    ?debug("match_length(~p,~p) -> ~p~n", [Dests, Svc, R]),
+    R.
+
+match_length_(D, Svc) ->
+    match_length_(D, Svc, 0).
+
+match_length_([H|T], [H|T1], L) ->
+    match_length_(T, T1, L+1);
+match_length_(["+"|T], [_|T1], L) ->
+    match_length_(T, T1, L+1);
+match_length_([H|_], [H1|_], _) when H =/= H1 ->
+    0;
+match_length_([_|_], [], _) ->
+    0;
+match_length_([], _, L) ->
+    L.
 
 match_dest(D, S) ->
     A = split_path(strip_prot(D)),
@@ -424,10 +474,11 @@ keys_by_conn(Conn) ->
 			      key = '$2', _='_'}, [], [{{'$1', '$2'}}] }]).
 
 validate_message_(JWT, Conn) ->
+    ?debug("validate_message_(~p, ~p)~n", [JWT, Conn]),
     [_|_] = Keys = keys_by_conn(Conn),
     validate_message_1(Keys, JWT).
 
-validate_message_1([K|T], JWT) ->
+validate_message_1([{_,K}|T], JWT) ->
     case authorize_sig:decode_jwt(JWT, K) of
 	invalid ->
 	    validate_message_1(T, JWT);

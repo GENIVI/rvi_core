@@ -143,14 +143,16 @@ service_unavailable(CompSpec, SvcName, DataLinkModule) ->
 			    [{ service, SvcName }, 
 			     { data_link_module, DataLinkModule }], CompSpec).
 
-handle_remote_message(CompSpec, SvcName, Timeout, Parameters, Signature, Certificate) ->
+handle_remote_message(CompSpec, Conn, SvcName, Timeout, Params, Signature) ->
+    {IP, Port} = Conn,
     rvi_common:notification(service_edge, ?MODULE, 
 			    handle_remote_message, 
-			    [{ service, SvcName }, 
+			    [{ ip, IP },
+			     { port, Port },
+			     { service, SvcName }, 
 			     { timeout, Timeout },
-			     { parameters, Parameters },
-			     { signature, Signature },
-			     { certificate, Certificate }], CompSpec).
+			     { parameters, Params },
+			     { signature, Signature }], CompSpec).
 
 
 %% Invoked by schedule_rpc.
@@ -268,17 +270,19 @@ handle_notification("service_unavailable", Args) ->
     ok;
 
 handle_notification("handle_remote_message", Args) ->
+    { ok, IP } = rvi_common:get_json_element(["ip"], Args),
+    { ok, Port } = rvi_common:get_json_element(["port"], Args),
     { ok, SvcName } = rvi_common:get_json_element(["service"], Args),
     { ok, Timeout } = rvi_common:get_json_element(["timeout"], Args),
     { ok, Parameters } = rvi_common:get_json_element(["parameters"], Args),
-    { ok, Certificate } = rvi_common:get_json_element(["certificate"], Args),
     { ok, Signature } = rvi_common:get_json_element(["signature"], Args),
     gen_server:cast(?SERVER, { rvi, handle_remote_message, 
 			       [ 
+				 IP,
+				 Port,
 				 SvcName, 
 				 Timeout, 
 				 Parameters,
-				 Certificate, 
 				 Signature
 			       ]}),
 
@@ -353,15 +357,17 @@ handle_call({ rvi, handle_local_message,
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [SvcName]),
     ?debug("service_edge_rpc:local_msg: timeout:         ~p", [TimeoutArg]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
-
     %%
     %% Authorize local message and retrieve a certificate / signature
     %% that will be accepted by the receiving node that will deliver
     %% the messaage to its locally connected service_name service.
     %%
-    [ok, Certificate, Signature ] = 
-	authorize_rpc:authorize_local_message(St#st.cs, SvcName),
-    
+    [ok, Signature ] = 
+	authorize_rpc:authorize_local_message(
+	  St#st.cs, SvcName, [{service_name, SvcName},
+			      {timeout, Timeout},
+			      {parameters, Parameters}]),
+
     %%
     %% Slick but ugly.
     %% If the timeout is more than 24 hrs old when parsed as unix time,
@@ -370,7 +376,6 @@ handle_call({ rvi, handle_local_message,
     { Mega, Sec, _Micro } = now(),
     Now = Mega * 1000000 + Sec,
 
-    
     Timeout = 
 	case TimeoutArg - Now < -86400 of
 	    true -> %% Relative timeout arg. Convert to unix time msec
@@ -381,10 +386,6 @@ handle_call({ rvi, handle_local_message,
 	    false -> %% Absolute timoeut. Convert to unix time msec
 		TimeoutArg * 1000
 	end,
-	    
-	    
-
-    
     %%
     %% Check if this is a local service by trying to resolve its service name. 
     %% If successful, just forward it to its service_name.
@@ -405,7 +406,6 @@ handle_call({ rvi, handle_local_message,
 						       SvcName, 
 						       Timeout, 
 						       Parameters,
-						       Certificate,
 						       Signature),
 	    { reply, [ok, TID ], St}
     end;
@@ -430,26 +430,33 @@ handle_cast({rvi, service_unavailable, [SvcName, _DataLinkModule] }, St) ->
 		      
 handle_cast({rvi, handle_remote_message, 
 	     [
+	      IP,
+	      Port,
 	      SvcName,
 	      Timeout,
 	      Parameters,
-	      Certificate,
 	      Signature
 	     ] }, St) ->
 
+    ?debug("service_edge:remote_msg(): remote_ip:       ~p", [IP]),
+    ?debug("service_edge:remote_msg(): remote_port:     ~p", [Port]),
     ?debug("service_edge:remote_msg(): service_name:    ~p", [SvcName]),
     ?debug("service_edge:remote_msg(): timeout:         ~p", [Timeout]),
     ?debug("service_edge:remote_msg(): parameters:      ~p", [Parameters]),
     ?debug("service_edge:remote_msg(): signature:       ~p", [Signature]),
-    ?debug("service_edge:remote_msg(): certificate:     ~p", [Certificate]),
 
     %% Check if this is a local message.
     case ets:lookup(?SERVICE_TABLE, SvcName) of
 	[ #service_entry { url = URL }] -> %% This is a local message
-	    case authorize_rpc:authorize_remote_message(St#st.cs, 
-							SvcName, 
-							Certificate, 
-							Signature) of
+	    case authorize_rpc:authorize_remote_message(
+		   St#st.cs, 
+		   SvcName, 
+		   [{remote_ip, IP},
+		    {remote_port, Port},
+		    {service, SvcName},
+		    {timeout, Timeout},
+		    {parameters, Parameters},
+		    {signature, Signature}]) of
 		[ ok ] -> 
 		    forward_message_to_local_service(URL, SvcName, 
 						     Parameters, St#st.cs),
