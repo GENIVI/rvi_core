@@ -22,8 +22,8 @@
 
 -define(SERVER, ?MODULE). 
 -export([start_json_server/0]).
--export([send_message/9,
-	 receive_message/2]).
+-export([send_message/8,
+	 receive_message/3]).
 
 -record(st, { 
 	  %% Component specification
@@ -49,8 +49,7 @@ send_message(CompSpec,
 	     DataLinkMod,
 	     DataLinkOpts,
 	     Parameters, 
-	     Signature, 
-	     Certificate) ->
+	     Signature) ->
     rvi_common:request(protocol, ?MODULE, send_message,
 		       [ { service, ServiceName },
 			 { timeout, Timeout },
@@ -58,13 +57,14 @@ send_message(CompSpec,
 			 { data_link_mod, DataLinkMod },
 			 { data_link_opts, DataLinkOpts },
 			 { parameters, Parameters },
-			 { signature, Signature },
-			 { certificate, Certificate }],
+			 { signature, Signature }],
 		       [ status ], CompSpec).
 
-receive_message(CompSpec, Data) ->
+receive_message(CompSpec, {IP, Port}, Data) ->
     rvi_common:notification(protocol, ?MODULE, receive_message, 
-			    [ {data, Data } ],
+			    [ {data, Data },
+                              {remote_ip, IP},
+                              {remote_port, Port} ],
 			    CompSpec).
 
 %% JSON-RPC entry point
@@ -78,7 +78,6 @@ handle_rpc("send_message", Args) ->
     {ok, DataLinkOpts} = rvi_common:get_json_element(["data_link_opts"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
-    {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
     [ ok ] = gen_server:call(?SERVER, { rvi, send_message, 
 					[ServiceName,
 					 Timeout,
@@ -86,8 +85,7 @@ handle_rpc("send_message", Args) ->
 					 DataLinkMod,
 					 DataLinkOpts,
 					 Parameters,
-					 Signature, 
-					 Certificate]}),
+					 Signature]}),
     {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
 				 
 
@@ -99,8 +97,9 @@ handle_rpc(Other, _Args) ->
 
 handle_notification("receive_message", Args) ->
     {ok, Data} = rvi_common:get_json_element(["data"], Args),
-
-    gen_server:cast(?SERVER, { rvi, receive_message, [Data]}),
+    {ok, RemoteIP} = rvi_common:get_json_element(["remote_ip"], Args),
+    {ok, RemotePort} = rvi_common:get_json_element(["remote_port"], Args),
+    gen_server:cast(?SERVER, { rvi, receive_message, [Data, RemoteIP, RemotePort]}),
     ok;
 
 handle_notification(Other, _Args) ->
@@ -115,8 +114,7 @@ handle_call({rvi, send_message,
 	      DataLinkMod,
 	      DataLinkOpts,
 	      Parameters,
-	      Signature,
-	      Certificate]}, _From, St) ->
+	      Signature]}, _From, St) ->
     ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
     ?debug("    protocol:send(): opts:            ~p~n", [ProtoOpts]),
@@ -124,16 +122,13 @@ handle_call({rvi, send_message,
     ?debug("    protocol:send(): data_link_opts:  ~p~n", [DataLinkOpts]),
     ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
-    ?debug("    protocol:send(): certificate:     ~p~n", [Certificate]),
-
     
     Data = term_to_json({ struct, 
 			  [
 			   { "service", ServiceName },
 			   { "timeout", Timeout }, 
-			   { "parameters", Parameters },
-			   { "signature", Signature },
-			   { "certificate", Certificate }
+			   { "parameters", {array, Parameters} },
+			   { "signature", Signature }
 			  ]
 			}),
 
@@ -150,25 +145,24 @@ handle_call(Other, _From, St) ->
 handle_cast({rvi, receive_message, [Data]}, St) when is_list(Data)->
     handle_cast({ rvi, receive_message, [ list_to_binary(Data) ] }, St);
 
-handle_cast({rvi, receive_message, [Payload]}, St) ->
+handle_cast({rvi, receive_message, [Payload, IP, Port]}, St) ->
     {ok, {struct, Elems}} = exo_json:decode_string(binary_to_list(Payload)),
 
-    [ ServiceName, Timeout, Parameters, Signature, Certificate ] = 
-	opts(["service", "timeout", "parameters", 
-	      "signature", "certificate"], Elems, undefined),
+    [ ServiceName, Timeout, {array, Parameters}, Signature ] = 
+	opts(["service", "timeout", "parameters", "signature"], Elems, undefined),
 
     ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
 %%    ?debug("    protocol:rcv(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
-    ?debug("    protocol:rcv(): certificate:     ~p~n", [Certificate]),
+    ?debug("    protocol:rcv(): remote IP/Port:  ~p~n", [{IP, Port}]),
 
-    service_edge_rpc:handle_remote_message(St#st.cs, 
+    service_edge_rpc:handle_remote_message(St#st.cs,
+                                           {IP, Port},
 					   ServiceName,
 					   Timeout,
 					   Parameters,
-					   Signature,
-					   Certificate),
+					   Signature),
     {noreply, St};
 
 

@@ -19,6 +19,7 @@
 -define(DLINK_ARG_PORT,              "port").
 -define(DLINK_ARG_VERSION,           "ver").
 -define(DLINK_ARG_CERTIFICATE,       "cert").
+-define(DLINK_ARG_CERTIFICATES,      "certs").
 -define(DLINK_ARG_SIGNATURE,         "sign").
 -define(DLINK_ARG_SERVICES,          "svcs").
 -define(DLINK_ARG_MODULE,            "mod").

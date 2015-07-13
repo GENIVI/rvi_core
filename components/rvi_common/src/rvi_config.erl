@@ -212,7 +212,8 @@ substitute(Other, Acc)  ->
     [ Other | Acc ].
 
 setup_substitution(App) ->
-    Env = application:get_all_env(App),
+    Env = [{K, setup:expand_value(App, V)} ||
+	      {K, V} <-application:get_all_env(App)],
     Subst = substitute(Env,[]),
     case is_list(Subst) of
 	false -> ok;
