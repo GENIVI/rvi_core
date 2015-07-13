@@ -29,7 +29,7 @@ The RVI mailing list is available at:
 [AGL](http://lists.linuxfoundation.org/mailman/listinfo/automotive-eg-rvi)
 
 The RVI wiki is available at:  
-[AGL](https://wiki.automotivelinux.org/eg-rvi/)
+[AGL](https://wiki2.automotivelinux.org/eg-rvi/)
 
 
 # PROJECT MISSION STATEMENT #
