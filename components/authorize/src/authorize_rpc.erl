@@ -23,8 +23,8 @@
 	 sign_message/2,
 	 validate_message/3,
 	 validate_authorization/4,
-	 authorize_local_message/3,
-	 authorize_remote_message/3]).
+	 authorize_local_message/2,
+	 authorize_remote_message/4]).
 -export([filter_by_destination/3]).
 
 %% for testing & development
@@ -49,8 +49,7 @@ start_link() ->
 
 init([]) ->
     ?debug("authorize_rpc:init(): called."),
-    {Priv, Pub} = KeyPair = authorize_keys:get_key_pair(),
-    ?debug("KeyPair = ~p~n", [KeyPair]),
+    {Priv, Pub} = authorize_keys:get_key_pair(),
     {ok, #st { cs = rvi_common:get_component_specification(),
 	       private_key = Priv,
 	       public_key = Pub} }.
@@ -126,7 +125,7 @@ sign_message(CompSpec, Message) ->
 
 validate_message(CompSpec, JWT, Conn) ->
     ?debug("authorize_rpc:validate_message()~n", []),
-    rvi_common:request(authorize, ?MODULE, validate_message,
+    rvi_common:request(authorize, ?MODULE, sign_message,
 		       [{jwt, JWT},
 			{conn, Conn}], [status, message], CompSpec).
 
@@ -149,19 +148,22 @@ validate_authorization(CompSpec, JWT, Certs, Conn) ->
 			{conn, Conn}],
 		       [status], CompSpec).
 
-authorize_local_message(CompSpec, Service, Params) ->
-    ?debug("authorize_rpc:authorize_local_msg(): params:    ~p ~n", [Params]),
-    rvi_common:request(authorize, ?MODULE, authorize_local_message, 
-		       [{service, Service},
-			{parameters, Params}],
-		       [status, signature], CompSpec).
+authorize_local_message(CompSpec, Service) ->
+    ?debug("authorize_rpc:authorize_local_msg(): service:    ~p ~n", [Service]),
+    rvi_common:request(authorize, ?MODULE,authorize_local_message, 
+		       [{ service, Service }],
+		       [status, signature, certificate], CompSpec).
+    
 
-authorize_remote_message(CompSpec, Service, Params) ->
+
+authorize_remote_message(CompSpec, Service, Signature, Certificate) ->
     ?debug("authorize_rpc:authorize_remote_msg(): service: ~p ~n", [Service]),
-    ?debug("authorize_rpc:authorize_remote_msg(): parameters: ~p ~n", [Params]),
+    ?debug("authorize_rpc:authorize_remote_msg(): signature:    ~p ~n", [Signature]),
+    ?debug("authorize_rpc:authorize_remote_msg(): certificate:  ~p ~n", [Certificate]),
     rvi_common:request(authorize, ?MODULE,authorize_remote_message, 
-		       [{service, Service},
-			{parameters, Params}],
+		       [{ service, Service},
+			{ signature, Signature },
+			{ certificate, Certificate }],
 		       [status], CompSpec).
 
 filter_by_destination(CompSpec, Services, Conn) ->
@@ -222,19 +224,19 @@ handle_rpc("validate_authorization", Args) ->
     {ok, [ rvi_common:json_rpc_status(Status) | Rem] };
 handle_rpc("authorize_local_message", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
-    {ok, Params} = rvi_common:get_json_element(["parameters"], Args),
     [ Status | Rem ] = 
 	gen_server:call(?SERVER, { rvi, authorize_local_message, 
-				   [Service, Params]}),
+				   [Service]}),
 
     { ok, [ rvi_common:json_rpc_status(Status) | Rem] };
 
 
 handle_rpc("authorize_remote_message", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
-    {ok, Params} = rvi_common:get_json_element(["parameters"], Args),
+    {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
+    {ok, Certificate} = rvi_common:get_json_element(["certificate"], Args),
     [ Status ]  = gen_server:call(?SERVER, { rvi, authorize_remote_message, 
-					     [Service, Params]}),
+					     [Service, Signature, Certificate]}),
     { ok, rvi_common:json_rpc_status(Status)};
 
 handle_rpc("filter_by_destination", Args) ->
@@ -291,46 +293,15 @@ handle_call({rvi, validate_authorization, [JWT, Certs, Conn] }, _From, State) ->
 	    {reply, [not_found], State}
     end;
 	
-handle_call({rvi, authorize_local_message, [Service, Params] } = R, _From,
-	    #st{private_key = Key} = State) ->
-    ?debug("authorize_rpc:handle_call(~p)~n", [R]),
-    case authorize_keys:find_cert_by_destination(Service) of
-	{ok, Cert} ->
-	    Msg = Params ++ [{"certificate", Cert}],
-	    ?debug("authorize_rpc:authorize_local_message~nMsg = ~p~n", [Msg]),
-	    Sig = authorize_sig:encode_jwt({struct, Msg}, Key),
-	    {reply, [ok, Sig], State};
-	_ ->
-	    {reply, [ not_found ], State}
-    end;
+handle_call({rvi, authorize_local_message, [_Service] }, _From, State) ->
+    {reply, [ ok, "signature", "certificate" ], State};
 
-handle_call({rvi, authorize_remote_message, [Service, Params]}=R,
-	    _From, State) ->
-    ?debug("authorize_rpc:handle_call(~p)~n", [R]),
-    IP = proplists:get_value(remote_ip, Params),
-    Port = proplists:get_value(remote_port, Params),
-    Timeout = proplists:get_value(timeout, Params),
-    SvcName = proplists:get_value(service, Params),
-    Parameters = proplists:get_value(parameters, Params),
-    Signature = proplists:get_value(signature, Params),
-    case authorize_keys:validate_message(
-	   iolist_to_binary(Signature), {IP, Port}) of
-	invalid ->
-	    {reply, [ not_found ], State};
-	Msg ->
-	    {ok, Timeout1} = rvi_common:get_json_element(["timeout"], Msg),
-	    {ok, SvcName1} = rvi_common:get_json_element(["service_name"], Msg),
-	    {ok, Params1} = rvi_common:get_json_element(["parameters"], Msg),
-	    if Timeout =:= Timeout1,
-	       SvcName =:= SvcName1,
-	       Parameters =:= Params1 ->
-		    ?debug("Remote message authorized.~n", []),
-		    {reply, [ ok ], State};
-	       true ->
-		    ?debug("Remote message NOT authorized.~n", []),
-		    {reply, [ not_found ], State}
-	    end
-    end;
+handle_call({rvi, authorize_remote_message, 
+	     [_Service, _Signature, _Certificate]},
+	     _From, State) ->
+
+    %% FIXME: Implement
+    {reply, [ ok ], State};
 
 handle_call({rvi, filter_by_destination, [Services, Conn]}, _From, State) ->
     Filtered = authorize_keys:filter_by_destination(Services, Conn),
@@ -367,13 +338,17 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
 store_certs(Certs, Keys, JWT, Conn) ->
     ?debug("Storing ~p certs for conn ~p~n", [length(Certs), Conn]),
-    KeyStructs = get_json_element(["keys"], Keys, []),
+    {ok, KeyStructs} = rvi_common:get_json_element(["keys"], Keys),
     authorize_keys:save_keys(KeyStructs, Conn),
     ?debug("KeyStructs = ~p~n", [KeyStructs]),
+    PubKeys = [{get_json_element(["kid"], K, ""),
+		authorize_keys:json_to_public_key(K)} || K <- KeyStructs],
+    ?debug("PubKeys = ~p~n", [PubKeys]),
     lists:foreach(fun(Cert) ->
-			  store_cert(Cert, KeyStructs, JWT, Conn)
+			  store_cert(Cert, PubKeys, JWT, Conn)
 		  end, Certs).
 
 get_json_element(Path, JSON, Default) ->
@@ -402,8 +377,8 @@ store_cert(Cert, Keys, JWT, Conn) ->
 	    ok
     end.
 
-decode_jwt(Cert, [K|Keys]) ->
-    case authorize_sig:decode_jwt(Cert, authorize_keys:json_to_public_key(K)) of
+decode_jwt(Cert, [{_,K}|Keys]) ->
+    case authorize_sig:decode_jwt(Cert, K) of
 	invalid ->
 	    decode_jwt(Cert, Keys);
 	Res ->
@@ -411,3 +386,5 @@ decode_jwt(Cert, [K|Keys]) ->
     end;
 decode_jwt(_, []) ->
     invalid.
+
+    
