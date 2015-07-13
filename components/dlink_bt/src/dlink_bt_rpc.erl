@@ -214,6 +214,7 @@ connect_remote(BTAddr, Channel, CompSpec) ->
 		{ ok, Pid } -> 
 		    ?info("dlink_bt:connect_remote(): Connection in progress ~p:~p - Proc ~p", 
 			   [BTAddr, Channel, Pid]),
+
 		    ok;
 		
 		{error, Err } -> 
@@ -251,15 +252,21 @@ announce_local_service_(_CompSpec, [], _Service, _Availability) ->
 announce_local_service_(CompSpec, 
 			[ConnPid | T],
 			Service, Availability) ->
-    [ ok, JWT ] = authorize_rpc:sign_message(
-                    CompSpec, availability_msg(Availability, [Service])),
+    
+    Status = case Availability of
+		 available -> ?DLINK_ARG_AVAILABLE;
+		 unavailable -> ?DLINK_ARG_UNAVAILABLE
+	     end,
+
     Res = bt_connection:send(ConnPid, 
 			     term_to_json(
 			       { struct, 
 				 [
 				  { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
 				  { ?DLINK_ARG_TRANSACTION_ID, 3},
-				  { ?DLINK_ARG_SIGNATURE, JWT }
+				  { ?DLINK_ARG_STATUS, atom_to_list(Status) },
+				  { ?DLINK_ARG_STATUS, { array, [Service]} },
+				  { ?DLINK_ARG_SIGNATURE, "" }
 				 ]
 			       })),
 
@@ -288,28 +295,47 @@ process_data(_FromPid, RemoteBTAddr, RemoteChannel, ProtocolMod, Data, CompSpec)
 
     ok.
 
-availability_msg(Availability, Services) ->
-    {struct, [{?DLINK_ARG_STATUS, status_string(Availability)},
-              {?DLINK_ARG_SERVICES, {array, Services}}]}.
 
-status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
-status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
-    
+process_announce(FromPid, 
+		 RemoteBTAddr, 
+		 RemoteChannel,
+		 TransactionID, 
+		 "available",
+		 Services,
+		 Signature, CompSpec) ->
+    ?debug("dlink_bt:service_announce(available): Address:       ~p-~p", [ RemoteBTAddr, RemoteChannel ]),
+    ?debug("dlink_bt:service_announce(available): TransactionID: ~p", [ TransactionID ]),
+    ?debug("dlink_bt:service_announce(available): Signature:     ~p", [ Signature ]),
+    ?debug("dlink_bt:service_announce(available): Service:       ~p", [ Services ]),
 
-process_availability(Msg, FromPid, Addr, Channel, TID, CompSpec) ->
-    {ok, Avail} = rvi_common:get_json_element([?DLINK_ARG_STATUS], Msg),
-    {ok, Svcs} = rvi_common:get_json_element([?DLINK_ARG_SERVICES], Msg),
-    ?debug("dlink_bt_rpc:service_announce(~p): Address:       ~p:~p", [Avail, Addr, Channel]),
-    ?debug("dlink_bt_rpc:service_announce(~p): TransactionID: ~p", [Avail, TID]),
-    ?debug("dlink_bt_rpc:service_announce(~p): Services:      ~p", [Avail, Svcs]),
-    case Avail of
-        ?DLINK_ARG_AVAILABLE ->
-            add_services(Svcs, FromPid),
-            service_discovery_rpc:register_services(CompSpec, Svcs, ?MODULE);
-        ?DLINK_ARG_UNAVAILABLE ->
-            delete_services(FromPid, Svcs),
-            service_discovery_rpc:unregister_services(CompSpec, Svcs, ?MODULE)
-    end.
+    %% Register the received services with all relevant components
+    add_services(Services, FromPid),
+    service_discovery_rpc:register_services(CompSpec, Services, ?MODULE),
+    ok;
+
+
+process_announce(FromPid, 
+		 RemoteBTAddr, 
+		 RemoteChannel,
+		 TransactionID,
+		 "unavailable",
+		 Services,
+		 Signature ,
+		 CompSpec) ->
+    ?debug("dlink_bt:service_announce(unavailable): Address:       ~p-~p",
+	   [ RemoteBTAddr, RemoteChannel ]),
+    ?debug("dlink_bt:service_announce(unavailable): TransactionID: ~p", 
+	   [ TransactionID ]),
+    ?debug("dlink_bt:service_announce(unavailable): Signature:     ~p", 
+	   [ Signature ]),
+    ?debug("dlink_bt:service_announce(unavailable): Service:       ~p",
+	   [ Services ]),
+
+
+    %% Delete from our own tables.
+    delete_services(FromPid, Services),
+    service_discovery_rpc:unregister_services(CompSpec, Services, ?MODULE),
+    ok.
 
 process_authorize(FromPid,
 		  PeerBTAddr, 
@@ -318,7 +344,7 @@ process_authorize(FromPid,
 		  RemoteAddress, 
 		  RemoteChannel, 
 		  Protocol, 
-		  Certificates, 
+		  Certificate, 
 		  Signature,
 		  CompSpec) ->
 
@@ -326,22 +352,61 @@ process_authorize(FromPid,
     ?info("dlink_bt:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemoteChannel ]),
     ?info("dlink_bt:authorize(): Protocol:       ~p",   [ Protocol ]),
     ?debug("dlink_bt:authorize(): TransactionID:  ~p",  [ TransactionID ]),
-    ?debug("dlink_bt:authorize(): Certificates:   ~p",  [ Certificates ]),
+    ?debug("dlink_bt:authorize(): Certificate:    ~p",  [ Certificate ]),
     ?debug("dlink_bt:authorize(): Signature:      ~p",  [ Signature ]),
+
+
 
     %% If FromPid (the genserver managing the socket) is not yet registered
     %% with the conneciton manager, this is an incoming connection
     %% from the client. We should respond with our own authorize followed by
     %% a service announce
     
-    Conn = {RemoteAddress, RemoteChannel},
-    case validate_auth_jwt(Signature, Certificates, Conn, CompSpec) of
-        true ->
-            connection_authorized(FromPid, Conn, CompSpec);
-        false ->
-            %% close connection (how?)
-            false
-    end.
+    %% FIXME: Validate certificate and signature before continuing.
+    case bt_connection_manager:find_connection_by_pid(FromPid) of
+	not_found ->
+	    ?info("dlink_bt:authorize(): New connection!"),
+	    bt_connection_manager:add_connection(RemoteAddress, RemoteChannel, FromPid),
+	    ?debug("dlink_bt:authorize(): Sending authorize."),
+	    {ok,[{address, Address }]} = bt_drv:local_info([address]),
+	    Res = bt_connection:send(FromPid, 
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+			    { ?DLINK_ARG_ADDRESS, bt_address_to_string(Address) },
+			    { ?DLINK_ARG_PORT,  RemoteChannel },
+			    { ?DLINK_ARG_VERSION, ?DLINK_BT_VER },
+			    { ?DLINK_ARG_CERTIFICATE, "" },
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
+	    ?debug("dlink_bt:authorize(): Sending authorize: ~p", [ Res]),
+	    ok;
+	_ -> ok
+    end,
+
+    %% Send our own servide announcement to the remote server
+    %% that just authorized to us.
+    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
+	 
+
+    %% Send an authorize back to the remote node
+    ?info("dlink_bt:authorize(): Announcing local services: ~p to remote ~p:~p",
+	  [LocalServices, RemoteAddress, RemoteChannel]),
+
+    bt_connection:send(FromPid, 
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
+			    { ?DLINK_ARG_STATUS, ?DLINK_ARG_AVAILABLE },
+			    { ?DLINK_ARG_SERVICES, { array, LocalServices }},
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
+
+    %% Setup ping interval
+    gen_server:call(?SERVER, { setup_initial_ping, PeerBTChannel, RemoteChannel, FromPid }),
+    ok.
+
+
 
 handle_socket(FromPid, PeerBTAddr, PeerChannel, data, 
 	      Payload, CompSpec) ->
@@ -355,33 +420,34 @@ handle_socket(FromPid, PeerBTAddr, PeerChannel, data,
 	      RemoteAddress, 
 	      RemoteChannel, 
 	      RVIProtocol,
-	      {array, Certificates},
+	      Certificate, 
 	      Signature ] = 
 		opts([?DLINK_ARG_TRANSACTION_ID, 
 		      ?DLINK_ARG_ADDRESS, 
 		      ?DLINK_ARG_PORT, 
 		      ?DLINK_ARG_VERSION, 
-		      ?DLINK_ARG_CERTIFICATES, 
+		      ?DLINK_ARG_CERTIFICATE, 
 		      ?DLINK_ARG_SIGNATURE], 
 		     Elems, undefined),
 
 	    process_authorize(FromPid, PeerBTAddr, RemoteChannel,
 			     TransactionID, RemoteAddress, RemoteChannel, 
-			     RVIProtocol,  Certificates, Signature, CompSpec);
+			     RVIProtocol,  Certificate, Signature, CompSpec);
 
 	?DLINK_CMD_SERVICE_ANNOUNCE ->
-            Conn = {PeerBTAddr, PeerChannel},
-	    [ TransactionID, Signature ] = 
-		opts([?DLINK_ARG_TRANSACTION_ID, ?DLINK_ARG_SIGNATURE],
+	    [ TransactionID, 
+	      Available, 
+	      {array, Services}, 
+	      Signature ] = 
+		opts([?DLINK_ARG_TRANSACTION_ID, 
+		      ?DLINK_ARG_STATUS, 
+		      ?DLINK_ARG_SERVICES, 
+		      ?DLINK_ARG_SIGNATURE],
 		     Elems, undefined),
-	    case authorize_rpc:validate_message(CompSpec, Signature, Conn) of
-                [ok, Msg] ->
-                    process_availability(
-                      Msg, FromPid, PeerBTAddr, PeerChannel, TransactionID, CompSpec);
-                _ ->
-                    ?debug("Couldn't validate availability msg from ~p", [Conn])
-            end;
-
+	    
+	     	    process_announce(FromPid, PeerBTAddr, PeerChannel,
+				     TransactionID, Available, Services, 
+				     Signature, CompSpec);
 	?DLINK_CMD_RECEIVE ->
 	    [ _TransactionID, 
 	      ProtocolMod, 
@@ -392,7 +458,7 @@ handle_socket(FromPid, PeerBTAddr, PeerChannel, data,
 		     Elems, undefined),
 	    process_data(FromPid, PeerBTAddr, PeerChannel,
 			 ProtocolMod, Data, CompSpec);
-
+	
 	?DLINK_CMD_PING ->
 	    ?info("dlink_bt:ping(): Pinged from: ~p:~p", [ PeerBTAddr, PeerChannel]),
 	    ok;
@@ -446,9 +512,21 @@ handle_socket(FromPid, SetupBTAddr, SetupChannel, closed, CompSpec) ->
     end,
     ok;
 
-handle_socket(FromPid, SetupBTAddr, SetupChannel, connected, CompSpec) ->
+handle_socket(FromPid, SetupBTAddr, SetupChannel, connected, _ExtraArgs) ->
     ?info("dlink_bt:handle_socket(connected): {~p, ~p}", [ SetupBTAddr, SetupChannel ]),
-    send_authorize(FromPid, SetupChannel, CompSpec),
+
+    {ok,[{address, Address }]} = bt_drv:local_info([address]),
+
+    bt_connection:send(FromPid, 
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+			    { ?DLINK_ARG_ADDRESS, bt_address_to_string(Address) },
+			    { ?DLINK_ARG_PORT,  SetupChannel },
+			    { ?DLINK_ARG_VERSION, ?DLINK_BT_VER },
+			    { ?DLINK_ARG_CERTIFICATE, "" },
+			    { ?DLINK_ARG_SIGNATURE, "" } ]})),
     ok;
 
 
@@ -459,6 +537,10 @@ handle_socket(_FromPid, SetupBTAddr, SetupChannel, accepted, _ExtraArgs) ->
 handle_socket(_FromPid, SetupBTAddr, SetupChannel, error, _ExtraArgs) ->
     ?info("dlink_bt:socket_error(): SetupAddress:  {~p, ~p}", [ SetupBTAddr, SetupChannel ]),
     ok.
+
+
+
+
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
@@ -661,56 +743,6 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
-
-send_authorize(Pid, SetupChannel, CompSpec) ->
-    {ok,[{address, Address }]} = bt_drv:local_info([address]),
-    bt_connection:send(Pid, 
-		       term_to_json(
-			 {struct, 		     
-			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
-			    { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
-			    { ?DLINK_ARG_ADDRESS, bt_address_to_string(Address) },
-			    { ?DLINK_ARG_PORT,  SetupChannel },
-                            { ?DLINK_ARG_VERSION, ?DLINK_BT_VER },
-			    { ?DLINK_ARG_CERTIFICATES, {array, get_certificates(CompSpec)} },
-			    { ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) } ]})).
-
-connection_authorized(FromPid, {RemoteAddress, RemoteChannel} = Conn, CompSpec) ->
-    case bt_connection_manager:find_connection_by_pid(FromPid) of
-	not_found ->
-	    ?info("dlink_bt:authorize(): New connection!"),
-	    bt_connection_manager:add_connection(RemoteAddress, RemoteChannel, FromPid),
-	    ?debug("dlink_bt:authorize(): Sending authorize."),
-            Res = send_authorize(FromPid, RemoteChannel, CompSpec),
-	    ?debug("dlink_bt:authorize(): Sending authorize: ~p", [ Res]),
-	    ok;
-	_ -> ok
-    end,
-
-    %% Send our own servide announcement to the remote server
-    %% that just authorized to us.
-    [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
-    
-    [ ok, FilteredServices ] = authorize_rpc:filter_by_destination(
-                                 CompSpec, LocalServices, Conn),
-
-    %% Send an authorize back to the remote node
-    ?info("dlink_bt:authorize(): Announcing local services: ~p to remote ~p:~p",
-	  [FilteredServices, RemoteAddress, RemoteChannel]),
-
-    [ ok, JWT ] = authorize_rpc:sign_message(
-                    CompSpec, availability_msg(available, FilteredServices)),
-    bt_connection:send(FromPid, 
-		       term_to_json(
-			 {struct, 		     
-			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
-			    { ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
-			    { ?DLINK_ARG_SIGNATURE, JWT } ]})),
-
-    %% Setup ping interval
-    gen_server:call(?SERVER, { setup_initial_ping, RemoteAddress, RemoteChannel, FromPid }),
-    ok.
-
 setup_reconnect_timer(MSec, BTAddr, Channel, CompSpec) ->
     erlang:send_after(MSec, ?MODULE, 
 		      { rvi_setup_persistent_connection, 
@@ -773,6 +805,8 @@ delete_services(ConnPid, SvcNameList) ->
 		 }) || SvcName <- SvcNameList ],
     ok.
 
+
+
 delete_connection(Conn) ->
     %% Create or replace existing connection table entry
     %% with the sum of new and old services.
@@ -817,29 +851,3 @@ opt(K, L, Def) ->
 
 opts(Keys, Elems, Def) ->
     [ opt(K, Elems, Def) || K <- Keys].
-
-get_authorize_jwt(CompSpec) ->
-    case authorize_rpc:get_authorize_jwt(CompSpec) of
-	[ok, JWT] ->
-	    JWT;
-	[not_found] ->
-	    ?error("No authorize JWT~n", []),
-	    error(cannot_authorize)
-    end.
-
-get_certificates(CompSpec) ->
-    case authorize_rpc:get_certificates(CompSpec) of
-	[ok, Certs] ->
-	    Certs;
-	[not_found] ->
-	    ?error("No certificate found~n", []),
-	    error(no_certificate_found)
-    end.
-
-validate_auth_jwt(JWT, Certs, Conn, CompSpec) ->
-    case authorize_rpc:validate_authorization(CompSpec, JWT, Certs, Conn) of
-	[ok] ->
-	    true;
-	[not_found] ->
-	    false
-    end.

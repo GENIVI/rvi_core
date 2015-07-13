@@ -304,7 +304,7 @@ handle_call({rvi, authorize_local_message, [Service, Params] } = R, _From,
 	    {reply, [ not_found ], State}
     end;
 
-handle_call({rvi, authorize_remote_message, [_Service, Params]}=R,
+handle_call({rvi, authorize_remote_message, [Service, Params]}=R,
 	    _From, State) ->
     ?debug("authorize_rpc:handle_call(~p)~n", [R]),
     IP = proplists:get_value(remote_ip, Params),
