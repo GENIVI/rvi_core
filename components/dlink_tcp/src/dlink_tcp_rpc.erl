@@ -275,6 +275,85 @@ announce_local_service_(CompSpec, Service, Availability) ->
 			    get_connections(),
 			    Service, Availability).
 
+
+handle_socket(_FromPid, PeerIP, PeerPort, data, ping, [_CompSpec]) ->
+    ?info("dlink_tcp:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort]),
+    ok;
+
+handle_socket(FromPid, PeerIP, PeerPort, data, 
+	      { authorize, 
+		TransactionID, 
+		RemoteAddress, 
+		RemotePort, 
+		Protocol, 
+		Certs,
+		AuthJWT}, [CompSpec]) ->
+
+    ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
+    ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
+    ?info( "dlink_tcp:authorize(): Protocol:       ~p", [ Protocol ]),
+    ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:authorize(): AuthJWT:        ~p", [ AuthJWT ]),
+
+    %% If the remote address and port are both reported as "0.0.0.0" and 0,
+    %% then the client connects from behind a firewall and cannot
+    %% accept return connections. In these cases, we will tie the
+    %% gonnection to the peer address provided in PeerIP and PeerPort
+    { _NRemoteAddress, _NRemotePort} = Conn =
+	case { RemoteAddress, RemotePort } of
+	    { "0.0.0.0", 0 } ->
+		
+		?info("dlink_tcp:authorize(): Remote is behind firewall. Will use ~p:~p", 
+		      [ PeerIP, PeerPort]),
+		{ PeerIP, PeerPort };
+
+	    _ -> { RemoteAddress, RemotePort}
+	end,
+
+    case validate_auth_jwt(AuthJWT, Certs, Conn, CompSpec) of
+	true ->
+	    connection_authorized(FromPid, Conn, CompSpec);
+	false ->
+	    %% close connection (how?)
+	    false
+    end;
+
+handle_socket(FromPid, IP, Port, data, 
+	      { service_announce, TransactionID, JWT } = _Data, [CompSpec]) ->
+    ?debug("dlink_tcp_rpc:handle_socket(~p,~p,~p,data,~p)~n",
+	   [FromPid, IP, Port, _Data]),
+    Conn = {RemoteIP, RemotePort} =
+	case connection_manager:find_connection_by_pid(FromPid) of
+	    {ok, IP1, Port1} ->
+		{IP1, Port1};
+	    not_found ->
+		{IP, Port}
+	end,
+    case authorize_rpc:validate_message(CompSpec, JWT, Conn) of
+	[ok, Msg] ->
+	    handle_availability_msg(
+	      Msg, FromPid, RemoteIP, RemotePort, TransactionID, CompSpec);
+	_ ->
+	    ?debug("Couldn't validate availability msg from ~p~n",
+		   [{RemoteIP, RemotePort}])
+    end,
+    ok;
+
+handle_socket(_FromPid, SetupIP, SetupPort, data, 
+	      { receive_data, ProtocolMod, Data}, [CompSpec]) ->
+%%    ?info("dlink_tcp:receive_data(): ~p", [ Data ]),
+    ?debug("dlink_tcp:receive_data(): SetupAddress:  {~p, ~p} "
+	   "ProtocolMod = ~p~n", [ SetupIP, SetupPort, ProtocolMod ]),
+    ProtocolMod:receive_message(CompSpec, {SetupIP, SetupPort}, Data),
+    ok;
+
+
+handle_socket(_FromPid, SetupIP, SetupPort, data, Data, [_CompSpec]) ->
+    ?warning("dlink_tcp:unknown_data(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    ?warning("dlink_tcp:unknown_data(): Unknown data:  ~p",  [ Data]),
+    ok.
+
+
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
 handle_socket(FromPid, undefined, SetupPort, closed, Arg) ->
@@ -323,7 +402,7 @@ handle_socket(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
 
 handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
     ?info("dlink_tcp:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
-    ok.
+    ok;
 
 handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
     {ok, {struct, Elems}} = exo_json:decode_string(binary_to_list(Payload)),
@@ -335,19 +414,17 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
               RemoteAddress,
               RemotePort,
               ProtoVersion,
-	      Certificates,
               Signature ] =
                 opts([?DLINK_ARG_TRANSACTION_ID,
                       ?DLINK_ARG_ADDRESS,
                       ?DLINK_ARG_PORT,
                       ?DLINK_ARG_VERSION,
-		      ?DLINK_ARG_CERTIFICATES,
                       ?DLINK_ARG_SIGNATURE],
                      Elems, undefined),
 
             process_authorize(FromPid, PeerIP, PeerPort,
                               TransactionID, RemoteAddress, RemotePort,
-                              ProtoVersion, Signature, Certificates, CompSpec);
+                              ProtoVersion, Signature, CompSpec);
 
         ?DLINK_CMD_SERVICE_ANNOUNCE ->
             [ TransactionID,
@@ -358,7 +435,6 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
                       ?DLINK_ARG_SIGNATURE],
                      Elems, undefined),
 
-	    Conn = {PeerIP, PeerPort},
             case authorize_rpc:validate_message(CompSpec, Signature, Conn) of
                 [ok, Msg] ->
                     process_announce(Msg, FromPid, PeerIP, PeerPort,
@@ -685,12 +761,14 @@ availability_msg(Availability, Services) ->
 status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
 status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
 
-process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
-		  RemotePort, ProtoVersion, Signature, Certificates, CompSpec) ->
+process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress, RemotePort,
+                  Protocol, Signature, CompSpec) ->
+
     ?info("dlink_tcp:authorize(): Peer Address:   ~p:~p", [PeerIP, PeerPort ]),
     ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
     ?info("dlink_tcp:authorize(): Protocol Ver:   ~p", [ ProtoVersion ]),
     ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:authorize(): Certificate:    ~p", [ Certificate ]),
     ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
 
     { LocalAddress, LocalPort } = rvi_common:node_address_tuple(),
@@ -713,18 +791,18 @@ process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
             false
     end.
 
-send_authorize(Pid, CompSpec) ->
-    {LocalIP, LocalPort} = rvi_common:node_address_tuple(),
-    connection:send(Pid, 
-		    term_to_json(
-		      {struct, 		     
-		       [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
-			 { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
-			 { ?DLINK_ARG_ADDRESS, LocalIP },
-			 { ?DLINK_ARG_PORT,  integer_to_list(LocalPort) },
-			 { ?DLINK_ARG_VERSION, ?DLINK_TCP_VERSION },
-			 { ?DLINK_ARG_CERTIFICATES, {array, get_certificates(CompSpec)} },
-			 { ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) } ]})).
+send_authorize(Pid, SetupChannel, CompSpec) ->
+    {ok,[{address, Address }]} = bt_drv:local_info([address]),
+    bt_connection:send(Pid, 
+		       term_to_json(
+			 {struct, 		     
+			  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+			    { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
+			    { ?DLINK_ARG_ADDRESS, bt_address_to_string(Address) },
+			    { ?DLINK_ARG_PORT,  SetupChannel },
+                            { ?DLINK_ARG_VERSION, ?DLINK_BT_VER },
+			    { ?DLINK_ARG_CERTIFICATES, {array, get_certificates(CompSpec)} },
+			    { ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) } ]})).
 
 connection_authorized(FromPid, {RemoteAddress, RemotePort} = Conn, CompSpec) ->
     case connection_manager:find_connection_by_pid(FromPid) of
@@ -732,7 +810,7 @@ connection_authorized(FromPid, {RemoteAddress, RemotePort} = Conn, CompSpec) ->
 	    ?info("dlink_tcp:authorize(): New connection!"),
 	    connection_manager:add_connection(RemoteAddress, RemoteChannel, FromPid),
 	    ?debug("dlink_tcp:authorize(): Sending authorize."),
-            Res = send_authorize(FromPid, CompSpec),
+            Res = send_authorize(FromPid, RemoteChannel, CompSpec),
 	    ?debug("dlink_tcp:authorize(): Sending authorize: ~p", [ Res]),
 	    ok;
 	_ -> ok
@@ -761,13 +839,6 @@ connection_authorized(FromPid, {RemoteAddress, RemotePort} = Conn, CompSpec) ->
     %% Setup ping interval
     gen_server:call(?SERVER, { setup_initial_ping, RemoteAddress, RemotePort, FromPid }),
     ok.
-
-process_data(_FromPid, RemoteIP, RemotePort, ProtocolMod, Data, CompSpec) ->
-    ?debug("dlink_tcp:receive_data(): RemoteAddr: {~p, ~p}", [ RemoteIP, RemotePort ]),
-    ?debug("dlink_tcp:receive_data(): ~p:receive_message(~p)", [ ProtocolMod, Data ]),
-    Proto = list_to_existing_atom(ProtocolMod),
-    Proto:receive_message(CompSpec, {RemoteIP, RemotePort},
-			  base64:decode_to_string(Data)).
 
 process_announce(Msg, FromPid, IP, Port, TID, _Vsn, CompSpec) ->
     [ Avail,
@@ -844,15 +915,3 @@ validate_auth_jwt(JWT, Certs, Conn, CompSpec) ->
 	[not_found] ->
 	    false
     end.
-
-term_to_json(Term) ->
-    binary_to_list(iolist_to_binary(exo_json:encode(Term))).
-
-opt(K, L, Def) ->
-    case lists:keyfind(K, 1, L) of
-	{_, V} -> V;
-	false  -> Def
-    end.
-
-opts(Keys, Elems, Def) ->
-    [ opt(K, Elems, Def) || K <- Keys].
