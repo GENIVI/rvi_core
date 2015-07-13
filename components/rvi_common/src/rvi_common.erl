@@ -449,11 +449,6 @@ get_component_config_(Component, Default, CompList) ->
     end.
 
 get_component_specification() ->
-    CS = get_component_specification_(),
-    lager:debug("CompSpec = ~p", [CS]),
-    CS.
-
-get_component_specification_() ->
     case application:get_env(rvi_core, components, undefined) of
 	undefined -> 
 	    #component_spec { 
@@ -519,7 +514,7 @@ get_component_modules(_, _) ->
 get_module_specification(Component, Module, CompSpec) ->
     case get_component_modules(Component, CompSpec) of
 	undefined ->
-	    ?debug("get_module_specification(): Missing: rvi_core:component: ~p: ~p", 
+	    ?debug("get_module_specification(): Missing: rvi:component: ~p: ~p", 
 		   [Component, CompSpec]),
 	    undefined;
 
@@ -527,7 +522,7 @@ get_module_specification(Component, Module, CompSpec) ->
 	    case lists:keyfind(Module, 1, Modules ) of
 		false ->
 		    ?debug("get_module_specification(): Missing component spec: "
-			   "rvi_core:component:~p:~p:{...}: ~p", [Component, Module, Modules]),
+			   "rvi:component:~p:~p:{...}: ~p", [Component, Module, Modules]),
 		    {error, {not_found, Module}};
 
 		{ Module, Type, ModConf } -> 
@@ -550,7 +545,7 @@ get_module_config(Component, Module, Key, CompSpec) ->
 	    case proplists:get_value(Key, ModConf, undefined ) of
 		undefined ->
 		    ?debug("get_module_config(): Missing component spec: "
-			   "rvi_core:component:~p:~p:~p{...}: ~p", 
+			   "rvi:component:~p:~p:~p{...}: ~p", 
 			   [Component, Module, Key, ModConf]),
 		    {error, {not_found, Component, Module, Key}};
 
@@ -596,7 +591,7 @@ get_module_json_rpc_address(Component, Module, CompSpec) ->
 			   CompSpec) of
 	{ok, undefined } ->
 	    ?debug("get_module_json_rpc_address(): Missing component spec: "
-		   "rvi_core:component:~p:~p:json_rpc_address, {...}", [Component, Module]),
+		   "rvi:component:~p:~p:json_rpc_address, {...}", [Component, Module]),
 	    {error, {not_found, Component, Module, json_rpc_address}};
 
 	{ok, { IP, Port }} -> 
