@@ -1,4 +1,4 @@
-.PHONY:	all deps compile setup clean doc
+.PHONY:	all deps compile setup clean doc escript
 
 
 NAME=authorize
@@ -13,6 +13,9 @@ deps:
 
 compile:
 	rebar compile
+
+escript:
+	ERL_LIBS=$(PWD)/..:$(PWD)/../../deps:$(ERL_LIBS) rebar escriptize
 
 recomp:
 	rebar compile skip_deps=true
