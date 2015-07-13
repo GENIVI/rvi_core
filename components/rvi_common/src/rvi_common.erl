@@ -392,7 +392,7 @@ remote_service_to_string(Type, Service) ->
 
 local_service_prefix() ->
     Prefix = 
-	case application:get_env(rvi, ?NODE_SERVICE_PREFIX) of
+	case application:get_env(rvi_core, ?NODE_SERVICE_PREFIX) of
 	    {ok, P} when is_atom(P) -> atom_to_list(P);
 	    {ok, P} when is_list(P) -> P;
 	    undefined -> 
@@ -410,7 +410,7 @@ local_service_prefix() ->
 
 
 node_address_string() ->
-    case application:get_env(rvi, ?NODE_ADDRESS) of
+    case application:get_env(rvi_core, ?NODE_ADDRESS) of
 	{ok, P} when is_atom(P) -> atom_to_list(P);
 	{ok, P} when is_list(P) -> P;
 	undefined -> 
@@ -441,7 +441,12 @@ get_component_config_(Component, Default, CompList) ->
     end.
 
 get_component_specification() ->
-    case application:get_env(rvi, components, undefined) of
+    CS = get_component_specification_(),
+    lager:debug("CompSpec = ~p", [CS]),
+    CS.
+
+get_component_specification_() ->
+    case application:get_env(rvi_core, components, undefined) of
 	undefined -> 
 	    #component_spec { 
 	       service_edge = ?COMP_SPEC_SERVICE_EDGE_DEFAULT,
@@ -506,7 +511,7 @@ get_component_modules(_, _) ->
 get_module_specification(Component, Module, CompSpec) ->
     case get_component_modules(Component, CompSpec) of
 	undefined ->
-	    ?debug("get_module_specification(): Missing: rvi:component: ~p: ~p", 
+	    ?debug("get_module_specification(): Missing: rvi_core:component: ~p: ~p", 
 		   [Component, CompSpec]),
 	    undefined;
 
@@ -514,7 +519,7 @@ get_module_specification(Component, Module, CompSpec) ->
 	    case lists:keyfind(Module, 1, Modules ) of
 		false ->
 		    ?debug("get_module_specification(): Missing component spec: "
-			   "rvi:component:~p:~p:{...}: ~p", [Component, Module, Modules]),
+			   "rvi_core:component:~p:~p:{...}: ~p", [Component, Module, Modules]),
 		    {error, {not_found, Module}};
 
 		{ Module, Type, ModConf } -> 
@@ -537,7 +542,7 @@ get_module_config(Component, Module, Key, CompSpec) ->
 	    case proplists:get_value(Key, ModConf, undefined ) of
 		undefined ->
 		    ?debug("get_module_config(): Missing component spec: "
-			   "rvi:component:~p:~p:~p{...}: ~p", 
+			   "rvi_core:component:~p:~p:~p{...}: ~p", 
 			   [Component, Module, Key, ModConf]),
 		    {error, {not_found, Component, Module, Key}};
 
@@ -583,7 +588,7 @@ get_module_json_rpc_address(Component, Module, CompSpec) ->
 			   CompSpec) of
 	{ok, undefined } ->
 	    ?debug("get_module_json_rpc_address(): Missing component spec: "
-		   "rvi:component:~p:~p:json_rpc_address, {...}", [Component, Module]),
+		   "rvi_core:component:~p:~p:json_rpc_address, {...}", [Component, Module]),
 	    {error, {not_found, Component, Module, json_rpc_address}};
 
 	{ok, { IP, Port }} -> 
@@ -652,6 +657,8 @@ start_json_rpc_server(Component, Module, Supervisor) ->
 		  [ Component, Module ]),
 	    Err
     end.
+
+
 
 utc_timestamp() ->
     calendar:datetime_to_gregorian_seconds(

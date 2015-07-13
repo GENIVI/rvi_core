@@ -10,7 +10,7 @@
 # Makefile for the RVI node.
 # 
 
-.PHONY:	all deps compile clean rpm rpmclean
+.PHONY:	all deps compile clean rpm rpmclean test
 
 
 VERSION=0.4.0
@@ -39,9 +39,12 @@ rpmclean:
 		./rpm/SOURCES/* \
 		./rpm/SRPMS/*
 
+test: compile
+	rebar ct
+
 # Create a SOURCES tarball for RPM
 rpm_tarball: rpmclean clean
-	tar czf /tmp/rvi-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
+	tar czf /tmp/rvi_core-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
 		LICENSE Makefile README.md rebar rebar.config rel \
 		RELEASE.md rpm scripts/setup_gen scripts/rvi \
 		scripts/rvi.service scripts/rvi_node.sh  components \
