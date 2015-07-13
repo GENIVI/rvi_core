@@ -645,14 +645,28 @@ forward_message_to_local_service(URL,SvcName, Parameters, _CompSpec) ->
 
     %% Deliver the message to the local service, which can
     %% be either a wse websocket, or a regular HTTP JSON-RPC call
-    spawn(fun() ->
-		  rvi_common:get_request_result(
-		    dispatch_to_local_service(URL, 
-					      message, 
-					      {struct, [ { service_name, LocalSvcName },
-							 { parameters, Parameters }]}))
-	  end),
-    [ ok, -1 ].
+    case rvi_common:get_request_result(
+	   dispatch_to_local_service(URL, 
+				     message, 
+				     {struct, [ { service_name, LocalSvcName },
+						{ parameters, Parameters }]})) of
+
+	%% Request delivered.
+	%% -1 is transaction ID.
+	{ ok, _Result } ->
+	    [ ok, -1 ];
+
+	%% status returned was an error code.
+	{ Other, _Result } ->
+	    ?warning("service_edge:forward_to_local(): ~p:~p Failed: ~p.", 
+		     [URL, SvcName, Other]),
+	    [not_found, -1];
+
+	Other ->
+	    ?warning("service_edge:forward_to_local(): ~p:~p Unknown error: ~p.", 
+		     [URL, SvcName, Other]),
+	    [internal, -1]
+    end.
     
 
 announce_service_availability(Available, SvcName) ->

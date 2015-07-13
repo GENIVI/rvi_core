@@ -179,11 +179,7 @@ class SimpleJSONRPCRequestHandler(
         self.end_headers()
         self.wfile.write(response)
         self.wfile.flush()
-        try:
-            self.connection.shutdown(1)
-        except:
-            return
-        return
+        self.connection.shutdown(1)
 
 class SimpleJSONRPCServer(SocketServer.TCPServer, SimpleJSONRPCDispatcher):
 
