@@ -651,3 +651,4 @@ start_json_rpc_server(Component, Module, Supervisor) ->
 		  [ Component, Module ]),
 	    Err
     end.
+	    

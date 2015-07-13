@@ -28,9 +28,7 @@
 -record(st, { 
 	  next_transaction_id = 1, %% Sequentially incremented transaction id.
 	  services_tid = undefined, %% Known services.
-	  cs = #component_spec{},
-	  private_key = undefined,
-	  public_key = undefined
+	  cs = #component_spec{}
 	 }).
 
 start_link() ->
@@ -38,10 +36,7 @@ start_link() ->
 
 init([]) ->
     ?debug("authorize_rpc:init(): called."),
-    {Priv, Pub} = authorize_keys:get_key_pair(),
-    {ok, #st { cs = rvi_common:get_component_specification(),
-	       private_key = Priv,
-	       public_key = Pub} }.
+    {ok, #st { cs = rvi_common:get_component_specification() } }.
 
 start_json_server() ->
     ?debug("authorize_rpc:start_json_server(): called"),
@@ -111,7 +106,7 @@ authorize_local_message(CompSpec, Service) ->
     ?debug("authorize_rpc:authorize_local_msg(): service:    ~p ~n", [Service]),
     rvi_common:request(authorize, ?MODULE,authorize_local_message, 
 		       [{ service, Service }],
-		       [status, signature, certificate], CompSpec).
+		       [staus, signature, certificate], CompSpec).
     
 
 
@@ -123,7 +118,7 @@ authorize_remote_message(CompSpec, Service, Signature, Certificate) ->
 		       [{ service, Service},
 			{ signature, Signature },
 			{ certificate, Certificate }],
-		       [status], CompSpec).
+		       [staus], CompSpec).
 
 
 
