@@ -8,6 +8,7 @@
 %% Inspired by
 %% http://blog.differentpla.net/blog/2015/04/19/jwt-rs256-erlang/
 decode_jwt(JWT, PubKey) ->
+    ?debug("authorize_sig:decode_jwt(JWT, PubKey=~p)~n", [PubKey]),
     [H, P, S] = binary:split(JWT, <<".">>, [global]),
     Header = decode_json(base64url:decode(H)),
     Payload = decode_json(base64url:decode(P)),
