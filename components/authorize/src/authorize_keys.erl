@@ -302,12 +302,12 @@ match_dest_(_, _) ->
     false.
 
 get_env(K) ->
-    Res = case application:get_env(rvi_core, K) of
-	      {ok, V} -> V;
-	      _       -> undefined
-	  end,
-    lager:debug("get_env(~p) -> ~p", [K, Res]),
-    Res.
+    case application:get_env(rvi_core, K) of
+	{ok, V} ->
+	    V;
+	_ ->
+	    undefined
+    end.
 
 get_key_pair_from_pem(openssl, Pem) ->
     case file:read_file(Pem) of
