@@ -15,16 +15,13 @@
 
 VERSION=0.4.0
 
-all: deps compile escript
+all: deps compile
 
 deps:
 	./rebar get-deps
 
 compile:
 	./rebar  compile
-
-escript: compile
-	(cd components/authorize && make escript)
 
 recomp:
 	./rebar  compile skip_deps=true

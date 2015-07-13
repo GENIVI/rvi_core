@@ -1,4 +1,4 @@
-.PHONY: doc compile test compile_test clean_test run_test escriptize deps eunit
+.PHONY: doc compile test compile_test clean_test run_test escriptize deps
 
 REBAR ?= $(shell which rebar || echo ./rebar)
 
@@ -30,11 +30,8 @@ clean_test:
 	done
 	rm -r xtest/releases
 
-eunit: compile
-	${REBAR} eunit
-
 test: compile compile_test
-	./setup_gen test xtest/test.conf xtest/releases/1 -pa ${PWD}/ebin
+	./setup_gen test xtest/test.conf xtest/releases/1
 
 run_test:
 	erl -boot xtest/releases/1/start -config xtest/releases/1/sys
@@ -52,6 +49,3 @@ clean_plt:
 
 dialyzer: deps compile $(SETUP_PLT)
 	dialyzer -r ebin --plt $(SETUP_PLT) $(DIALYZER_OPTS)
-
-ci: eunit test dialyzer
-	erl -boot xtest/releases/1/start -config xtest/releases/1/sys -s init stop

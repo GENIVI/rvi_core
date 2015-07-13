@@ -24,9 +24,7 @@
 #  In order to create a standalone release, use create_rvi_release.sh
 #
 
-alias realpath="python -c 'import os, sys; print os.path.realpath(sys.argv[1])'"
-SELF_DIR=$(dirname $(realpath "$0"))
-
+SELF_DIR=$(dirname $(readlink -f "$0"))
 SETUP_GEN=$SELF_DIR/setup_gen  # Ulf's kitchen sink setup utility
 
 usage() {
