@@ -18,10 +18,7 @@
 	 terminate/2, code_change/3]).
 
 -export([start_json_server/0]).
--export([get_authorize_jwt/1,
-	 get_certificates/1,
-	 validate_authorization/4,
-	 authorize_local_message/2,
+-export([authorize_local_message/2,
 	 authorize_remote_message/4]).
 
 %% for testing & development
@@ -115,25 +112,6 @@ get_certificate_body(_Service) ->
      ]
     }.
 
-get_authorize_jwt(CompSpec) ->
-    ?debug("authorize_rpc:get_authorize_jwt()~n", []),
-    rvi_common:request(authorize, ?MODULE, get_authorize_jwt,
-		       [], [status, jwt], CompSpec).
-    
-get_certificates(CompSpec) ->
-    ?debug("authorize_rpc:get_certificates()~n", []),
-    rvi_common:request(authorize, ?MODULE, get_certificates,
-		       [], [status, certs], CompSpec).
-    
-validate_authorization(CompSpec, JWT, Cert, Conn) ->
-    ?debug("authorize_rpc:validate_authorization():"
-	   " Conn = ~p~n", [Conn]),
-    rvi_common:request(authorize, ?MODULE, validate_authorization,
-		       [{jwt, JWT},
-			{cert, Cert},
-			{conn, Conn}],
-		       [status], CompSpec).
-
 authorize_local_message(CompSpec, Service) ->
     ?debug("authorize_rpc:authorize_local_msg(): service:    ~p ~n", [Service]),
     rvi_common:request(authorize, ?MODULE,authorize_local_message, 
@@ -172,22 +150,6 @@ private_key() ->
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
-handle_rpc("get_authorize_jwt", []) ->
-    [ Status | Rem ] =
-	gen_server:call(?SERVER, { rvi, get_authorize_jwt, [] }),
-    {ok, [ rvi_common:json_rpc_status(Status) | Rem ] };
-handle_rpc("get_certificates", []) ->
-    [ Status | Rem ] =
-	gen_server:call(?SERVER, { rvi, get_certificates, [] }),
-    {ok, [ rvi_common:json_rpc_status(Status) | Rem ] };
-handle_rpc("validate_authorization", Args) ->
-    {ok, JWT} = rvi_common:get_json_element(["jwt"], Args),
-    {ok, Cert} = rvi_common:get_json_element(["cert"], Args),
-    {ok, Conn} = rvi_common:get_json_element(["connection"], Args),
-    [ Status | Rem ] =
-	gen_server:call(?SERVER, { rvi, validate_authorization,
-				   [JWT, Cert, Conn] }),
-    {ok, [ rvi_common:json_rpc_status(Status) | Rem] };
 handle_rpc("authorize_local_message", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     [ Status | Rem ] = 
@@ -217,34 +179,6 @@ handle_notification(Other, _Args) ->
 %%
 %% Genserver implementation
 %%
-handle_call({rvi, get_authorize_jwt, []}, _From, State) ->
-    {reply, [ ok, authorize_keys:authorize_jwt() ], State};
-
-handle_call({rvi, get_certificates, []}, _From, State) ->
-    {reply, [ ok, authorize_keys:certificates() ], State};
-
-handle_call({rvi, validate_authorization, [JWT, Cert, Conn] }, _From, State) ->
-    %% The authorize JWT contains the public key used to sign the cert
-    try authorize_sig:decode_jwt(JWT, authorize_keys:provisioning_key()) of
-	{_Header, Keys} ->
-	    case authorize_sig:decode_jwt(Cert, Keys) of
-		{_CHeader, CertStruct} ->
-		    authorize_keys:save_keys(Keys, Conn),
-		    authorize_keys:save_cert(CertStruct, Conn),
-		    {reply, [ok], State};
-		invalid ->
-		    ?warning("Invalid certificate from ~p~n", [Conn]),
-		    {reply, [not_found], State}
-	    end;
-	invalid ->
-	    ?warning("Invalid auth JWT from ~p~n", [Conn]),
-	    {reply, [not_found], State}
-    catch
-	error:_Err ->
-	    ?warning("Auth validation exception: ~p~n", [_Err]),
-	    {reply, [not_found], State}
-    end;
-	
 handle_call({rvi, authorize_local_message, [_Service] }, _From, State) ->
     {reply, [ ok, "signature", "certificate" ], State};
 

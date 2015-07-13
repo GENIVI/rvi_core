@@ -39,7 +39,6 @@
 	 get_module_json_rpc_url/3,
 	 get_module_genserver_pid/3
 	]).
--export([utc_timestamp/0]).
 
 -export([start_json_rpc_server/3]).
 
@@ -652,11 +651,3 @@ start_json_rpc_server(Component, Module, Supervisor) ->
 		  [ Component, Module ]),
 	    Err
     end.
-
-utc_timestamp() ->
-    calendar:datetime_to_gregorian_seconds(
-      calendar:universal_time()) - seconds_jan_1970().
-
-seconds_jan_1970() ->
-    %% calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}).
-    62167219200.
