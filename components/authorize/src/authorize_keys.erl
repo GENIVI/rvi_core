@@ -2,11 +2,8 @@
 -behaviour(gen_server).
 
 -export([get_key_pair/0,
-	 get_key_pair_from_pem/2,
-	 get_pub_key/1,
 	 authorize_jwt/0,
 	 provisioning_key/0,
-	 signed_public_key/2,
 	 save_keys/2]).
 -export([get_certificates/0,
 	 get_certificates/1]).
@@ -57,9 +54,6 @@ self_signed_public_key() ->
 			 "self_provisioning_key.pem"]),
     {Priv, _} = get_key_pair_from_pem(openssl, Key),
     MyPub = authorize_rpc:public_key(),
-    signed_public_key(MyPub, Priv).
-
-signed_public_key(MyPub, Priv) ->
     JSON = {struct, [
 		     {"keys", {array, [public_key_to_json(MyPub)]}}
 		    ]},
@@ -165,6 +159,7 @@ certs_by_conn(Conn) ->
 						     _='_'}},
 				  [], [{{'$1', '$2'}}] }]),
     [C || {C,V} <- Certs, check_validity(V, UTC)].
+	  
 
 get_env(K) ->
     case application:get_env(rvi, K) of
