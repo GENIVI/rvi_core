@@ -18,8 +18,8 @@
 # This script can be executed after a setup_node.sh has been executed to 
 # create the necessary config files and erlang boot scripts.
 #
-
-SELF_DIR=$(dirname $(readlink -f "$0"))
+alias realpath="python -c 'import os, sys; print os.path.realpath(sys.argv[1])'"
+SELF_DIR=$(dirname $(realpath "$0"))
 
 usage() {
     echo "Usage: $0 -n node_name"
