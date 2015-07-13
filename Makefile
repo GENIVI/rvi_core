@@ -12,8 +12,7 @@
 
 .PHONY:	all deps compile clean rpm rpmclean
 
-
-VERSION=0.4.0
+VERSION=0.3.2
 
 all: deps compile escript
 
