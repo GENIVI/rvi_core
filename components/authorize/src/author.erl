@@ -92,14 +92,14 @@ out(Str, Opts) ->
 
 help() ->
     io:fwrite(
-      "Usage: " ++ excript:script_name() ++ "[Options] Cmd~n"
+      "Usage: " ++ escript:script_name() ++ "[Options] Cmd~n"
       "Options:~n"
       "  -pem PemFile   : Name of OpenSSL (2048 bit RSA) pem key file~n"
       "  -c CertFile    : Name of JSON-formatted RVI Certificate~n"
       "  -fmt Format    : Output format (json|jwt)~n"
       "  -o OutFile     : Name of output (tty output, if not specified)~n"
       "Command:~n"
-      "  auth           : ~n", []).
+      "  make_auth      : ~n", []).
 
 fail(Fmt, Args) ->
     io:fwrite(Fmt, Args),
