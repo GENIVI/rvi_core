@@ -39,7 +39,7 @@ def usage():
     print "  --root_key=<file>               Private root key to sign certificate with"
     print "                                  Mandatory"
     print
-    print "  --device_key=<file>             Public device key to sign certificate with"
+    print "  --device_key=<file>             Public device key to include in certificate"
     print "                                  Mandatory"
     print
     print "  --start='<YYYY-MM-DD HH:MM:SS>' Date and time when certificate is activated."
