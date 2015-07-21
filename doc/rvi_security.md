@@ -320,46 +320,48 @@ The device has the IP address of its provisioning server.
 #### Device setup process
 
 1. Device connects to provisioning server<br>
-
    The app is started for the first time and connects to the
    provisioning server.
 
 2. Device sends authenticate to server<br>
-   The command contains the public device key, signed by its private counterpart), and the single,
+   The command contains no public device keykey and the single,
    pre-provisioned node certificate giving the device the right to
-   invoke ```jlr.com/provisioning/setup``` and the right to 
-   register ```jlr.com/mobile/123456/dm/cert_provision```.<br>
+   invoke ```jlr.com/provisioning/setup``` and the
+   right to register ```jlr.com/mobile/123456/dm/cert_provision```.<br>
    See [Device Management](#device-management) for details.
                         
 3. Server sends authenticate to device<br>
-The server's auth cert (server public key) is sent, but no node
-certificates, thus giving the server no rights to register or invoke
-services with the device.
+   The server's public device key, signed by the root private key, is
+   sent together with no node certificates, thus giving the server no
+   rights to register or invoke services with the device.
 
 4. Device sends a service announce to server<br>
-The command contains the single service ```jlr.com/mobile/123456/dm/cert_provision```,
-which can be invoked by the provisioning service to install a new
-certificate on the device.
+   After validating server authenticate package, the device
+   sends a service announce to the server.
+   The command contains the single service ```jlr.com/mobile/123456/dm/cert_provision```,
+   which can be invoked by the provisioning service to install a new
+   certificate on the device. 
 
 5. Server sends a service announce to device<br>
-The command contains the service ```jlr.com/provisioning/setup```.
+   The command contains the service ```jlr.com/provisioning/setup```.
 
 6. Device invokes ```jlr.com/provisioning/setup``` on server<br>
-The sole argument is the device ID, which is 1234.  The command is
-validated by the server through the pre-provisioned cert.
+   The sole argument is the device ID, e.g. 1234.  The command is
+   validated by the server through the pre-provisioned cert.
 
 7. Provisioning service creates node certificates<br>
-The created cert gives the holder the right to invoke ```jlr.com/vin/ABCD/unlock```.<br>
-The certificate also gives the holder the right to register jlr.com/mobile/1234/status.<br>
-The certificate is signed by root cert and encrypted with device public key from step 2.<br>
+   The created cert gives the holder the right to invoke ```jlr.com/vin/ABCD/unlock```.<br>
+   The certificate also gives the holder the right to register jlr.com/mobile/1234/status.<br>
+   The certificate is signed by root cert and encrypted with device public key from step 2.<br>
+   The certificate includes the device public key provided in step 2.
 
 8. Sideband token transmission from provisioning service to device<br>
-The provsioning server transmits a 128 bit random token to the device
-using a sideband channel such as SMS or similar.
+   The provsioning server transmits a 128 bit random token to the device
+   using a sideband channel such as SMS or similar.
 
 10. Device invokes ```jlr.com/provisioning/request_certificate``` on server<br>
-The device provides its public key and the token received in step 9 as
-arguments to the call.
+   The device provides its public key and the token received in step 9 as
+   arguments to the call.
 
 11. Provisioning service invokes ```jlr.com/mobile/123456/dm/cert_provision```<br>
 The provisioning service invokes certificate provisioning service on
