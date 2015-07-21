@@ -16,9 +16,17 @@
 import getopt
 import sys
 from Crypto.PublicKey import RSA 
+import json
+import base64
+import os
 
-# pip install jws
-import jws
+# apt-get install python-dev
+# apt-get install libffi-dev
+# pip install cryptography
+# pip install PyJWT
+
+import jwt
+
 
 def usage():
     print "Usage:", sys.argv[0], "-p <priv_root_key> -o <prefix> -b <bits>"
@@ -79,16 +87,26 @@ pub_key_file.write(pub_key)
 pub_key_file.close()
 
 
-# Generate a JWS signature based on the pub key and the private root key
-header = { 'alg': 'RS256' }
-signature = jws.sign(header, pub_key, priv_root_key)
+key_obj = { 
+    'keys': [{
+	"kty": "RSA",
+        "alg": "RS256",
+        "use": "sig",
+        "e": base64.urlsafe_b64encode(str(new_key.publickey().e)),
+        "n": base64.urlsafe_b64encode(str(new_key.publickey().n))
+    }],
+}
 
+# Generate a JWT signature based on the pub key and the private root key
+signature = jwt.encode(key_obj, priv_root_key.exportKey('PEM'), algorithm='RS256')
 
 
 # Verify that we can use the public root key to verify the key.
-pub_root_key = priv_root_key.publickey().exportKey()
+pub_root_key = priv_root_key.publickey().exportKey('PEM')
 
-if not jws.verify(header, pub_key, signature, pub_root_key):
+try: 
+    jwt.decode(signature, pub_root_key, algorithm='RS256')
+except:
     print "FAILED VERIFICATION!"
     print "The public portion of the generated device key, signed by the provided private root key,"
     print "could not be verified using the public root key."
@@ -96,9 +114,9 @@ if not jws.verify(header, pub_key, signature, pub_root_key):
     sys.exit(0)
 
 #
-# Create signed public JWM file
+# Create signed public JWT file
 #
-pub_sign_key_fname = "{}_pub_sign.jwm".format(fname_prefix)
+pub_sign_key_fname = "{}_pub_sign.jwt".format(fname_prefix)
 
 pub_sign_key_file = open(pub_sign_key_fname, 'w')
 pub_sign_key_file.write(signature)
@@ -106,7 +124,8 @@ pub_sign_key_file.close()
 
 print "Device private/public key pair stored in:                    ", priv_key_fname
 print "Device public-only key stored in:                            ", pub_key_fname
-print "Device public key, signed by private root key, stored in:    ", pub_sign_key_fname
+print "Device JWT-formatted public key signed by private "
+print "  root key, stored in:                                       ", pub_sign_key_fname
 print "Root key used to sign the device public key read from:       ", priv_root_key_fname
 print
 print "Set rvi node's device_key_pair config parameter to point to: ", priv_root_key_fname

@@ -71,7 +71,8 @@ def usage():
     print "                            --root_key=root_key_priv.pem \\"
     print "                            --register='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock' \\"
     print "                            --invoke='jlr.com/backend/report jlr.com/backend/set_state' \\"
-    print "                            --jwt_out=lock_cert.jwt --cert_out=lock_cert.json"
+    print "                            --jwt_out=lock_cert.jwt \\"
+    print "                            --cert_out=lock_cert.json"
     sys.exit(255)
 
 try:
