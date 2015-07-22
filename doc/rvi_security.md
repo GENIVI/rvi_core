@@ -1,3 +1,99 @@
+## OPEN ISSUES
+
+### [1] Public device key exchange as a part of handshake demasks sender
+
+#### Issue
+Sending the root signed public key during handshake identifies the
+sender to an unknown remote party. 
+
+
+#### Solution
+TBD
+
+### [2] Public device key exchange as a part of allows for replay attack
+
+#### Issue
+Sending the root signed public key during handshake allows a malicious
+remote party to replay the signed key, potentially confusing the
+remote part.  Please note that a replay attacker still cannot sign any
+subsequent commands since they do not have the private key
+
+
+#### Solution
+Have the handshake include a random number signed by the private device key
+proves that the sender also posseses the private counterpart.
+
+### [3] Key renewal/revocation scheme needed.
+
+#### Issue
+A generated device or root key has no way of being revoked and/or renewed today.
+
+
+#### Solution
+Have a set of services, similar to the certificate management services, to
+retire old / compromised keys and distribute new ones.
+
+
+### [4] Self provisioning process needs to be validated
+
+#### Issue
+The self provisioing process of a device has too many steps and edge cases.
+
+
+#### Solution
+Document a number of MITM and replay attacks to identify initial set of weaknesses.
+Simplify process.
+
+
+
+### [5] Link-level encryption needs to be implemented
+
+#### Issue
+With the current solution traffic is authenticated and authorized, but not encrypted.
+While an attacker cannot modify or inject traffic, they can listen in to it.
+
+
+#### Solution
+Integrate OpenSSL TLS for session encryption, and possibly also key management.
+
+
+### [6] Ensure that each transaction sent is unique
+
+#### Issue
+Currently the JSON-RPC payload transaction id is just a sequential
+number, which allows for an easy replay attack
+
+
+
+#### Solution
+Make sure that a each transaction is persistent monotonically increased
+for each transaction.
+Have the server ignore transactions from a device that have already been
+executed.
+
+
+### [7] Data Flow Diagrams are needed
+
+#### Issue
+The text-only description is opaque and hard to visualize.
+
+#### Solution
+Create Data Flow Diagrams for all major use cases.
+
+
+
+### [8] STRIDE Application is needed
+
+#### Issue
+There is currently no formal security model, such as STRIDE, applied
+to the document
+
+#### Solution
+Expand and formalize the "Thwarting malicious RVI nodes..." chapters
+to be STRIDE compliant.
+
+
+
 ## SETTING UP NODE AUTHENTICATION AND AUTHORIZATION
 
 This document describes the process of setting up root keys, device
@@ -13,18 +109,18 @@ public root key will be able to authenticate signed device keys and
 authorize signed certificates.
 
 ### Root key 
-A root key, a 2048+ bit RSA key pair, is generated once for an issuer
+A root key, a 4096+ bit RSA key pair, is generated once for an issuer
 of certificates.  The private key is stored in the certificate
 issuer's servers and is not shared.  The public key is manually
 installed on all RVI nodes that are to trust certificates from the
 certificate issuer.
 
 ### Device key
-A device key is a per-RVI node 2048+ bit RSA key pair. The private part of
+A device key is a per-RVI node 4096+ bit RSA key pair. The private part of
 the device key is stored on a host (server, embedded device, mobile device, etc)
 and is not shared. The public part of the key is used in two ways:
 
-1. **To prove the identify of an RVI node**<br>
+1. **To prove the identity of an RVI node**<br>
    When two RVI nodes locate each other over a data link (WiFi, 3G,
    Bluetooth, etc), they exchange an authenticate ("au") packet to
    prove their identity. This packet has the public part of the device
@@ -50,11 +146,11 @@ public device key has the right to invoke a specific set of services
 and to register another set of services.
 
 The certificate is encoded as a JSON Web Token (JWT) signed
-by the privet root key.  The decoded payload has the following JSON
+by the private root key.  The decoded payload has the following JSON
 elements.
 
 Command line parameters to ```rvi_create_certificate.py``` given in
-parenthesis. Items marked with '*' ar slated for name changes to
+parenthesis. Items marked with '*' are slated for name changes to
 better reflect JWT practises and RVI semantics.
 
 1. **```iss``` Issuer (```--issuer```)**<br>
@@ -97,7 +193,24 @@ better reflect JWT practises and RVI semantics.
    <br><i>Will be renamed ```exp``` to comply with JWT.</i>
 
 
-## SETTING UP AN RVI NETWORK SECURITY - GENERAL FLOW
+## ASSUMPTIONS ON EXTERNAL COMPONENTS
+
+### Trustworthy time source
+
+In order to validate the active period for certificates (and in the
+future, keys) a trustworthy time source is needed. For devices time
+source is provided by GPS or the mobile network.  For backend servers,
+the source is provided by NTP.
+
+It is up to the deployment project to ensure that these sources cannot be tampered with.
+
+### Secure key store
+
+Device private keys and root private keys are expected to be securerly
+stored on an RVI node through a key vault to prevent unauthorized access.
+
+
+## SETTING UP RVI NETWORK SECURITY - GENERAL FLOW
 
 The general flow of events for setting up security are as follows:
 
@@ -118,31 +231,31 @@ The general flow of events for setting up security are as follows:
 
 3. **Create certificates ```rvi_create_certificate.py```**<br>
    Certificates are generated to allow a specific RVI node (with a
-   given device key) tor register (setup) services that it wants other
+   given device key) to register (setup) services that it wants other
    RVI nodes to invoke, and to invoke serivces registered by other RVI
    nodes The certificate script creates a JWT file, signed by the root
-   key, that decodes into the certificate describe in the
-   [Certificate](#Certificate) chapter.  Certificates are stored on
-   the credentialed RVI node.
+   key, that encodes the certificate described in the
+   [Certificate](#Certificate) chapter.<br>
+   Certificates are stored on the credentialed RVI node.
 
 
 ### Provisioning a root key pair
 
 #### Creating the root key PEM files
 
-The root key, consisting of a private/public RSA256 key PEM file, and
+The root key, consisting of a private/public RSA4096 key PEM file, and
 a second PEM file with only the public portion of the key, is created
 by the following command:
 
-    rvi_create_root_key.sh -b 2048 -o my_root_key
+    rvi_create_root_key.sh -b 4096 -o my_root_key
 
-* **```-b 2048```**<br>
+* **```-b 4096```**<br>
   Specifies the number of bits in the key.
 
 * **```-o my_root_key```**<br>
   Specifies the file name prefix of the two created key files.
 
-Once executed, three files will be created:
+Once executed, two files will be created:
 
 1. **```my_root_key_priv.pem```**<br>
    This file contains the private/public key pair that must never leave
@@ -150,10 +263,10 @@ Once executed, three files will be created:
    JWT formatted device key and all certificates created by the
    certificate issuer.
 
-2. **```my_root_key_pub.pem``**`<br>
+2. **```my_root_key_pub.pem```**<br>
    This file contains the public-only key that is to be installed on
-   every RVI node that is to accept device keys and certificates signed
-   by the certificate issuer.
+   RVI nodes that will accept device keys and certificates signed by the
+   certificate issuer.
 
 #### Configuring RVI to use a public root key
 Only ```rvi_create_device_key.py``` and ```rvi_create_certificate.py``` use the
@@ -169,13 +282,13 @@ as ```{ rvi_core, { provisioning_key, "..../my_root_key_pub.pem" }}```.
 ### Provisioning a device key pair
 
 #### Creating the device key PEM files
-A device key, consisting of a private/public RSA256 key PEM file, a
+A device key, consisting of a private/public RSA4096 key PEM file, a
 second PEM file with only the public portion of the key, and a third
 JWT is created by the following command:
 
-    rvi_create_device_key.py -p my_root_key_priv.pem -o my_device_key -b 2048
+    rvi_create_device_key.py -p my_root_key_priv.pem -o my_device_key -b 4096
 
-* **```-b 2048```**<br>
+* **```-b 4096```**<br>
 Specifies the number of bits in the device key.<br>
 
 * **```-p my_root_key_priv.pem```**<br>
@@ -183,9 +296,9 @@ Specifies the private root key to sign the device key with when it is
 stored in the JWT file (see below). The root key is created by the
 ```rvi_create_root_key.sh``` script.<br>
 
-* **```-o my_device_key``**<br>
+* **```-o my_device_key```**<br>
 Specifies the file name prefix of the three created device key files.
-created key files.
+
 
 Once executed, three files will be created:
 
@@ -206,14 +319,14 @@ Once executed, three files will be created:
 
 #### Configuring RVI to use a device key 
 
-The RVI needs the device private/public key root key, stored in
+The RVI node needs the device private/public key root key, stored in
 ```my_device_key_priv.pem```, is referenced from the RVI's configuration
 file in ```{ rvi_core, { key_pair, "..../my_device_key_priv.pem" }}```.
 
 
 ### Provisioning a certificate
 
-#### Creating the certificate file A certificate, consisting of a
+#### Creating the certificate file
 A certificate is a JWT-formatted JSON structure signed by the root
 private key, is stored on an RVI node to be presented to remote node
 as evidence that the sender has the right to invoke and register the
@@ -289,7 +402,7 @@ Once executed, one mandatory and one optional file will be created:
 
 
 #### Configuring RVI to use a certificate
-The RVI needs the certificates to prove its right to register and invoke
+The RVI node needs the certificates to prove its right to register and invoke
 services toward remote nodes. The generated
 certificate file, ```my_cert.jwt```, is placed in a directory with other
 certificates owned by the device.
@@ -300,25 +413,29 @@ configuration file in ```{ rvi_core, { cert_dir, "...." }}```.
 
 
 
-## SETTING UP A DEVICE THROUGH ONE-TIME TOKENS
+## DEVICE SELF PROVISIONING THROUGH ONE-TIME TOKENS
 
 This chapter describes a yet-to-be-implemented procedure
-for provisioning new devices 
+for provisioning new devices that are created outside
+the control of the provisioning server.
 
 ### Initial provisioning at app install
 An device-specific key pair is generated by device and stored locally.
 
-The app has one pre-provisioned node certificate, signed by the
+The app has one pre-provisioned certificate, signed by the
 root server, allowing it to invoke ```jlr.com/provisioning/init_setup``` 
 and ```jlr.com/provisioning/request_provisioning```. The certificate also
 provides the right to register ```jlr.com/mobile/*/dm/cert_provision``` 
-and ```jlr.com/mobile/*/dm/key_provision``` 
+and ```jlr.com/mobile/*/dm/signed_pub_key_provision``` 
 The certificate keys section, normally holding public device
 keys, is empty.
 
-The device has the IP address of its provisioning server.
+The device has the public root key pre-provisioned.
 
-### Device setup process
+The device has the BT/IP/SMS address of its provisioning server to
+setup an initial contact.
+
+### Device self provisioning process
 
 1. Device connects to provisioning server<br>
    The app is started for the first time and connects to the
@@ -338,7 +455,7 @@ The device has the IP address of its provisioning server.
    After validating server authenticate package, the device
    sends a service announce to the server.
    The command contains the services ```jlr.com/mobile/1234/dm/cert_provision```
-   and  ```jlr.com/mobile/1234/dm/key_provision```,
+   and  ```jlr.com/mobile/1234/dm/signed_pub_key_provision```,
    which can be invoked by the provisioning service to install a new
    certificate and signed public device key on the device. 
 
@@ -352,7 +469,7 @@ The device has the IP address of its provisioning server.
    the cert contains no device public key, any device can invoke it.
 
 7. Sideband token transmission from provisioning service to device<br>
-   The provsioning server transmits a 128 bit random token to the device
+   The provisioning server transmits a 128 bit random token to the device
    using a sideband channel such as SMS or similar.
 
 8. Device invokes ```jlr.com/provisioning/request_provisioning``` on server<br>
@@ -360,6 +477,8 @@ The device has the IP address of its provisioning server.
    arguments to the call.
 
 9. Provisioning service signs device public key<br>
+   The provisioning service checks that the token has not expired.<br>
+   The provisioning service checks that the token has not already been used.<br>
    The public key provided in step 8 is signed by the root private key.
 
 10. Provisioning service creates node certificates<br>
@@ -368,7 +487,7 @@ The device has the IP address of its provisioning server.
     The certificate includes the device public key provided in step 8.
     The certificate is signed by the private root key.<br>
 
-11. Provisioning service invokes ```jlr.com/mobile/1234/dm/key_provision```<br>
+11. Provisioning service invokes ```jlr.com/mobile/1234/dm/signed_pub_key_provision```<br>
     The provisioning service invokes key provisioning service on
     the device, announced by the device to the service in step 4, to
     install the signed public device key on the device.<br>
@@ -470,3 +589,19 @@ The device has the IP address of its provisioning server.
    Server tries to match public key in stolen, root signed certificate against the
    root signed public key in the authenticate, and fails.<br>
    Server disconnects.
+
+### Thwarting self-provisioning process - Replay TBD.
+
+The provisioning server, having matched the side band address (MSISDN) against an internal database of devices and their access rights, will create a specific certificate only for that device. 
+
+Given that the side band network has not been compromised, I can't see how a MITM / replay attack can give a remote remote attacker the ability to gain access of the root-signed public device key and/or use a certificate.
+
+The token is sent as side band data to the correct device.
+
+The device presents token and public key when it invokes the server's request_provisioning service, proving that it has received the token.
+
+The server signs the public key, proven to be received from the correct device, and invoke the device's key_provision service to store it. The request is signed by the private root key, proving to the server is not spoofed.
+
+
+## KEY LIFECYCLE MANAGEMENT
+TBD
