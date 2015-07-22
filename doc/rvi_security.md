@@ -1,4 +1,4 @@
-# SETTING UP NODE AUTHENTICATION AND AUTHPRIZATION
+## SETTING UP NODE AUTHENTICATION AND AUTHORIZATION
 
 This document describes the process of setting up root keys, device
 keys, and certificates.
