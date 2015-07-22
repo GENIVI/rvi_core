@@ -453,7 +453,7 @@ The device has the IP address of its provisioning server.
    The commands contains the service ```jlr.com/mobile/9999/receive_bitcoin```.
 
 5. Server rejects the service announce<br>
-   Since the announced service does not match the service in the
+   Since the announced service does not match the right-to-invoke section in the
    certificate received in step 2, the announcement is rejected and no
    invocations to ```jlr.com/mobile/9999/receive_bitcoin``` will be routed to
    device.
