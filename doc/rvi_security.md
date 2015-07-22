@@ -267,7 +267,7 @@ The following arguments are provided
 * **```--cert_out=my_cert.json```**<br>
   Specifies a file to write a JSON-formatted copy of the certificate into.
   This file is for human inspection only and is not used by RVI or any other
-  scropts.
+  scripts.
 
 * **```--issuer=jaguarlandrover.com```**<br>
   Specifies that the certificate issuer is ```jaguarlandrover.com```.
@@ -291,7 +291,7 @@ Once executed, one mandatory and one optional file will be created:
 #### Configuring RVI to use a certificate
 The RVI needs the certificates to prove its right to register and invoke
 services toward remote nodes. The generated
-certificate file, ```my_cert.jwd```, is placed in a directory with other
+certificate file, ```my_cert.jwt```, is placed in a directory with other
 certificates owned by the device.
 
 The certificate directory itself is referenced from the RVI's
@@ -388,7 +388,7 @@ The device has the IP address of its provisioning server.
 
 ## DEVICE - VEHICLE SESSION USE CASE
 
-1. Device connects to vehicle ABCD<br>
+1. Device 1234 connects to vehicle ABCD<br>
    Connection is done over bluetooth, with no Internet connection.
 
 2. Device sends authenticate to vehicle<br>
