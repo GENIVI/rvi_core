@@ -386,7 +386,7 @@ The device has the IP address of its provisioning server.
 	The device stores the signed certificate to be used in future authentication messages.
 
 
-## DEVICE 
+## DEVICE - VEHICLE SESSION USE CASE
 
 1. Device connects to vehicle ABCD<br>
    Connection is done over bluetooth, with no Internet connection.
