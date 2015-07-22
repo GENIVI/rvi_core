@@ -81,6 +81,31 @@ Services for configuring the device after inital bootstrapping.
 
 Services to manage certificates.
 
+##### Provision Signed Key
+
+Provision a private-root-key-signed version of the device public key.
+
+    {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message",
+        "service": "jlr.com/vin/123456/dm/key_provision",
+        "timeout" : 5000,
+        "params": {
+            "keyid" : "xyzzy123",
+		    "key": "[JWT-encoded key]"
+         }
+    }
+
+The parameters are:
+
+* keyid - Unique key ID.
+* key - JWT encoded key, signed by the private root key, where the
+  payload is a JWK-formatted JSON object.
+  
+After receiving a key the device will typically store it in its key store.
+
+
 ##### Provision Certificate
 
 Provision a certificate from a server to a client.

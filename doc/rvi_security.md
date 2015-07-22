@@ -4,22 +4,22 @@ This document describes the process of setting up root keys, device
 keys, and certificates.
 
 
-# TERMINOLOGY AND COMPONENTS
+## TERMINOLOGY AND COMPONENTS
 
-## Certificate issuer
+### Certificate issuer
 A certificate issuer is an entity that signs device keys and
 certificates with a private root key. Devices with the corresponding
 public root key will be able to authenticate signed device keys and
 authorize signed certificates.
 
-## Root key 
+### Root key 
 A root key, a 2048+ bit RSA key pair, is generated once for an issuer
 of certificates.  The private key is stored in the certificate
 issuer's servers and is not shared.  The public key is manually
 installed on all RVI nodes that are to trust certificates from the
 certificate issuer.
 
-## Device key
+### Device key
 A device key is a per-RVI node 2048+ bit RSA key pair. The private part of
 the device key is stored on a host (server, embedded device, mobile device, etc)
 and is not shared. The public part of the key is used in two ways:
@@ -42,7 +42,7 @@ and is not shared. The public part of the key is used in two ways:
    receiver to verify the signature of a service invocation requests
    sent by the remote RVI node.
 
-## Certificate 
+### Certificate 
 
 A certificate is a JSON Web Token, signed by the private root key of
 the certificate issuer, that proves that the RVI node with a given
@@ -90,15 +90,14 @@ better reflect JWT practises and RVI semantics.
    <br><i>Will be renamed ```nbf``` to comply with JWT.</i>
 
 7. <b>```stop```* Stop time of validity period (```--stop```)</b><br>
-Stored under the ```validity``` JSON element and specifies the Unix
+   Stored under the ```validity``` JSON element and specifies the Unix
    time stamp when the certificae expires. The receiving RVI node will
    check that the current time is not after the ```stop``` time stamp
    of the certificate.
+   <br><i>Will be renamed ```exp``` to comply with JWT.</i>
 
-<br><i>Will be renamed ```exp``` to comply with JWT.</i>
 
-
-# SETTING UP AN RVI NETWORK SECURITY - GENERAL FLOW
+## SETTING UP AN RVI NETWORK SECURITY - GENERAL FLOW
 
 The general flow of events for setting up security are as follows:
 
@@ -127,9 +126,9 @@ The general flow of events for setting up security are as follows:
    the credentialed RVI node.
 
 
-## Provisioning a root key pair
+### Provisioning a root key pair
 
-### Creating the root key PEM files
+#### Creating the root key PEM files
 
 The root key, consisting of a private/public RSA256 key PEM file, and
 a second PEM file with only the public portion of the key, is created
@@ -156,7 +155,7 @@ Once executed, three files will be created:
    every RVI node that is to accept device keys and certificates signed
    by the certificate issuer.
 
-## Configuring RVI to use a public root key
+### Configuring RVI to use a public root key
 Only ```rvi_create_device_key.py``` and ```rvi_create_certificate.py``` use the
 private root key stored in ```my_root_key_priv.pem```, generated above.
 The RVI node itself is never aware of that file.
@@ -167,9 +166,9 @@ as ```{ rvi_core, { provisioning_key, "..../my_root_key_pub.pem" }}```.
 
 
 
-## Provisioning a device key pair
+### Provisioning a device key pair
 
-### Creating the device key PEM files
+#### Creating the device key PEM files
 A device key, consisting of a private/public RSA256 key PEM file, a
 second PEM file with only the public portion of the key, and a third
 JWT is created by the following command:
@@ -205,16 +204,16 @@ Once executed, three files will be created:
    itself toward another. The file is stored in JSON Web Token format.
 
 
-## Configuring RVI to use a device key 
+### Configuring RVI to use a device key 
 
 The RVI needs the device private/public key root key, stored in
 ```my_device_key_priv.pem```, is referenced from the RVI's configuration
 file in ```{ rvi_core, { key_pair, "..../my_device_key_priv.pem" }}```.
 
 
-## Provisioning a certificate
+### Provisioning a certificate
 
-### Creating the certificate file A certificate, consisting of a
+#### Creating the certificate file A certificate, consisting of a
 A certificate is a JWT-formatted JSON structure signed by the root
 private key, is stored on an RVI node to be presented to remote node
 as evidence that the sender has the right to invoke and register the
@@ -289,7 +288,7 @@ Once executed, one mandatory and one optional file will be created:
    readable JSON form of the generated root key.
 
 
-## Configuring RVI to use a certificate
+### Configuring RVI to use a certificate
 The RVI needs the certificates to prove its right to register and invoke
 services toward remote nodes. The generated
 certificate file, ```my_cert.jwd```, is placed in a directory with other
@@ -301,12 +300,12 @@ configuration file in ```{ rvi_core, { cert_dir, "...." }}```.
 
 
 
-# SETTING UP A DEVICE THROUGH ONE-TIME TOKENS
+## SETTING UP A DEVICE THROUGH ONE-TIME TOKENS
 
 This chapter describes a yet-to-be-implemented procedure
 for provisioning new devices 
 
-## Initial provisioning at app install
+### Initial provisioning at app install
 An device-specific key pair is generated by device and stored locally.
 
 The app has one pre-provisioned node certificate, signed by the
@@ -319,7 +318,7 @@ keys, is empty.
 
 The device has the IP address of its provisioning server.
 
-## Device setup process
+### Device setup process
 
 1. Device connects to provisioning server<br>
    The app is started for the first time and connects to the
@@ -387,8 +386,7 @@ The device has the IP address of its provisioning server.
 	The device stores the signed certificate to be used in future authentication messages.
 
 
-
-# DEVICE 
+## DEVICE 
 
 1. Device connects to vehicle ABCD<br>
    Connection is done over bluetooth, with no Internet connection.
@@ -441,7 +439,7 @@ The device has the IP address of its provisioning server.
    the certificate transmitted in step 2.<br>
    The vehicle unlocks the doors.
 
-## Thwarting malicious RVI nodes - Illegal service invocation
+### Thwarting malicious RVI nodes - Illegal service invocation
 
 1. [standard session setup]<br>
 
@@ -460,7 +458,7 @@ The device has the IP address of its provisioning server.
    invocations to ```jlr.com/mobile/9999/receive_bitcoin``` will be routed to
    device.
 
-## Thwarting malicious RVI nodes - Stolen certificates
+### Thwarting malicious RVI nodes - Stolen certificates
 1. [standard session setup]<br>
 
 2. Device sends authenticate command to server<br>
