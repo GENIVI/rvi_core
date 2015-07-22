@@ -24,7 +24,7 @@ A device key is a per-RVI node 2048+ bit RSA key pair. The private part of
 the device key is stored on a host (server, embedded device, mobile device, etc)
 and is not shared. The public part of the key is used in two ways:
 
-1. <b>To prove the identify of an RVI node</b><br>
+1. **To prove the identify of an RVI node**<br>
    When two RVI nodes locate each other over a data link (WiFi, 3G,
    Bluetooth, etc), they exchange an authenticate ("au") packet to
    prove their identity. This packet has the public part of the device
@@ -33,7 +33,7 @@ and is not shared. The public part of the key is used in two ways:
    stored public key to validate that the received public device is
    signed by the private root key of a trusted certificate issuer.
 
-2. <b>To prove ownership of certificates.</b><br>
+2. **To prove ownership of certificates.**<br>
    Embdded in the authenticate packet are one or more certificates
    proving the sending RVI node's right to register and invoke
    services. The certificate, signed by the private root key of the
@@ -57,39 +57,39 @@ Command line parameters to ```rvi_create_certificate.py``` given in
 parenthesis. Items marked with '*' ar slated for name changes to
 better reflect JWT practises and RVI semantics.
 
-1. <b>```iss``` Issuer (```--issuer```)</b><br>
+1. **```iss``` Issuer (```--issuer```)**<br>
    A domain name identifying the issuer. Currently supported but not
    used.
 
-2. <b>```create_timestamp```* - Creation time stamp</b><br>
+2. **```create_timestamp```* - Creation time stamp**<br>
    Unix time when the certificate was created.
    <br><i>Will be renamed ```iat``` to comply with JWT</i>
 
-3. <b>```sources```* - Right to register (```--invoke```)</b><br>
+3. **```sources```* - Right to register (```--invoke```)**<br>
    A list of full service names that the certificate grants the right to
    register, allowing other, credentialed RVI nodes to invoke these
    services.
    <br><i>Will be renamed ```register``` to better comply with semantics.</i>
 
-4. <b>```destinations```* Right to invoke (```--register```)</b><br>
+4. **```destinations```* Right to invoke (```--register```)**<br>
    A list of full service names that the certificate grants the right
    to invoke on other RVI nodes who have registered them
    <br><i>Will be renamed ```invoke``` to better comply with semantics.</i>
 
-5. <b>```keys``` Public device keys (```--device_key```)</b><br>
+5. **```keys``` Public device keys (```--device_key```)**<br>
    Contains one or more (currently only one) public device keys in JSON
    Web Key (RFC7517) format. The receiver will use this key to validate
    subsequent service invocations through the signatures submitted with
    the invocations.
 
-6. <b>```start```* Start time of validity period (```--start```)</b><br>
+6. **```start```* Start time of validity period (```--start```)**<br>
    Stored under the ```validity``` JSON element and specifies the Unix
    time stamp when the certificate becomes valid. The receiving RVI node
    will check that the current time is not before the ```start``` time stamp
    of the certificate.
    <br><i>Will be renamed ```nbf``` to comply with JWT.</i>
 
-7. <b>```stop```* Stop time of validity period (```--stop```)</b><br>
+7. **```stop```* Stop time of validity period (```--stop```)**<br>
    Stored under the ```validity``` JSON element and specifies the Unix
    time stamp when the certificae expires. The receiving RVI node will
    check that the current time is not after the ```stop``` time stamp
@@ -101,14 +101,14 @@ better reflect JWT practises and RVI semantics.
 
 The general flow of events for setting up security are as follows:
 
-1. <b>Create root key pair ```rvi_create_root_key.sh```</b><br>
+1. **Create root key pair ```rvi_create_root_key.sh```**<br>
    A single root key is created by the certificate issuer. Two PEM
    files are created in this process. One PEM file with the
    private/public key that never leaves the issuer's trusted server,
    and one public-only PEM file that is installed on every RVI node
    that is to accept certificates from the issuer.
 
-2. <b>Create device key pairs ```rvi_create_device_key.py```</b><br>
+2. **Create device key pairs ```rvi_create_device_key.py```**<br>
    Each RVI node need to have its own device key pair. The device key
    script will create a private/public key PEM file that never leaves
    the device, a public-only PEM file that is embedded into
@@ -116,7 +116,7 @@ The general flow of events for setting up security are as follows:
    a JSON Web Key (JWK - RFC 7159) signed by the private root key
    generated in step 1.
 
-3. <b>Create certificates ```rvi_create_certificate.py```</b><br>
+3. **Create certificates ```rvi_create_certificate.py```**<br>
    Certificates are generated to allow a specific RVI node (with a
    given device key) tor register (setup) services that it wants other
    RVI nodes to invoke, and to invoke serivces registered by other RVI
@@ -144,13 +144,13 @@ by the following command:
 
 Once executed, three files will be created:
 
-1. <b>```my_root_key_priv.pem```</b><br>
+1. **```my_root_key_priv.pem```**<br>
    This file contains the private/public key pair that must never leave
    the credit issuer's trusted environment. It will be used to sign the
    JWT formatted device key and all certificates created by the
    certificate issuer.
 
-2. <b>```my_root_key_pub.pem``</b>`<br>
+2. **```my_root_key_pub.pem``**`<br>
    This file contains the public-only key that is to be installed on
    every RVI node that is to accept device keys and certificates signed
    by the certificate issuer.
@@ -189,16 +189,16 @@ created key files.
 
 Once executed, three files will be created:
 
-1. <b>```my_device_key_priv.pem```</b><br>
+1. **```my_device_key_priv.pem```**<br>
    This file contains the private/public key pair that must never leave
    the device's trusted environment. It will be used to sign 
    outgoing service invocation request.
 
-2. <b>```my_device_key_pub.pem```</b><br>
+2. **```my_device_key_pub.pem```**<br>
    This file contains the public-only key that is to be added to 
    certificates issued for the device by a certificate issuer.
    
-3. <b>```my_device_key_pub_sign.jwt```</b><br>
+3. **```my_device_key_pub_sign.jwt```**<br>
    This file contains the public-only key, signed by the root key,
    that is to be provided as authentication when an RVI node identifies
    itself toward another. The file is stored in JSON Web Token format.
@@ -233,57 +233,57 @@ The certificate is created by the following command
                             --issuer=jaguarlandrover.com
 
 The following arguments are provided
-* <b>```--id=my_cert_id```</b><br>
+* **```--id=my_cert_id```**<br>
   System-wide unique ID to be assigned to this certificate.
 
-* *```--device_key=my_device_key_pub.pem```*<br>
+* **```--device_key=my_device_key_pub.pem```**<br>
   Specifies that the public device key, generated by ```create_device_key.py```
   shall be embedded into the generated certificate as the certificate owner.
 
-* <b>```--root_key=my_root_key_priv.pem```</b><br>
+* **```--root_key=my_root_key_priv.pem```**<br>
   Specifies that the certificate shall be signed by the private root
   key generated by ```create_root_key.sh```.
 
-* <b>```--invoke='jlr.com/backend/report jlr.com/backend/set_state'```</b><br>
+* **```--invoke='jlr.com/backend/report jlr.com/backend/set_state'```**<br>
   Gives the device with the certificate-embedded public key the right to invoke
   the services ```jlr.com/backend/report``` and ```jlr.com/backend/set_state```.
 
-* <b>```--register='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock'```</b><br>
+* **```--register='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock'```**<br>
   Gives the device with the certificate-embedded public key the right to register
   the services ```jlr.com/backend/report``` and ```jlr.com/backend/set_state```.
 
-* <b>```--start='2015-12-01 00:00:00'```</b><br>
+* **```--start='2015-12-01 00:00:00'```**<br>
   Specifies that the certificate shall become valid Dec 1, 2015 at
   midnight.
 
-* <b>```--stop='2015-12-31 23:59:59'```</b><br>
+* **```--stop='2015-12-31 23:59:59'```**<br>
   Specifies that the certificate shall expire valid Dec 31, 2015 at
   11:59:59 PM.
 
-* <b>```--jwt_out=my_cert.jwt```</b><br>
+* **```--jwt_out=my_cert.jwt```**<br>
   Specifies the name of the JWT file that is to be written with the
   certificate signed by the root key in ```my_root_key_priv.pem```.
 
-* <b>```--cert_out=my_cert.json```</b><br>
+* **```--cert_out=my_cert.json```**<br>
   Specifies a file to write a JSON-formatted copy of the certificate into.
   This file is for human inspection only and is not used by RVI or any other
   scropts.
 
-* <b>```--issuer=jaguarlandrover.com```</b><br>
+* **```--issuer=jaguarlandrover.com```**<br>
   Specifies that the certificate issuer is ```jaguarlandrover.com```.
   This value is currently not used.
 
 
 Once executed, one mandatory and one optional file will be created:
 
-1. <b>```my_cert.jwt```</b><br>
+1. **```my_cert.jwt```**<br>
    This file contains the generated certificate, signed by the
    private root key specified by ```--root_key=```. The content
    of this file will be provided by an RVI node to prove its righ
    to register and invoke services toward remote RVI nodes 
 
 	
-2. <b>```my_cert.json```</b><br>
+2. **```my_cert.json```**<br>
    Only created if ```--cert_out=``` has been give. Contains a human
    readable JSON form of the generated root key.
 
