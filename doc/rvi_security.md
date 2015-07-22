@@ -136,10 +136,10 @@ by the following command:
 
     rvi_create_root_key.sh -b 2048 -o my_root_key
 
-* ```-b 2048```<br>
+* **```-b 2048```**<br>
   Specifies the number of bits in the key.
 
-* ```-o my_root_key```<br>
+* **```-o my_root_key```**<br>
   Specifies the file name prefix of the two created key files.
 
 Once executed, three files will be created:
@@ -175,15 +175,15 @@ JWT is created by the following command:
 
     rvi_create_device_key.py -p my_root_key_priv.pem -o my_device_key -b 2048
 
-* ```-b 2048```<br>
+* **```-b 2048```**<br>
 Specifies the number of bits in the device key.<br>
 
-* ```-p my_root_key_priv.pem```<br>
+* **```-p my_root_key_priv.pem```**<br>
 Specifies the private root key to sign the device key with when it is
 stored in the JWT file (see below). The root key is created by the
 ```rvi_create_root_key.sh``` script.<br>
 
-* ```-o my_device_key``<br>
+* **```-o my_device_key``**<br>
 Specifies the file name prefix of the three created device key files.
 created key files.
 
