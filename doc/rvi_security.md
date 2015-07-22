@@ -155,7 +155,7 @@ Once executed, three files will be created:
    every RVI node that is to accept device keys and certificates signed
    by the certificate issuer.
 
-### Configuring RVI to use a public root key
+#### Configuring RVI to use a public root key
 Only ```rvi_create_device_key.py``` and ```rvi_create_certificate.py``` use the
 private root key stored in ```my_root_key_priv.pem```, generated above.
 The RVI node itself is never aware of that file.
@@ -204,7 +204,7 @@ Once executed, three files will be created:
    itself toward another. The file is stored in JSON Web Token format.
 
 
-### Configuring RVI to use a device key 
+#### Configuring RVI to use a device key 
 
 The RVI needs the device private/public key root key, stored in
 ```my_device_key_priv.pem```, is referenced from the RVI's configuration
@@ -288,7 +288,7 @@ Once executed, one mandatory and one optional file will be created:
    readable JSON form of the generated root key.
 
 
-### Configuring RVI to use a certificate
+#### Configuring RVI to use a certificate
 The RVI needs the certificates to prove its right to register and invoke
 services toward remote nodes. The generated
 certificate file, ```my_cert.jwd```, is placed in a directory with other
