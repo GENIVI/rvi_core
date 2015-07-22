@@ -30,7 +30,7 @@ and is not shared. The public part of the key is used in two ways:
    prove their identity. This packet has the public part of the device
    key encoded as a JSON Web Token (JWT - RFC7519) token signed by the
    private part of the root key.<br> The receiver can use its locally
-   stored public key to validate that the received public device is
+   stored public root key to validate that the received public device is
    signed by the private root key of a trusted certificate issuer.
 
 2. **To prove ownership of certificates.**<br>
