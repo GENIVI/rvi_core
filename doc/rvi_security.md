@@ -1,3 +1,8 @@
+Copyright (C) 2015 Jaguar Land Rover
+
+This document is licensed under Creative Commons
+Attribution-ShareAlike 4.0 International.
+
 ## OPEN ISSUES
 
 ### [1] Public device key exchange as a part of handshake demasks sender
@@ -93,6 +98,103 @@ Expand and formalize the "Thwarting malicious RVI nodes..." chapters
 to be STRIDE compliant.
 
 
+### [9] STRIDE Application is needed
+
+#### Issue
+Using naked, PEM-encoded root and device keys does not provide expiry time or chains.
+
+#### Solution
+Explore possibility of implementing full-blown certificates for public key management.
+
+
+### [10] Non-intuitive configuration parameter names
+
+#### Issue
+key_pair and provisioning_key are not describing what they are actually
+refering to.
+
+#### Solution
+The following name changes will be done to the configuration parameters:
+
+key_pair - Store single device key pair used to sign outgoing transactions.
+
+Will be renamed device_key_pair.
+
+provisioning_key - Public root key used to validate incoming certificates and device signatures.
+
+Will be renamed public_root_key
+
+### [11] Self provisioning is broken.
+
+#### Issue
+From Rudi's review.
+
+1. Steps 2 through 5: What purpose do steps 2 and 3 serve? You would
+   typically have them if the device and the server would be
+   exchanging session keys that they use to project all the subsequent
+   transactions. Since there are no session keys, for each subsequent
+   transaction the data exchanged has to be signed and validated with
+   the PKI anyway. So, in step 4 the device would have to send the
+   node certificate sent in step 2, since the server cannot rely on
+   that the two transactions are atomic and are actually sent from the
+   same device, even if it says so.
+
+2. I think step 2 must be combined with step 4 and step 3 with step 5,
+   otherwise there is no security. RVI is very much asynchronous and
+   stateless which means with every data exchange the credentials have
+   to be provided.Step 6: The node cert from step 2 that gives the
+   device the right to invoke the service must be provided, because
+   technically the invocation can come from a different device. RVI is
+   stateless, it should be for security reasons anyway.
+
+3. Step 8: The data sent in step 8, the device public key and the
+   token, have to be encrypted with the server's public key, to make
+   sure that only the server can read it and that the message cannot
+   be intercepted by mitm to retrieve the token. Otherwise, the side
+   band token transmission would not make any sense.
+
+4. Steps 9 and 10: They should be combined. The server creates the
+   node certificate and signs the entire certificate, not just the
+   key. The very reason being that the cert includes validity claims
+   that need to be protected from alteration such as valid_after and
+   valid_until time stamps.
+
+5. Step 10: Why would step 10, which creates and signs the node
+   certificate include an authorization to invoke a service on a
+   vehicle, such as the example jlr.com/vin/ABCD/unlock? Those are
+   separate certificates as they have individual validity dates etc.
+
+6. Steps 11 and 12: There is no point in separating the device public
+   key from the node certificate. After the node certificate has been
+   created by the server containing the device's public key in steps 9
+   and 10 (which should be one step, imho), the node certificate is
+   sent to the device. The device receives it and validates the
+   signature and if ok store the cert.
+
+7. All of this should just be for provisioning the device with a node
+   certificate. Providing devices with authorization certificates that
+   allow them to invoke services on vehicles is separate. The
+   provisioning you do once (or maybe a very few times). Providing
+   authorization certificates is a rather frequent action and
+   independent.
+
+
+#### Solution
+Redesign, bottom up.
+
+
+### [12] Python scripts should use cryptocgraphy intead of PyCrypto
+
+#### Issue
+Today, rvi_create_certificate.py and rvi_create_device_key.py use PyCrypto while
+JWT, imported by both scripts, uses cryptography.
+
+
+#### Solution
+rvi_create_certificate.py and rvi_create_device_key.py should be rewritten
+to use cryptography instead of PyCrypto.
+
+
 
 ## SETTING UP NODE AUTHENTICATION AND AUTHORIZATION
 
@@ -158,7 +260,7 @@ better reflect JWT practises and RVI semantics.
    used.
 
 2. **```create_timestamp```* - Creation time stamp**<br>
-   Unix time when the certificate was created.
+   Unix time, UTC, when the certificate was created.
    <br><i>Will be renamed ```iat``` to comply with JWT</i>
 
 3. **```sources```* - Right to register (```--invoke```)**<br>
@@ -180,14 +282,14 @@ better reflect JWT practises and RVI semantics.
 
 6. **```start```* Start time of validity period (```--start```)**<br>
    Stored under the ```validity``` JSON element and specifies the Unix
-   time stamp when the certificate becomes valid. The receiving RVI node
+   time stamp UTC when the certificate becomes valid. The receiving RVI node
    will check that the current time is not before the ```start``` time stamp
    of the certificate.
    <br><i>Will be renamed ```nbf``` to comply with JWT.</i>
 
 7. **```stop```* Stop time of validity period (```--stop```)**<br>
    Stored under the ```validity``` JSON element and specifies the Unix
-   time stamp when the certificae expires. The receiving RVI node will
+   time stamp UTC when the certificae expires. The receiving RVI node will
    check that the current time is not after the ```stop``` time stamp
    of the certificate.
    <br><i>Will be renamed ```exp``` to comply with JWT.</i>
@@ -436,6 +538,7 @@ The device has the BT/IP/SMS address of its provisioning server to
 setup an initial contact.
 
 ### Device self provisioning process
+**BROKEN WILL BE REDESIGNED**
 
 1. Device connects to provisioning server<br>
    The app is started for the first time and connects to the
@@ -457,7 +560,7 @@ setup an initial contact.
    The command contains the services ```jlr.com/mobile/1234/dm/cert_provision```
    and  ```jlr.com/mobile/1234/dm/signed_pub_key_provision```,
    which can be invoked by the provisioning service to install a new
-   certificate and signed public device key on the device. 
+   certificate and signed public device key on the device.
 
 5. Server sends a service announce to device<br>
    The announcement contains the services ```jlr.com/provisioning/init_setup```
@@ -507,6 +610,19 @@ setup an initial contact.
 
 ## DEVICE - VEHICLE SESSION USE CASE
 
+In this use case, a mobile device, with ID 1234, connects to a
+vehicle, with VIN ABCD, to unlock it.
+
+The vehicle has a service, registered as ```jlr.com/vin/ABCD/request_unlock```, which
+unlocks the door.
+
+The mobile device has a service, registered as ```jlr.com/mobile/1234/confirm_unlock```,
+which updates the UI with the current state of the door locks.
+
+The device will invoke ```jlr.com/vin/ABCD/request_unlock``` to unlock the
+doors of the vehicle, while the vehicle will confirm its new unlocked
+state through a invocation to ```jlr.com/mobile/1234/confirm_unlock```
+
 1. Device 1234 connects to vehicle ABCD<br>
    Connection is done over bluetooth, with no Internet connection.
 
@@ -515,48 +631,50 @@ setup an initial contact.
    The command contains the root-signed certificate from step 12 in the previous chapter.<br>
    The vehicle verifies the public device key signature using the pre-provisioned public root key.<br>
    The vehicle verifies the certificate signature using the pre-provisioned public root key.<br>
-   The vehicle marks the device as being allowed to invoke ```jlr.com/vin/ABCD/unlock```<br>
-   The vehicle marks the device as being allowed to register ```jlr.com/mobile/1234/status```<br>
+   The vehicle marks the device as being allowed to invoke ```jlr.com/vin/ABCD/request_unlock```<br>
+   The vehicle marks the device as being allowed to register ```jlr.com/mobile/1234/confirm_unlock```<br>
 
 3. Vehicle sends authenticate to device<br>
    The command contains a root-signed public device key for the vehicle
    The command contains a root-signed certificate, allowing the
-   vehicle to invoke ```jlr.com/vin/*/status```, and register ```jlr.com/vin/ABCD/unlock```.<br>
+   vehicle to invoke ```jlr.com/vin/*/confirm_unlock```, and
+   register ```jlr.com/vin/ABCD/request_unlock```.<br>
    The device verifies the public device key signature using the pre-provisioned public root key.<br>
    The device verifies the certificate signature using the pre-provisioned public root key.<br>
-   The device marks the vehicle as being allowed to invoke ```jlr.com/mobile/1234/status```<br>
-   The device marks the vehicle as being allowed to register ```jlr.com/vin/ABCD/unlock```<br>
+   The device marks the vehicle as being allowed to invoke ```jlr.com/mobile/1234/confirm_unlock```<br>
+   The device marks the vehicle as being allowed to register ```jlr.com/vin/ABCD/request_unlock```<br>
 
 
 4. Device sends service announce to vehicle<br>
-   The command contains ```jlr.com/mobile/1234/status```.<br>
+   The command contains ```jlr.com/mobile/1234/confirm_unlock```.<br>
    Vehicle validates that the vehicle has the right to register this
    service against the certificate received in step 2.
 
 5. Vehicle sends service announce to device<br>
-   The command contains the service ```jlr.com/vin/ABCD/unlock```.<br>
+   The command contains the service ```jlr.com/vin/ABCD/request_unlock```.<br>
    Device validates the registration against right to register services
-   listed in certificate received in step 3.
-
-6. Device sends service announce to vehicle<br>
-   The command contains the service ```jlr.com/mobile/1234/status```.<br>
-   Vehicle validates the registration against right to register services
-   listed in certificate received in step 2.
-
-7. Vehicle invokes ```jlr.com/mobile/1234/status``` on device<br>
-   The command, signed by the vehicle private key, contains current
-   state (locked/unlocked, etc) that is used to update device UI.<br>
-   The device validates the signature using the public key in
-   the certificate transmitted in step 3.<br>
-   The device updates its status with the received state.
+   listed in certificate received in step 3.<br>
 
 
-8. Device invokes ```jlr.com/vin/ABCD/unlock``` on vehicle<br>
+6. Device invokes ```jlr.com/vin/ABCD/request_unlock``` on vehicle<br>
    The command, signed by the device private key, tells the
    vehicle to unlock its doors.<br>
+   The certificate transmitted in step 2 proves that the device
+   has the right to invoke the command on the vehicle.<br>
    The vehicle validates the signature using the public key in
    the certificate transmitted in step 2.<br>
    The vehicle unlocks the doors.
+
+7. Vehicle invokes ```jlr.com/mobile/1234/confirm_status``` on device<br>
+   The command, signed by the vehicle private key, acknowledges
+   to the device that the doors have been unlocked.<br>
+   The certificate transmitted in step 3 proves that the vehicle
+   has the right to invoke the command on the device.<br>
+   The device validates the signature using the public key in
+   the certificate transmitted in step 3.<br>
+   The device updates its UI with an unlocked icon.
+
+
 
 ### Thwarting malicious RVI nodes - Illegal service invocation
 
@@ -602,6 +720,7 @@ The device presents token and public key when it invokes the server's request_pr
 
 The server signs the public key, proven to be received from the correct device, and invoke the device's key_provision service to store it. The request is signed by the private root key, proving to the server is not spoofed.
 
+### Thwarting self-provisioning process - Cloned phone
 
 ## KEY LIFECYCLE MANAGEMENT
 TBD
