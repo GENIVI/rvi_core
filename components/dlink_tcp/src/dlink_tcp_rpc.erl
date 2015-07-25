@@ -339,7 +339,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
               RemoteAddress,
               RemotePort,
               ProtoVersion,
-	      Certificates,
+	      CertificatesTmp,
               Signature ] =
                 opts([?DLINK_ARG_TRANSACTION_ID,
                       ?DLINK_ARG_ADDRESS,
@@ -349,6 +349,12 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
                       ?DLINK_ARG_SIGNATURE],
                      Elems, undefined),
 
+	    
+	    Certificates = 
+		case CertificatesTmp of 
+		    { array, C} -> C;
+		    undefined -> []
+		end,
             process_authorize(FromPid, PeerIP, PeerPort,
                               TransactionID, RemoteAddress, RemotePort,
                               ProtoVersion, Signature, Certificates, CompSpec);
@@ -648,6 +654,7 @@ process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
     ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
     ?info("dlink_tcp:authorize(): Protocol Ver:   ~p", [ ProtoVersion ]),
     ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:authorize(): Certificates:   ~p", [ Certificates ]),
     ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
 
     { _NRemoteAddress, _NRemotePort} = Conn =

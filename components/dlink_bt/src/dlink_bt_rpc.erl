@@ -355,7 +355,7 @@ handle_socket(FromPid, PeerBTAddr, PeerChannel, data,
 	      RemoteAddress, 
 	      RemoteChannel, 
 	      RVIProtocol,
-	      {array, Certificates},
+	      CertificatesTmp,
 	      Signature ] = 
 		opts([?DLINK_ARG_TRANSACTION_ID, 
 		      ?DLINK_ARG_ADDRESS, 
@@ -364,11 +364,18 @@ handle_socket(FromPid, PeerBTAddr, PeerChannel, data,
 		      ?DLINK_ARG_CERTIFICATES, 
 		      ?DLINK_ARG_SIGNATURE], 
 		     Elems, undefined),
-
+	    
+	    Certificates = 
+		case CertificatesTmp of 
+		    { array, C} -> C;
+		    undefined -> []
+	end,
 	    process_authorize(FromPid, PeerBTAddr, RemoteChannel,
 			     TransactionID, RemoteAddress, RemoteChannel, 
 			     RVIProtocol,  Certificates, Signature, CompSpec);
 
+			   
+			   
 	?DLINK_CMD_SERVICE_ANNOUNCE ->
             Conn = {PeerBTAddr, PeerChannel},
 	    [ TransactionID, Signature ] = 
