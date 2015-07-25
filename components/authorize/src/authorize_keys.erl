@@ -474,7 +474,7 @@ keys_by_conn(Conn) ->
 			      key = '$2', _='_'}, [], [{{'$1', '$2'}}] }]).
 
 validate_message_(JWT, Conn) ->
-    ?debug("validate_message_(~p, ~p)~n", [JWT, Conn]),
+    ?debug("validate_message_(~p, ~p) -> ~p~n", [JWT, Conn, keys_by_conn(Conn)]),
     [_|_] = Keys = keys_by_conn(Conn),
     validate_message_1(Keys, JWT).
 
