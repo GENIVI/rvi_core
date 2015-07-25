@@ -385,7 +385,7 @@ get_json_element(Path, JSON, Default) ->
     end.
 
 store_cert(Cert, Keys, JWT, Conn) ->
-    case decode_jwt(Cert, Keys) of
+    case decode_jwt(Cert, authorize_keys:provisioning_key()) of
 	{_CHeader, CertStruct} ->
 	    authorize_keys:save_keys(Keys, Conn),
 	    case authorize_keys:save_cert(CertStruct, JWT, Conn) of
