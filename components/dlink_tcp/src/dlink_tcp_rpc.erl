@@ -667,7 +667,7 @@ process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
             _ -> { RemoteAddress, RemotePort}
         end,
 
-    case validate_auth_jwt(Signature, Certificates, Conn, CompSpec) of
+    case validate_auth_jwt(Signature, Certificates, {PeerIP, PeerPort}, CompSpec) of
         true ->
             connection_authorized(FromPid, Conn, CompSpec);
         false ->
