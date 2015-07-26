@@ -195,6 +195,7 @@ handle_rpc("sign_message", Args) ->
     {ok, Message} = rvi_common:get_json_element(["message"], Args),
     [ Status, JWT ] =
 	gen_server:call(?SERVER, { rvi, sign_message, [Message] }),
+    ?debug("Message signature = ~p~n", [JWT]),
     {ok, [ {status, rvi_common:json_rpc_status(Status)},
 	   {jwt, JWT} ]};
 handle_rpc("validate_message", Args) ->

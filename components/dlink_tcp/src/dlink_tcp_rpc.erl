@@ -735,10 +735,10 @@ process_data(_FromPid, RemoteIP, RemotePort, ProtocolMod, Data, CompSpec) ->
     Proto:receive_message(CompSpec, {RemoteIP, RemotePort},
 			  base64:decode_to_string(Data)).
 
-process_announce(Msg, FromPid, IP, Port, TID, _Vsn, CompSpec) ->
+process_announce({struct, Elems}, FromPid, IP, Port, TID, _Vsn, CompSpec) ->
     [ Avail,
       {array, Svcs} ] =
-        opts([ ?DLINK_ARG_STATUS, ?DLINK_ARG_SERVICES ], Msg, undefined),
+        opts([ ?DLINK_ARG_STATUS, ?DLINK_ARG_SERVICES ], Elems, undefined),
     ?debug("dlink_tcp:service_announce(~p): Address:       ~p:~p", [Avail,IP,Port]),
     ?debug("dlink_tcp:service_announce(~p): TransactionID: ~p", [Avail,TID]),
     ?debug("dlink_tcp:service_announce(~p): Services:      ~p", [Avail,Svcs]),

@@ -26,16 +26,19 @@ main(Args) ->
             fail("No command given~n", [])
     end.
 
-opts(["-v"   , "true"  |T]) -> [{v, true}|opts(T)];
-opts(["-v"   , "false" |T]) -> [{v, false}|opts(T)];
-opts(["-v"             |T]) -> [{v, true}|opts(T)];
-opts(["-pub" , PubKey  |T]) -> [{pub, PubKey}|opts(T)];
-opts(["-root", RootKey |T]) -> [{root, RootKey}|opts(T)];
-opts(["-sig", SigFile  |T]) -> [{sig, SigFile}|opts(T)];
-opts(["-o"   , OutF    |T]) -> [{out, OutF}|opts(T)];
-opts(["-c"   , Cert    |T]) -> [{cert, Cert}|opts(T)];
-opts(["-b"   , Bits    |T]) -> [{b, l2i(Bits)}|opts(T)];
-opts(["-fmt" , Fmt     |T]) -> [{fmt, Fmt}|opts(T)];
+opts(["-v"   , "true"   |T]) -> [{v, true}|opts(T)];
+opts(["-v"   , "false"  |T]) -> [{v, false}|opts(T)];
+opts(["-v"              |T]) -> [{v, true}|opts(T)];
+opts(["-pub" , PubKey   |T]) -> [{pub, PubKey}|opts(T)];
+opts(["-priv", PrivKey  |T]) -> [{priv, PrivKey}|opts(T)];
+opts(["-root", RootKey  |T]) -> [{root, RootKey}|opts(T)];
+opts(["-sig", SigFile   |T]) -> [{sig, SigFile}|opts(T)];
+opts(["-o"   , OutF     |T]) -> [{o, OutF}|opts(T)];
+opts(["-c"   , Cert     |T]) -> [{cert, Cert}|opts(T)];
+opts(["-b"   , Bits     |T]) -> [{b, l2i(Bits)}|opts(T)];
+opts(["-fmt" , Fmt      |T]) -> [{fmt, Fmt}|opts(T)];
+opts(["-decode", "true" |T]) -> [{decode,true}|opts(T)];
+opts(["-decode", "false"|T]) -> [{decode,false}|opts(T)];
 opts([Cmd]) ->
     [{command, Cmd}];
 opts([]) ->
@@ -50,7 +53,7 @@ verbose() ->
     get({?MODULE, verbose}).
 
 cmd("make_auth", Opts) ->
-    case {get_value(root, Opts), get_value(pub, Opts), get_value(fmt, Opts)} of
+    case {get_value(root, Opts), get_value(pub, Opts), jwt_fmt(Opts)} of
 	{undefined, _, "jwt"} ->
 	    fail("Cannot create JWT without root key~n", []);
 	{_Root, undefined, "jwt"} ->
@@ -61,11 +64,11 @@ cmd("make_auth", Opts) ->
             make_auth(RPriv, PubKey, Fmt, Opts)
     end;
 cmd("make_root", Opts) ->
-    [Out] = mandatory([out], Opts),
+    [Out] = mandatory([o], Opts),
     Bits = bits(Opts),
     make_root(Out, Bits, Opts);
 cmd("make_dev", Opts) ->
-    [Root, Out] = mandatory([root, out], Opts),
+    [Root, Out] = mandatory([root, o], Opts),
     Bits = bits(Opts),
     make_dev(Root, Out, Bits, Opts);
 cmd("read_sig", Opts) ->
@@ -80,11 +83,40 @@ cmd("read_sig", Opts) ->
                     io:fwrite("Header: ~s~n"
                               "Payload: ~s~n",
                               [exo_json:encode(Header),
-                               exo_json:encode(Payload)])
+                               exo_json:encode(Payload)]),
+                    case proplists:get_value(decode, Opts, false) of
+                        true ->
+                            decode_keys(Payload);
+                        false ->
+                            ok
+                    end
             end;
         {error, E} ->
             fail("Cannot read ~s (~w)~n", [Sig, E])
+    end;
+cmd("read_key", Opts) ->
+    case [{K, get_value(K, Opts)} || K <- [root, pub, priv]] of
+        [] ->
+            fail("No key given~n", []);
+        Keys ->
+            lists:foreach(
+              fun({K, F}) ->
+                      case authorize_keys:get_key_pair_from_pem(
+                             openssl, F) of
+                          {undefined, undefined} ->
+                              case authorize_keys:get_pub_key(F) of
+                                  undefined ->
+                                      io:fwrite("~p: Cannot read~n", [K]);
+                                  PubKey ->
+                                      io:fwrite("~p: ~p~n", [K, PubKey])
+                              end;
+                          {Priv, Pub} ->
+                              io:fwrite("~p priv: ~p~n"
+                                        "    pub: ~p~n", [K, Priv, Pub])
+                      end
+              end, [{K,F} || {K,F} <- Keys, F =/= undefined])
     end.
+
 
 make_root_msg(X) ->
     {"~s_priv.pem - private root key~n"
@@ -112,6 +144,18 @@ get_pub_key(Pub) ->
             fail("Cannot read pub key (~p)~n", [Pub]);
         PubKey ->
             PubKey
+    end.
+
+decode_keys({struct, Elems}) ->
+    case lists:keyfind("keys", 1, Elems) of
+        {_, {array, Keys}} ->
+            lists:foreach(
+              fun(K) ->
+                      io:fwrite(
+                        "~p~n", [authorize_keys:json_to_public_key(K)])
+              end, Keys);
+        _ ->
+            ok
     end.
 
 mandatory(Keys, Opts) ->
@@ -159,7 +203,7 @@ make_dev(Root, Out, Bits, Opts) ->
     make_key_pair(Out, Bits),
     {RPriv, _} = get_key_pair(Root),
     Pub = get_pub_key(pub_f(Out)),
-    make_auth(RPriv, Pub, "jwt", [{out, Out ++ "_pub_sign.jwt"}|Opts]).
+    make_auth(RPriv, Pub, "jwt", [{o, Out ++ "_pub_sign.jwt"}|Opts]).
 
 make_key_pair(Out, Bits) ->
     os:cmd(["openssl genrsa -out ", priv_f(Out), " ", i2l(Bits)]),
@@ -169,7 +213,7 @@ priv_f(Out) -> Out ++ "_priv.pem".
 pub_f (Out) -> Out ++ "_pub.pem".
 
 out(Str, Opts) ->
-    case get_value(out, Opts, tty) of
+    case get_value(o, Opts, tty) of
 	tty ->
 	    io:fwrite("~s", [Str]);
 	OutF when is_list(OutF) ->
@@ -182,6 +226,21 @@ out(Str, Opts) ->
 		Error ->
 		    fail("Cannot write output (~p): ~p~n", [OutF, Error])
 	    end
+    end.
+
+jwt_fmt(Opts) ->
+    case get_value(fmt, Opts) of
+        undefined ->
+            case get_value(o, Opts) of
+                tty ->
+                    "json";
+                [_|_] ->
+                    "jwt"
+            end;
+        Fmt when Fmt=="json"; Fmt=="jwt" ->
+            Fmt;
+        Other ->
+            fail("Unknown format: ~s~n", [Other])
     end.
 
 help() ->
