@@ -3,7 +3,7 @@ Copyright (C) 2014-2015, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-**Version 0.3.X**
+**Version 0.4.0**
 
 # BUILD INSTRUCTIONS FOR RVI #
 
@@ -46,7 +46,7 @@ Grade Linux repositories where the code resides:
 
 ## INSTALL ERLANG ##
 
-Install Erlang R16B01, or a later R16 release:
+Install Erlang R16B03, or a later R16 release:
 
     sudo apt-get install erlang
 
@@ -56,23 +56,23 @@ Install Erlang R16B01, or a later R16 release:
 Use the newly installed ```git``` tool to clone (copy) the RVI repository
 to the build system.
 
-    git clone https://gerrit.automotivelinux.org/gerrit/RVI/rvi
+    git clone https://github.com/PDXostc/rvi_core.git
 
-The clone will be downloaded into a newly created ```rvi``` subdirectory.
+The clone will be downloaded into a newly created ```rvi_core``` subdirectory.
 
 
 ## RETRIEVE ADDITIONAL CODE DEPENDENCIES ##
 
-Move into the newly created ```rvi``` directory where the code resides.
+Move into the newly created ```rvi_core``` directory where the code resides.
 
-    cd rvi
+    cd rvi_core
 
-Run ```make``` to pull all necessary repositories into the ```deps```
+Run ```make deps``` to pull all necessary repositories into the ```deps```
 subdirectory under the ```rvi``` directory:
 
     make deps
 	
-The local ```rebar``` command is used to retrieve the code. See
+The local ```rebar``` command is used to retrieve the dependencies. See
 ```rebar.config``` and ```deps/*/rebar.config``` for a list of
 dependencies. 
 
@@ -98,7 +98,6 @@ The following warnings are expected, and are not a failure indication:
     .../authorize_rpc.erl:31: Warning: function get_certificate_body/2 is unused    
 
 The compiled code is available under ```ebin/``` and ```deps/*/ebin```.
-
 
 ## CREATE A RELEASE ##
 
