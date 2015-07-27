@@ -3,7 +3,7 @@ Copyright (C) 2014-2015 Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-# REMOTE VEHICLE INTERACTION (RVI) 0.4 #
+# REMOTE VEHICLE INTERACTION (RVI) 0.4.0 #
 
 This document gives a brief introduction to the codebase of the RVI
 project and explains the reasoning behind some of the technical
@@ -14,8 +14,9 @@ For a high level description, with an exhaustive master usecase
 walkthrough, please see the High Level Design document 
 [here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf)
 
-Git branch management is described by Vincent Driessen's document:
-[Git strategy](http://nvie.com/posts/a-successful-git-branching-model/)
+Git branch management is JLR OSTCs standard git document
+[Git strategy](https://docs.google.com/document/d/1xG86q2o5Y-aSn7m8QARIH8hcTpH_yNMWCLQJD47IP48/edit/)
+[Git strategy](https://docs.google.com/document/d/1ko12dTXGeb2-E18SHOzGuC1318hGYSCIq3ADSzFOlGM/edit)
 
 For build instructions, please check the build instructions:
 [Markdown](BUILD.md) | 
@@ -72,25 +73,6 @@ RVI is considered a safe bet that can be used without unforeseen consequences.
 
 * **Invocation**<br>
 RVI shall be able to function over transient and unreliable data channels, but also over a reliable in-vehicle LAN.
-
-
-# PROJECT MILESTONES #
-The demonstrator milestones will act as proof of concepts and
-progress. Each milestone will deliver additional core functionality,
-up to the point where the RVI system is complete at the final
-deliverable.
-
-1. **Remote HVAC control (Mid Sep 2014)**<br>
-Pre-set the climate control of your vehicle from your mobile phone.
-
-2. **Software Over The Air (SOTA) (Late Oct 2014)**<br>
-Transfer, install, and validate a software package from a backend server to an IVI unit.
-
-3. **Remote CAN bus monitoring (TBD)**<br>
-Remotely subscribe to specific CAN frames, and have them delivered to a backend server.
-
-4. **Remote control of IVI nav system (TBD)**<br>
-Use remote mobile device to setup POI in vehicle's navigation system.
 
 
 # TECHNOLOGY CHOICES #
