@@ -3,7 +3,7 @@ Copyright (C) 2014-2015, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-**Version 0.3.x**
+**Version 0.4.0**
 
 # CONFIGURING AN RVI NODE 
 
@@ -22,7 +22,7 @@ The reader is assumed to be able to:
 
 ## PREREQUISITES
 
-1. Erlang runtime R16B01 or later has to be installed on the hosting system.
+1. Erlang runtime R16B03 or later has to be installed on the hosting system.
 2. The ```setup_rvi_node.sh``` tool is available to build a release.
 3. ```rvi_sample.config``` is used as a starting point for a customized setup.
 Root access is not needed.
@@ -130,7 +130,7 @@ An example entry is given below:
   ...
   { env, [
     ...
-    { rvi, [
+    { rvi_core, [
       ...
       <b>{ node_service_prefix, "jaguarlandrover.com/backend/" }</b>
     ]}
@@ -152,17 +152,15 @@ If the node lives behind a firewall, or should for some reason not
 accept incoming connections from other nodes, the node external address
 should be set to ```"0.0.0.0:0"```. 
 
-The configuration element to set under the ```rvi``` tuple is 
-```node_address```. 
+The configuration element to set under the ```rvi``` tuple is ```node_address```. 
 
 An example tuple is given below:
-
 <pre>
 [
   ...
   { env, [
     ...
-    { rvi, [
+    { rvi_core, [
       ...
       <b>{ node_address, "92.52.72.132:8817 }</b>
     ]}
@@ -173,103 +171,166 @@ An example tuple is given below:
 *Please note that IP addresses, not DNS names, should be used in all
  network addresses.*
 
-In the default Data Link component, ```data_link_bert_rpc```, you also
+In the data link component, ```dllink_tcp_rpc```, you also
 need to specify the port it should listen to, and optionally also the
 interface to use.
 
-This is done by editing the tuple ```rvi -> data_link ->
-bert_rpc_server```, and set ```port``` to the port that traffic is
-recevied on. If ```data_link_bert_rpc``` is to listen for traffic on
-only one interface, the IP address can be specified as ```ip```. 
-
+This is done by editing the tuple ```rvi_core -> data_link -> dlink_tcp_rpc```, and
+set ```port``` to the port that traffic is recevied on. 
 An example tuple is given below:
+
 
 <pre>
 [
   ...
   { env, [
     ...
-    { rvi, [
+    { rvi_core, [
       ...
       { components, [
         ...
         { data_link, [ 
          ...
-         { bert_rpc_server, [ 
-            <b>{ port, 8817 },
-            { ip, "192.168.11.234"}</b>
-          ]}
-        ]}
-      ]}
-    ]}
-  ]}
+	     { dlink_tcp_rpc, gen_server,
+	      [ 
+	        ...
+            <b>{ server_opts, [ { ip, "192.168.11.234"}, { port, 8807 }]},
+            { persistent_connections, [ "38.129.64.13:8807" ]}</b>
+	      ]
+	    }]
+      }]
+    }]
+  }]
+}
 ] 
 </pre>
 
-If ```data_link_bert_rpc``` is to listen to the port on all network
+If ```dlink_tcp_rpc``` is to listen to the port on all network
 interfaces, the ```ip``` tuple can be omitted.
    
 
-# CONFIGURE STATIC NODES #
+The ```persistent_connections``` section lists the IP:Port pair of all
+remote RVI nodes that this node should maintain a connection with. If the
+address is not available, a reconnection attempt will be made every five seconds.
 
-Some RVI nodes in a network, such as central backend servers, will
-always be available at static network addresses. Services on these
-static nodes should be made available to all other nodes in a
-network (given that network connectivity is available).
+This allows a solid connection between RVI nodes where only one node can initiate
+a connection (such as a vehicle-to-server link in a mobile network).
 
-The service prefixes and network addresses of static nodes can be
-configured in all other nodes, making the static nodes globally
-available outside the regular, peer-to-peer service discovery
-mechanism.
 
-When traffic targeting a remote service is received by the RVI node
-from a locally connected service, it will first try to locate the
-remote node hosting the destination service through the service
-discovery database. If this fails the statically configured nodes are
-searched, prefix matching the name of the destination service against
-the specified static nodes' service prefixes.
+# ROUTING RULES
 
-If there is a match, the request will be sent to the network address
-of the matching node. If there are multiple matches the static node
-with the longest matching prefix will receive the traffic.
+Routing rules determining how to get a message targeting a specific
+service to its destination.
 
-Static nodes are configured as a list of tuples under the
-```static_nodes``` tuple.
+A routing rule specifies a number of different way to reach an RVI
+node hosting a specific service prefix, such as ```jlr.com/vin/ABCD/sota/```.
 
-An example entry is gven below:
+Please note that if a remotely initiated (== client) data link is
+available and has announced that the targeted service is available,
+that data link will be used regardless of what it is.
+     
+Service name prefix that rules are specified for
+The service prefix with the longest match against the service targeted
+by the message will be used.
+
+Example: Targeted service = ```jlr.com/backend/sota/get_updates```
+
+Prefix 1: ```{ "jlr.com/backend", [...]}```<br>
+Prefix 2: ```{ "jlr.com/backend/sota", [...]}```<br>
+
+In this case, Prefix 2 will be used. 
+
+This allows you to setup different servers for different types of
+services (SOTA, remote door unlock, HVAC etc).  
+	
+Make sure to have a default routin rule if you don't want your message
+to error out immediately. With a default the message will be queued
+until it times out, waiting for a remote node to connect and announce
+that it can handle the targeted service. Below is an example of a default rule.
 
 <pre>
-[
-  ...
-  { env, [
-    ...
-    { rvi, [
-      ...
-      <b>{ static_nodes, [
-        { "jaguarlandrover.com/sota/", "92.52.72.132:8817" },
-        { "jaguarlandrover.com/remote_diagnostic/", "92.52.72.132:8818" }
-      ]}</b>
-    ]}
+{ routing_rules, [
+  { "", [
+    { proto_json_rpc, dlink_tcp_rpc}
   ]}
-] 
+]}
 </pre>
 
-*Please note that IP addresses, not DNS names, should be used in all
- network addresses.*
+
+This rule specifies that, unless another rule has a longer prefix
+match, a request shall be encoded using ```proto_json_rpc```, and
+transmitted using ```dlink_tcp_rpc```.
+
+To direct an in-vehicle RVI-node to send all its backend requests to a
+specific address, add the following rule.
+
+<pre>
+{ routing_rules, [
+  { "", [
+    { proto_json_rpc, dlink_tcp_rpc}
+  ]},
+  <b>{ "jlr.com/backend/",  [
+	   { proto_json_rpc, { dlink_tcp_rpc, [ { target, "38.129.64.31:8807" } ]}}
+  ]}</b>
+]}
+</pre>
+
+This rule specifies that any message to a service starting
+with ```jlr.com/backend``` shall first be encoded using ```proto_json_rpc```, 
+and transmitted using ```dlink_tcp_rpc```. The ```dlink_tcp_rcp``` data link
+module will be instructed to send all messages targeting ```jlr.com/backend/...``` to the
+IP-address:port ```38.129.64.31:8807```.
+
+To setup Vehicle-to-Vehicle communication, where a vehicle can reach
+services on other vehicle's starting with ```jlr.com/vin/```, add the
+following rule.
+
+<pre>
+{ routing_rules, [
+  { "", [
+    { proto_json_rpc, dlink_tcp_rpc}
+  ]},
+  { "jlr.com/backend/",  [
+	   { proto_json_rpc, { dlink_tcp_rpc, [ { target, "38.129.64.31:8807" } ]}}
+  ]},
+  <b>{ "jlr.com/vin/", [
+	   { proto_json_rpc, { dlink_tcp_rpc, [ broadcast, { interface, "wlan0" } ] } },
+	   { proto_json_rpc, { dlink_3g_rpc, [ initiate_outbound ]} },
+	   { proto_sms_rpc, { dlink_sms_rpc, [ { max_msg_size, 140 } ] } }
+	  ]
+	}</b>
+]}
+</pre>
+
+
+This rule specifies that any message to a service starting 
+with ```jlr.com/vin``` shall first be encoded using the protocol - data
+link pair ```proto_json_rpc``` - ```dlink_tcp_rpc```, where WiFi
+broadcasts shall be used (thrugh ```wlan0``` and ```broadcast```) to
+find other vehiclces.
+
+If that does not work, a 3G connection to the vehicle shall be
+attempted, through the ```proto_json_rpc``` - ```dlink_3g_rpc``` pair,
+where we are allowed to initiate outbound connections to the 3G
+network in case a connection is not already available.
+
+Finally, an SMS can be sent through the ```proto_sms_rpc``` - ```dlink_sms_rpc``` pair,
+maximizing message size to 140 bytes.
+
+
 
 # SPECIFY SERVICE EDGE URL #
 
 The Service Edge URL is that which will be used by locally connected
 services to interact, through JSON-RPC, with the RVI node. 
 
-Other components in the RVI node use the same URL to send internal traffic
-to Service Edge.
+In cases where JSON-RPC is used instead of Erlang-internal gen\_server calls,
+other components in the RVI node use the same URL to send traffic
+to Service Edge
 
-The URL of Service Edge is specified through the ```service_edge```
-tuple's ```url``` entry, read by the other components in the node to
-locate it.  When a URL is specified for Service Edge, the port that it
-is to listen to must be synchronzied as well, using the
-```exo\_http\_opts``` tuple. 
+The URL of Service Edge is specified through the ```service_edge_rpc```
+tuple's ```json_rpc_address``` entry, read by the other components in the node to
+locate it.
 
 An example entry is gven below:
 
@@ -278,31 +339,34 @@ An example entry is gven below:
   ...
   { env, [
     ...
-    { rvi, [
+    { rvi_core, [
       ...
       { components, [
         ...
-        { service_edge, [ 
-          <b>{ url, "http://127.0.0.1:8811" },
-          { exo_http_opts, [ { port, 8811 } ]}</b>
+ 	    { service_edge, [ 
+	      <b>{ service_edge_rpc, json_rpc, [ 
+	        { json_rpc_address, { "127.0.0.1", 8801 } },
+	        { websocket, [ { port, 8808}]}
+	      ]}</b>
         ]}
       ]}
     ]}
-  ]}
-] 
+   ]}
+]
 </pre>
 
 *Please note that IP addresses, not DNS names, should be used in all
  network addresses.*
 
+
 # SPECIFY URLS OF RVI COMPONENTS #
 The remaining components in an RVI system needs to have their URLs and
 listening ports setup as well.  It is recommended that consecutive
-ports after that used for ```service_edge``` are used.
+ports after that used for ```service_edge_rpc``` are used.
 
 Please note that if only erlang components are used (as is the case in
-the reference implementation), native erlang gen_server calls can be
-used instead of URLs, providing a 400% transactional speedup. Please
+the reference implementation), native erlang gen\_server calls can be
+used instead of URLs, providing a significant transactional speedup. Please
 see the genserver components chapter below for details.
 
 Below is an example of a complete port/url configuration for all
@@ -314,36 +378,44 @@ external node address chapter:
   ...
   { env, [
     ...
-    { rvi, [
+    { rvi_core , [
       ...
       { components, [
         ...
-        <b>{ service_edge, [ 
-          { url, "http://127.0.0.1:8811" },
-          { exo_http_opts, [ { port, 8811 } ]}
+        <b>
+ 	    { service_edge, [ 
+	      { service_edge_rpc, json_rpc, [ 
+	        { json_rpc_address, { "127.0.0.1", 8801 } },
+	        ...
+	      ]}
         ]},
-        { service_discovery, [ 
-          { url, "http://127.0.0.1:8812" },
-          { exo_http_opts, [ { port, 8812 } ] }
+ 	    { service_discovery, [
+		  { service_discovery_rpc, json_rpc, [
+            { json_rpc_address, { "127.0.0.1", 8802 }}
+	      ]}
+	    ]},
+	    { schedule, [
+		  { schedule_rpc, json_rpc, [
+	        { json_rpc_address, { "127.0.0.1", 8803 }}
+	      ]}
         ]},
-        { schedule, [
-          { url, "http://127.0.0.1:8813" },
-          { exo_http_opts, [ { port, 8813 } ] }
-        ]},
-        { authorize, [
-          { url, "http://127.0.0.1:8814" },
-          { exo_http_opts, [ { port, 8814 } ] }
-        ]},
-        { protocol, [ 
-          { url, "http://127.0.0.1:8815" },
-          { exo_http_opts, [ { port, 8815 } ] }
-        ]},
-        { data_link, [ 
-          { url, "http://127.0.0.1:8816" },
-          { exo_http_opts, [ { port, 8816 } ] },
-          { bert_rpc_server, [ {port, 8817 } ] } 
-        ]}</b>
-      ]}
+	    { authorize, [
+		  { authorize_rpc, json_rpc, [ 
+	        { json_rpc_address, { "127.0.0.1", 8804 } }
+	      ]}
+	    ]},
+	    { protocol, [
+	      { proto_json_rpc, json_rpc, [
+		    { json_rpc_address, { "127.0.0.1", 8805 } }
+	      ]}
+	    ]},
+	    { data_link, [
+	      { dlink_tcp_rpc, json_rpc,  [ 
+	        { json_rpc_address, { "127.0.0.1", 8806 } },
+	        ...
+          ]}
+		]}</b>
+	  ]}
     ]}
   ]}
 ]
@@ -352,37 +424,38 @@ external node address chapter:
 *Please note that IP addresses, not DNS names, should be used in all
  network addresses.*
 
-
-# SPECIFY GEN_SERVER ADDRESSES FOR RVI COMPONENTS #
+# SPECIFY GEN\_SERVER ADDRESSES FOR RVI COMPONENTS #
 
 Communication between the RVi components can be either JSON-RPC or
-gen_server calls.
+Erlang-internal gen\_server calls.
 	
 JSON-RPC calls provide compatability with replacement components
-written in languages other than Erlang. Gen_server calls provide
-native erlang inter-process calls that are about 4x faster than
+written in languages other than Erlang. gen\_server calls provide
+native erlang inter-process calls that are signficantly faster than
 JSON-RPC when transmitting large data volumes.
 	
 If one or more of the RVI components are replaced with external
-components, use JSON-RPC by specifying url and exo_http_opts
+components, use JSON-RPC by ```json_rpc_address```
 for all components.
 	
-If you are running an all-native erlang system, use gen_server calls
-by configuring gen_server.
+If an all-native erlang system is configured, use gen\_server calls
+by configuring ```gen_server```.
 
-If you specify both gen_server and url/exo_http_opts, the gen_server
-communicaiton path will be used for inter component communication.
+If both ```gen_server``` and ```json_rpc_address``` are specified, the
+gen\_server communicaiton path will be used for inter component
+communication.
 	
 Please note that communication between two RVI nodes are not affected
-by this since data_link_bert_rpc will use BERT-RPC to communicate (
-using the address/port specified by ```bert_rpc_server```).
+by this since data_link_bert_rpc will use the protocol and data links
+specified by the matching routing rule to communicate. See
+[Routing Rules](#ROUTING RULES) chapter for details.
 
-Below is an example of where gen_server is used where approrpiate.
+Below is an example of where gen\_server is used where approrpiate.
 
-Please note that ```service_edge always``` need to have its ```url```
-and ```exo_http_opts``` options specified since local services need an
-HTTP port to send JSON-RPC to. However, gen_server can still be
-specified in parallel, allowing for gen_server calls to be made
+Please note that ```service_edge_rpc``` always need to have
+its ```json_rpc_address``` specified since local services need an
+HTTP port to send JSON-RPC to. However, gen\_server can still be
+specified in parallel, allowing for gen\_server calls to be made
 between Servie Edge and other RVI components.
 
 <pre>
@@ -390,65 +463,77 @@ between Servie Edge and other RVI components.
   ...
   { env, [
     ...
-    { rvi, [
+    { rvi_core , [
       ...
       { components, [
         ...
-        <b>{ service_edge, [ 
-	      { gen_server, service_edge_rpc },
-          { url, "http://127.0.0.1:8811" },
-          { exo_http_opts, [ { port, 8811 } ]}
+        <b>
+ 	    { service_edge, [ 
+	      <b>{ service_edge_rpc, gen_server, [ 
+	        { json_rpc_address, { "127.0.0.1", 8801 } },
+	        ...
+	      ]}
         ]},
-        { service_discovery, [ 
-	      { gen_server, service_discovery_rpc }
+ 	    { service_discovery, [
+		  { service_discovery_rpc, gen_server, [] }
+	    ]},
+	    { schedule, [
+		  { schedule_rpc, gen_server, [] }
         ]},
-        { schedule, [
-	      { gen_server, schedule }
-        ]},
-        { authorize, [
-	      { gen_server, authorize_rpc }
-        ]},
-        { protocol, [ 
-	      { gen_server, protocol_rpc }
-        ]},
-        { data_link, [ 
-	      { gen_server, data_link_bert_rpc_rpc },
-          { bert_rpc_server, [ {port, 8817 } ] } 
-        ]}</b>
-      ]}
+	    { authorize, [
+		  { authorize_rpc, gen_server, [] }
+	    ]},
+	    { protocol, [
+	      { proto_json_rpc, gen_server, [] }
+	    ]},
+	    { data_link, [
+	      { dlink_tcp_rpc, gen_server,  [ 
+	        ...
+          ]}
+		]}
+        </b>
+	  ]}
     ]}
   ]}
 ]
 </pre>
 
 # SETTING UP WEBSOCKET SUPPORT ON A NODE
+
 The service edge can, optionally, turn on its websocket support in order to
 support locally connected services written in javascript. This allows an RVI node
 to host services running in a browser, on node.js or similar web environments.
 Websocket support is enabled by adding a ```websocket``` entry to the configuration data
-of ```servide_edge```. Below is the previous configuration example with such a setup.
+of ```servide_edge_rpc```.
+
+Below is the previous configuration example with such a setup.
 
 <pre>
 [
   ...
   { env, [
     ...
-    { rvi, [
+    { rvi_core, [
       ...
       { components, [
         ...
-        <b>{ service_edge, [ 
-          { websocket, [ { port, 8818}]},
-          { url, "http://127.0.0.1:8811" },
-          { exo_http_opts, [ { port, 8811 } ]}
-        ]},</b>
-...
+ 	    { service_edge, [ 
+	      { service_edge_rpc, json_rpc, [ 
+	        { json_rpc_address, { "127.0.0.1", 8801 } },
+	        <b>{ websocket, [ { port, 8808}]}</b>
+	      ]}</b>
+        ]}
+      ]}
+    ]}
+  ]}
+]
 </pre>
 
+
 Websocket clients can now connect to:
-```ws://1.2.3.4:8818/websession``` and issue JSON-RPC commands to
-Service Edge. (Replace ```1.2.3.4``` with the IP address of the
-host).
+```ws://127.0.0.1:8801/websession``` and issue JSON-RPC commands to
+Service Edge. Outbound service invocations, sent from the RVI node to
+the javascript code, will be transmitted over the same socket.
 
 
 # COMPILING THE RVI SOURCE CODE
@@ -458,6 +543,7 @@ Please see BUILD.md for details on this process.
 
 
 # CREATING A DEVELOPMENT RELEASE
+
 *Please note that a new release must be created each time the
  configuration file has been updated*
 
@@ -474,11 +560,11 @@ Each release will have a name, which will also be the name of the
 newly created subdirectory containing the files necessary to start the
 release.
 
-If a configuration file, ```test.config``` is to be used when building
+If a configuration file, ```rvi_sample.config``` is to be used when building
 release ```test_rel```, the following command can be run from the
 build root:
 
-    ./script/setup_rvi_node.sh -d -n test_rel -c test.config
+    ./script/setup_rvi_node.sh -d -n test_rel -c rvi_sample.config
 
 Once executed (and no errors were found in test.config), a
 subdirectory called ```test_rel``` has been created. This directory
