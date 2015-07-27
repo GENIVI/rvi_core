@@ -75,7 +75,7 @@
 	  scts,             %% :7/binary
 	  udh=[] :: [gsms_ie()], %% user data header
 	  udl,              %% length in septets/octets (depend on dcs)
-	  ud 
+	  ud                %% user data
 	 }).
 
 -define(MTI_SMS_SUBMIT, 2#01).
