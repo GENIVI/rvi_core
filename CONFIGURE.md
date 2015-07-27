@@ -82,6 +82,60 @@ the lager logging system, only the ```rvi``` tuple needs to be edited.
 
 The term tuple and entry will be intermixed throughout this document.
 
+## CONFIGURATION FILE VALUE SUBSITUTION
+All string values under the rvi tuple tree are scanned
+for specific dokens during startup. If a token is 
+found, it will be replaced with a value referenced by it.
+Tokens can one of the following:
+
+* ```$rvi_file(FileName,Default)``` - File content<br>
+  When an ```$rvi_file()``` token is encountered, the first line of
+  the referenced file is read. The line (without the newline)
+  replaces the token.<br>
+  Example:<br>
+  ```{ node_service_prefix, "jlr.com/vin/$rvi_file(/etc/vin,default_vin)"}```
+
+  will be substituted with the first line from the
+  file ```/etc/vin```:
+
+  ```{ node_service_prefix, "jlr.com/vin/2GKEG25HXP4093669"}```
+  
+  If ```/etc/vin``` cannot be opened, the value ```default_vin```
+  will be used instead.
+
+* ```$rvi_env(EnvironemtnName,Default)``` - Environment variable<br>
+  When an ```$rvi_env()``` token is encountered, the value of 
+  the Linux process environment variable (such as $HOME) is read
+  to replace the token.<br>
+
+  Example:<br>
+    ```{ node_service_prefix, "jlr.com/vin/$rvi_env(VIN,default_vin)"}```
+
+    will be substituted with the value of the ```$VIN``` environment
+    variable:
+
+
+    ```{ node_service_prefix, "jlr.com/vin/2GKEG25HXP4093669"}```
+  
+    If VIN is not a defined environment variable, the value
+    ```default_vin``` will be used instead.
+
+* ```$rvi_uuid(Default)``` - Unique machine identifier<br>
+  When an ```$rvi_uuid()``` token is encountered, the UUID of the root
+  disk used by the system is read to replace the token.
+  The UUID of the root disk is retrieved by opening ```/proc/cmdline```
+  and extracting the ```root=UUID=[DiskUUID]``` value.
+  This value is generated at system install time and is reasonably
+  world wide unique.
+
+  Example:<br>
+    ```{ node_service_prefix, "jlr.com/vin/$uuid(default_vin)"}```
+
+  will be substituted with the value of the root disk UUID:
+    ```{ node_service_prefix, "jlr.com/vin/afc0a6d8-0264-4f8a-bb3e-51ff8655b51c"} ```
+  
+  If the root UUID cannot be retrieved, the value ```default_vin```
+  will be used instead.
 
 # SPECIFY NODE SERVICE PREFIX #
 All RVI nodes hosting locally connected services will announce these
@@ -650,7 +704,8 @@ Replace debug with info, notice, warning, or error for different log
 levels. A production release will also produce logs to
 ```rel/[release]/log/erlang.log.?```.
 
-Check the file modification date to find which of the log files are currently written to.
+Check the file modification date to find which of the log files are
+currently written to.
 
 You can configure the log level through the lager configuration entry:
 
@@ -667,6 +722,6 @@ You can configure the log level through the lager configuration entry:
 
 Additional handlers can also be added for different log destinations. 
 
-See Basho's lager documentation at [github](https://github.com/basho/lager) for details
-on logging.
+See Basho's lager documentation at
+[github](https://github.com/basho/lager) for details on logging.
 

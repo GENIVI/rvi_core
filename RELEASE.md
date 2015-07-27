@@ -1,10 +1,48 @@
 # RELEASE NOTES #
 
-# v0.1 #
-Initial demo version. Works with the hvac_demo and its hvac / mobile emulators.
 
-# v0.2 #
-Various improvements
+# v0.4.0 #
+
+* <b>Rewrite to better handle multiple components</b><br>
+  Multiple data links and protocols can now be handled
+
+* <b>Replace static rules with routes</b><br>
+  We can now route messages depending on their targeted service names.
+  Each route specify a protocol and data link to use, together with
+  options indicating how that route should be managed.
+
+* <b>Bluetooth</b><br>
+  Using dlink_bt, two RVI nodes can now communicate over an RFCOMM link.
+
+
+# v0.3.2 #
+* <b>Re-enable service availability notifications over websockets</b><br>
+  Issue 15 was an artifact of issue 14, thus we can turn notifications back on
+  now that 15 is fixed.
+
+* <b>Implement datalinkbert_rpc pings</b><br>
+  This fixes issue #14 where a rebooted tizen box did not shut down
+  the data link tcp connection correctly, which left it dangling on
+  the server. A periodic tcp (5 min default) will trigger a
+  kernel-originated shutdown when the remote address cannot be
+  reached.
+
+* <b>Filter out resurrected services when a remote data link disappears</b><br>
+  This fixes issue #14 where a rebooted tizen box would register its
+  services while its old (pre-reboot) dangling tcp connection was
+  still alive from the server's point of view. When the danlging tcp
+  connection died, the RVI would delete all services associated with
+  it, thus deleting active services registered over the new connection
+  after the tizen box rebooted.
+
+  We now filter any services associated with a dead tcp connection
+  against identically named services registered over other
+  connections.
+
+# v0.3.1 #
+
+* <b>Don't send service availablity notifications over websockets</b><br>
+  For unknown reasons this crashes the RVI node intermittently
 
 # v0.3.0 #
 * <b>Auto connect static links</b><br>
@@ -51,50 +89,10 @@ Big data demo moved to its own repo at https://github.com/PDXostc/rvi_bigdata
 * <b>SOTA demo moved</b><br>
   SOTA demo moved to its own repo at https://github.com/PDXostc/rvi_sota_demo
 
-# v0.3.1 #
+# v0.2 #
+Various improvements
 
-* <b>Don't send service availablity notifications over websockets</b><br>
-  For unknown reasons this crashes the RVI node intermittently
-
-# v0.3.2 #
-* <b>Re-enable service availability notifications over websockets</b><br>
-  Issue 15 was an artifact of issue 14, thus we can turn notifications back on
-  now that 15 is fixed.
-
-* <b>Implement datalinkbert_rpc pings</b><br>
-  This fixes issue #14 where a rebooted tizen box did not shut down
-  the data link tcp connection correctly, which left it dangling on
-  the server. A periodic tcp (5 min default) will trigger a
-  kernel-originated shutdown when the remote address cannot be
-  reached.
-
-* <b>Filter out resurrected services when a remote data link disappears</b><br>
-  This fixes issue #14 where a rebooted tizen box would register its
-  services while its old (pre-reboot) dangling tcp connection was
-  still alive from the server's point of view. When the danlging tcp
-  connection died, the RVI would delete all services associated with
-  it, thus deleting active services registered over the new connection
-  after the tizen box rebooted.
-
-  We now filter any services associated with a dead tcp connection
-  against identically named services registered over other
-  connections.
-
-# v0.4.0 #
-
-* <b>Certificate / Signature management</b><br>
-  First implementation of RVI authentication, authorization, and
-  authorization-filtered service discovery.
-
-* <b>Rewrite to better handle multiple components</b><br>
-  Multiple data links and protocols can now be handled
-
-* <b>Replace static rules with routes</b><br>
-  We can now route messages depending on their targeted service names.
-  Each route specify a protocol and data link to use, together with
-  options indicating how that route should be managed.
-
-* <b>Bluetooth</b><br>
-  Using dlink_bt, two RVI nodes can now communicate over an RFCOMM link.
+# v0.1 #
+Initial demo version. Works with the hvac_demo and its hvac / mobile emulators.
 
 
