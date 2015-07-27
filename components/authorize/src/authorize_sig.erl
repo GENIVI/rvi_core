@@ -7,19 +7,25 @@
 
 %% Inspired by
 %% http://blog.differentpla.net/blog/2015/04/19/jwt-rs256-erlang/
-decode_jwt(JWT, PubKey) ->
+
+decode_jwt(JWT, PubKey) when is_list(JWT)->
+    decode_jwt(list_to_binary(JWT), PubKey);
+
+decode_jwt(JWT, PubKey) when is_binary(JWT)->
     ?debug("authorize_sig:decode_jwt(JWT, PubKey=~p)~n", [PubKey]),
     [H, P, S] = binary:split(JWT, <<".">>, [global]),
     Header = decode_json(base64url:decode(H)),
     Payload = decode_json(base64url:decode(P)),
+    ?debug("JWT Header = ~p~nPayload: ~p~n", [Header, Payload]),
     Signature = base64url:decode(S),
     SigningInput = <<H/binary, ".", P/binary>>,
     Res = case public_key:verify(
 		 SigningInput, ?DIGEST_TYPE, Signature, PubKey) of
-	false ->
-	    invalid;
-	true ->
-	    {Header, Payload}
+	      false ->
+		  ?debug("public_key:verify() -> false~n", []),
+		  invalid;
+	      true ->
+		  {Header, Payload}
 	  end,
     ?debug("decoded JWT = ~p~n", [Res]),
     Res.

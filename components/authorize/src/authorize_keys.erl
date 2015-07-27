@@ -460,13 +460,13 @@ save_key(K, Conn) ->
 	    ?warning("Unknown key type: ~p~n", [K]),
 	    skip;
 	#'RSAPublicKey'{} = PubKey ->
+	    KeyID =
 	    case rvi_common:get_json_element(["kid"], K) of
-		{ok, ID} ->
-		    ets:insert(?KEYS, #key{id = {Conn,ID}, key = PubKey});
-		_ ->
-		    ets:insert(?KEYS, #key{id = {Conn,make_ref()},
-					   key = PubKey})
-	    end
+		{ok, ID} -> {Conn, ID};
+		_        -> {Conn, make_ref()}
+	    end,
+	    ?debug("Saving key ~p, PubKey = ~p~n", [KeyID, PubKey]),
+	    ets:insert(?KEYS, #key{id = KeyID, key = PubKey})
     end.
 
 keys_by_conn(Conn) ->
@@ -474,7 +474,7 @@ keys_by_conn(Conn) ->
 			      key = '$2', _='_'}, [], [{{'$1', '$2'}}] }]).
 
 validate_message_(JWT, Conn) ->
-    ?debug("validate_message_(~p, ~p)~n", [JWT, Conn]),
+    ?debug("validate_message_(~p, ~p) -> ~p~n", [JWT, Conn, keys_by_conn(Conn)]),
     [_|_] = Keys = keys_by_conn(Conn),
     validate_message_1(Keys, JWT).
 

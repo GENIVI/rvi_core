@@ -146,7 +146,7 @@ get_request_result({error, Reason})->
     { error, Reason};
 
 get_request_result(ok)->
-    { ok, ok};
+    { ok, ok, "{}"};
 
 get_request_result(Other)->
     ?error("get_request_result(): Unhandled result: ~p", [Other]),    
@@ -668,6 +668,16 @@ start_json_rpc_server(Component, Module, Supervisor) ->
 
 
 
+utc_timestamp() ->
+    calendar:datetime_to_gregorian_seconds(
+      calendar:universal_time()) - seconds_jan_1970().
+
+seconds_jan_1970() ->
+    %% calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}).
+    62167219200.
+
+
+
 count_brackets([], 
 	       #pst { 
 		  buffer = [], 
@@ -789,13 +799,3 @@ extract_json(Buf, undefined) ->
 
 extract_json(Buf, PST) ->
     extract_json(Buf, PST,[]).
-
-
-utc_timestamp() ->
-    calendar:datetime_to_gregorian_seconds(
-      calendar:universal_time()) - seconds_jan_1970().
-
-seconds_jan_1970() ->
-    %% calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}).
-    62167219200.
-

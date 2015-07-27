@@ -327,6 +327,7 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
     ok.
 
 handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
+
     ?debug("dlink_tcp:data(): Payload ~p", [Payload ]),
     {ok, {struct, Elems}} = exo_json:decode_string(Payload),
 
@@ -338,7 +339,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
               RemoteAddress,
               RemotePort,
               ProtoVersion,
-	      Certificates,
+	      CertificatesTmp,
               Signature ] =
                 opts([?DLINK_ARG_TRANSACTION_ID,
                       ?DLINK_ARG_ADDRESS,
@@ -348,6 +349,12 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
                       ?DLINK_ARG_SIGNATURE],
                      Elems, undefined),
 
+	    
+	    Certificates = 
+		case CertificatesTmp of 
+		    { array, C} -> C;
+		    undefined -> []
+		end,
             process_authorize(FromPid, PeerIP, PeerPort,
                               TransactionID, RemoteAddress, RemotePort,
                               ProtoVersion, Signature, Certificates, CompSpec);
@@ -647,6 +654,7 @@ process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
     ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
     ?info("dlink_tcp:authorize(): Protocol Ver:   ~p", [ ProtoVersion ]),
     ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
+    ?debug("dlink_tcp:authorize(): Certificates:   ~p", [ Certificates ]),
     ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
 
     { _NRemoteAddress, _NRemotePort} = Conn =
@@ -659,7 +667,7 @@ process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
             _ -> { RemoteAddress, RemotePort}
         end,
 
-    case validate_auth_jwt(Signature, Certificates, Conn, CompSpec) of
+    case validate_auth_jwt(Signature, Certificates, {PeerIP, PeerPort}, CompSpec) of
         true ->
             connection_authorized(FromPid, Conn, CompSpec);
         false ->
@@ -727,10 +735,10 @@ process_data(_FromPid, RemoteIP, RemotePort, ProtocolMod, Data, CompSpec) ->
     Proto:receive_message(CompSpec, {RemoteIP, RemotePort},
 			  base64:decode_to_string(Data)).
 
-process_announce(Msg, FromPid, IP, Port, TID, _Vsn, CompSpec) ->
+process_announce({struct, Elems}, FromPid, IP, Port, TID, _Vsn, CompSpec) ->
     [ Avail,
       {array, Svcs} ] =
-        opts([ ?DLINK_ARG_STATUS, ?DLINK_ARG_SERVICES ], Msg, undefined),
+        opts([ ?DLINK_ARG_STATUS, ?DLINK_ARG_SERVICES ], Elems, undefined),
     ?debug("dlink_tcp:service_announce(~p): Address:       ~p:~p", [Avail,IP,Port]),
     ?debug("dlink_tcp:service_announce(~p): TransactionID: ~p", [Avail,TID]),
     ?debug("dlink_tcp:service_announce(~p): Services:      ~p", [Avail,Svcs]),
