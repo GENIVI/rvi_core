@@ -14,9 +14,7 @@
 			   SvcName :: string(), 
 			   Timeout :: integer(),
 			   Parameters :: any(), 
-			   Signature :: string(),
-			   Certificate :: string()) -> Result::tuple().
-
+			   Signature :: binary()) -> Result::tuple().
 
 -callback register_remote_services(CompSpec :: #component_spec{}, 
 				   NetworkAddress :: string(), 
