@@ -14,6 +14,10 @@
 * <b>Bluetooth</b><br>
   Using dlink_bt, two RVI nodes can now communicate over an RFCOMM link.
 
+* <b>Configuration file value substitution</b><br>
+  Allows RVI to use file content, environment variables, and unique device IDs
+  as configuration file values. See [CONFIGURE.md](CONFIGURE.md) for details.
+
 
 # v0.3.2 #
 * <b>Re-enable service availability notifications over websockets</b><br>
