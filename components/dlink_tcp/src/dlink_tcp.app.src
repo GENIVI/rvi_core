@@ -19,5 +19,5 @@
 		  rvi_common
                  ]},
   {mod, { dlink_tcp_app, []}},
-  {start_phases, [{json_rpc, []}, {connection_manager, []}]}
+  {start_phases, [{json_rpc, []}, {connection_manager, []}, {announce, []}]}
  ]}.

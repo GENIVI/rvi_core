@@ -32,8 +32,11 @@ start_phase(json_rpc, _, _) ->
 
 start_phase(connection_manager, _, _) ->
     dlink_tcp_rpc:start_connection_manager(),
-    ok.
+    ok;
 
+start_phase(announce, _, _) ->
+    gproc:reg({n, l, dlink_tcp}),
+    ok.
 
 stop(_State) ->
     ok.
