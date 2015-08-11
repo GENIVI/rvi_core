@@ -333,7 +333,12 @@ get_key_pair_from_pem(openssl, Pem) ->
 	    {undefined, undefined}
     end.
 
+get_pub_key({openssl_pem, File}) ->
+    get_openssl_pub_key(File);
 get_pub_key(File) ->
+    get_openssl_pub_key(File).
+
+get_openssl_pub_key(File) ->
     case file:read_file(File) of
 	{ok, Bin} ->
 	    Entries = public_key:pem_decode(Bin),
@@ -346,7 +351,7 @@ get_pub_key(File) ->
 				    publicExponent = E}
 	    end;
 	Error ->
-	    ?warning("Cannot read pub key ~s (~p)~n", [File, Error]),
+	    ?warning("Cannot read pub key ~p (~p)~n", [File, Error]),
 	    undefined
     end.
 
