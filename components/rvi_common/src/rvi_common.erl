@@ -28,6 +28,7 @@
 -export([local_service_prefix/0]).
 -export([node_address_string/0]).
 -export([node_address_tuple/0]).
+-export([node_msisdn/0]).
 -export([get_request_result/1]).
 -export([get_component_specification/0,
 	 get_component_modules/1,
@@ -46,6 +47,7 @@
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
 -define(NODE_ADDRESS, node_address).
+-define(NODE_MSISDN, node_msisdn).
 
 -record(pst, {
 	  buffer = [],
@@ -433,6 +435,15 @@ node_address_tuple() ->
 	Addr ->
 	    [ Address, Port ] = string:tokens(Addr, ":"),	
 	    { Address, list_to_integer(Port) }
+    end.
+
+node_msisdn() ->
+    case application:get_env(rvi_core, ?NODE_MSISDN) of
+	{ok, M} when is_list(M) -> M;
+	undefined ->
+	    ?warning("WARNING: Please set application rvi environment ~p",
+		     [?NODE_MSISDN]),
+	    error({missing_env, ?NODE_MSISDN})
     end.
 
 get_component_config_(Component, Default, CompList) ->
