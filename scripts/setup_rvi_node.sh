@@ -93,7 +93,7 @@ if [ -z "${CONFIG_NAME}" ] ; then
     usage
 fi
 
-export ERL_LIBS=$PWD/components:$PWD/deps:$ERL_LIBS:$PWD 
+export ERL_LIBS=$TOP_DIR/components:$TOP_DIR/deps:$ERL_LIBS:$TOP_DIR 
 echo "ERL_LIBS=$ERL_LIBS"
 echo  "Setting up node $NODE_NAME."
 rm -rf $NODE_NAME

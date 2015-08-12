@@ -12,6 +12,8 @@
 
 .PHONY:	all deps compile clean rpm rpmclean test
 
+SCRIPTS=scripts/setup_gen \
+	scripts/author
 
 VERSION=0.4.0
 
@@ -23,11 +25,19 @@ deps:
 compile:
 	./rebar  compile
 
-escript: compile
-	(cd components/authorize && make escript)
+escript: compile ${SCRIPTS}
 
 recomp:
 	./rebar  compile skip_deps=true
+
+scripts/setup_gen: deps/setup/setup_gen
+	cp deps/setup/setup_gen scripts/
+
+scripts/author: components/authorize/author
+	cp components/authorize/author scripts/
+
+components/authorize/author:
+	(cd components/authorize && make escript)
 
 clean:   rpmclean
 	./rebar clean

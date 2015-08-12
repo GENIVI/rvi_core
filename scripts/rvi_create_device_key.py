@@ -26,7 +26,23 @@ import os
 # pip install PyJWT
 
 import jwt
+import struct
 
+def long2intarr(long_int):
+    _bytes = []
+    while long_int:
+        long_int, r = divmod(long_int, 256)
+        _bytes.insert(0, r)
+    return _bytes
+
+# copied from https://github.com/rohe/pyjwkest
+def long_to_base64(n):
+    bys = long2intarr(n)
+    data = struct.pack('%sB' % len(bys), *bys)
+    if not len(data):
+        data = '\x00'
+    s = base64.urlsafe_b64encode(data).rstrip(b'=')
+    return s
 
 def usage():
     print "Usage:", sys.argv[0], "-p <priv_root_key> -o <prefix> -b <bits>"
@@ -82,18 +98,21 @@ priv_root_key_file.close()
 #
 pub_key_fname = "{}_pub.pem".format(fname_prefix)
 pub_key_file = open(pub_key_fname, 'w')
-pub_key = new_key.publickey().exportKey("PEM") 
-pub_key_file.write(pub_key)
+pub_key = new_key.publickey()
+pub_key_pem = pub_key.exportKey("PEM") 
+pub_key_file.write(pub_key_pem)
 pub_key_file.close()
 
+print "pub_key.e = ", pub_key.e
+print "pub_key.n = ", pub_key.n
 
 key_obj = { 
     'keys': [{
 	"kty": "RSA",
         "alg": "RS256",
         "use": "sig",
-        "e": base64.urlsafe_b64encode(str(new_key.publickey().e)),
-        "n": base64.urlsafe_b64encode(str(new_key.publickey().n))
+        "e": long_to_base64(pub_key.e),
+        "n": long_to_base64(pub_key.n)
     }],
 }
 
@@ -133,3 +152,4 @@ print "Set rvi node's authorize_jwt config parameter to point to:   ", pub_sign_
 print
 print "use ./rvi_create_certificate.py ... --device_key={} to include".format(pub_key_fname)
 print "device public key in a certificate."
+

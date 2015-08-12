@@ -30,6 +30,7 @@
 		  proto_bert
                  ]},
   {mod, { rvi_app, []}},
+  {start_phases, [{announce, []}]},
   {env,
    [
     %% The following settings default to a self-signing node (good for testing)

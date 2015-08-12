@@ -23,6 +23,9 @@
 start(_StartType, _StartArgs) ->
     rvi_sup:start_link().
 
+start_phase(announce, _, _) ->
+    gproc:reg({n,l,rvi_core}),
+    ok;
 start_phase(ping, _, _) ->
 %%    exoport:ping(),
     ok.

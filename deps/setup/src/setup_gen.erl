@@ -797,7 +797,6 @@ app_vsn(A, V) ->
     Path = code:get_path(),
     Found = [D || D <- Path, is_app(AppStr, D)],
     Sorted = setup_lib:sort_vsns(lists:usort(Found), AppStr),
-    ?if_verbose(io:fwrite("Sorted = ~p~n", [Sorted])),
     match_app_vsn(Sorted, V, AppStr).
 
 match_app_vsn(Vsns, latest, App) ->
