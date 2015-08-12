@@ -7,7 +7,7 @@
 %%
 
 
--module(dlink_tcp_app).
+-module(dlink_sms_app).
 
 -behaviour(application).
 
@@ -21,22 +21,19 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    dlink_tcp_sup:start_link().
+    dlink_sms_sup:start_link().
 
 start_phase(init, _, _) ->
-    dlink_tcp_rpc:init_rvi_component();
+    dlink_sms_rpc:init_rvi_component();
 
 start_phase(json_rpc, _, _) ->
-    dlink_tcp_rpc:start_json_server(),
+    dlink_sms_rpc:start_json_server(),
     ok;
 
 start_phase(connection_manager, _, _) ->
-    dlink_tcp_rpc:start_connection_manager(),
-    ok;
-
-start_phase(announce, _, _) ->
-    gproc:reg({n, l, dlink_tcp}),
+    dlink_sms_rpc:start_connection_manager(),
     ok.
+
 
 stop(_State) ->
     ok.

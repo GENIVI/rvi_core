@@ -30,25 +30,26 @@
 
 %% API
 -export([start_link/1,
-	send/2,
-	subscribe/1,
-	unsubscribe/1,
-	join/2,
-	input_from/2]).
+	 send/2,
+	 subscribe/1,
+	 unsubscribe/1,
+	 join/2,       % Module defaults to gsms_0705
+	 join/3,
+	 input_from/2]).
 
 %% gen_server callbacks
--export([init/1, 
-	 handle_call/3, 
-	 handle_cast/2, 
-	 handle_info/2,
-	 terminate/2, 
-	 code_change/3]).
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
 
 %% testing
 -export([dump/0]).
 
--define(SERVER, ?MODULE). 
-	
+-define(SERVER, ?MODULE).
+
 -record(subscription,
 	{
 	  pid  :: pid(),       %% subscriber process
@@ -59,13 +60,14 @@
 -record(interface,
 	{
 	  pid     :: pid(),        %% interface pid
+	  module  :: module(),     %% callback module
 	  mon     :: reference(),  %% monitor reference
 	  bnumber :: gsms_addr(),  %% modem msisdn
 	  rssi    = 99 :: integer(),  %% last known rssi value
 	  attributes = [] :: [{atom(),term()}]  %% general match keys
 	}).
 
--record(state, 
+-record(state,
 	{
 	  csq_ival = 0,
 	  csq_tmr,
@@ -77,14 +79,14 @@
 %%% API
 %%%===================================================================
 -spec send(Options::list({Key::atom(), Value::term()}), Body::string()) ->
-		  {ok, Ref::reference()} | 
-		  {error, Reason::term()}.
+                  {ok, Ref::reference()} |
+                  {error, Reason::term()}.
 
 send(Opts, Body) ->
     gen_server:call(?SERVER, {send, Opts, Body}).
 
 -spec subscribe(Filter::[filter()]) -> {ok,Ref::reference()} |
-				       {error,Reason::term()}.
+                                       {error,Reason::term()}.
 
 subscribe(Filter) ->
     gen_server:call(?SERVER, {subscribe, self(), Filter}).
@@ -94,15 +96,18 @@ subscribe(Filter) ->
 unsubscribe(Ref) ->
     gen_server:call(?SERVER, {unsubscribe, Ref}).
 
-join(BNumber,Attributes) ->
-    gen_server:call(?SERVER, {join,self(),BNumber,Attributes}).
+join(BNumber, Attributes) ->
+    join(BNumber, gsms_0705, Attributes).
+
+join(BNumber, Module, Attributes) ->
+    gen_server:call(?SERVER, {join,self(),BNumber,Module,Attributes}).
 
 %%
-%% Called from gsms_0705 backend to enter incoming message
+%% Called from session instance to enter incoming message
 %%
 input_from(BNumber, Sms) ->
     lager:debug("message input modem:~s, message = ~p\n",
-		[BNumber, Sms]),
+                [BNumber, Sms]),
     ?SERVER ! {input_from, BNumber, Sms},
     ok.
 
@@ -140,8 +145,8 @@ init(Args) ->
     Csq_ival = proplists:get_value(csq_ival, Args, 0),
     Csq_tmr  = if is_integer(Csq_ival), Csq_ival > 0 ->
                     erlang:start_timer(Csq_ival, self(), csq);
-		  true -> undefined
-	       end,
+                  true -> undefined
+               end,
     process_flag(trap_exit, true),
     {ok, #state{ csq_ival=Csq_ival, csq_tmr=Csq_tmr}}.
 
@@ -164,9 +169,9 @@ handle_call({send,Opts,Body}, _From, State) ->
     %% FIXME: add code to match attributes!
     case proplists:get_value(bnumber, Opts) of
 	undefined ->
-	    case State#state.ifs of 
-		[I|_] ->
-		    Reply = gsms_0705:send(I#interface.pid, Opts, Body),
+	    case State#state.ifs of
+		[#interface{module = M, pid = Pid}|_] ->
+		    Reply = M:send(Pid, Opts, Body),
 		    {reply, Reply, State};
 		[] ->
 		    {reply, {error,enoent}, State}
@@ -175,37 +180,37 @@ handle_call({send,Opts,Body}, _From, State) ->
 	    case lists:keyfind(BNumber,#interface.bnumber,State#state.ifs) of
 		false ->
 		    {reply, {error,enoent}, State};
-		I ->
-		    Reply = gsms_0705:send(I#interface.pid, Opts, Body),
+		#interface{module = M, pid = Pid} ->
+		    Reply = M:send(Pid, Opts, Body),
 		    {reply, Reply, State}
 	    end
     end;
 handle_call({subscribe,Pid,Filter}, _From, State) ->
     Ref = erlang:monitor(process, Pid),
     Subs = [#subscription { pid = Pid,
-			    ref = Ref,
-			    filter = Filter } | State#state.subs],
+                            ref = Ref,
+                            filter = Filter } | State#state.subs],
     {reply, {ok,Ref}, State#state { subs = Subs} };
 handle_call({unsubscribe,Ref}, _From, State) ->
     case lists:keytake(Ref, #subscription.ref, State#state.subs) of
-	false -> 
-	    {reply, ok, State};
-	{value,_S,Subs} ->
-	    erlang:demonitor(Ref, [flush]),
-	    {reply, ok, State#state { subs = Subs} }
+        false ->
+            {reply, ok, State};
+        {value,_S,Subs} ->
+            erlang:demonitor(Ref, [flush]),
+            {reply, ok, State#state { subs = Subs} }
     end;
-handle_call({join,Pid,BNumber,Attributes}, _From, State) ->
+handle_call({join,Pid,BNumber,Module,Attributes}, _From, State) ->
     case lists:keytake(BNumber, #interface.bnumber, State#state.ifs) of
 	false ->
 	    ?debug("gsms_router: process ~p, bnumber ~p joined.",
 		   [Pid, BNumber]),
-	    State1 = add_interface(Pid,BNumber,Attributes,State),
+	    State1 = add_interface(Pid,BNumber,Module,Attributes,State),
 	    {reply, ok, State1};
 	{value,I,IFs} ->
 	    receive
 		{'EXIT', OldPid, _Reason} when I#interface.pid =:= OldPid ->
 		    ?debug("join: restart detected", []),
-		    State1 = add_interface(Pid,BNumber,Attributes,
+		    State1 = add_interface(Pid,BNumber,Module,Attributes,
 					   State#state { ifs=IFs} ),
 		    {reply, ok, State1}
 	    after 0 ->
@@ -216,17 +221,18 @@ handle_call(dump, _From, State=#state {subs = Subs, ifs= Ifs}) ->
     io:format("LoopData:\n", []),
     io:format("Subscriptions:\n", []),
     lists:foreach(fun(_Sub=#subscription {pid = Pid, ref = Ref, filter = F}) ->
-			  io:format("pid ~p, ref ~p, filter ~p~n",
-				    [Pid, Ref, F]) 
-		  end, 
-		  Subs),
+                          io:format("pid ~p, ref ~p, filter ~p~n",
+                                    [Pid, Ref, F])
+                  end,
+                  Subs),
     io:format("Interfaces:\n", []),
-    lists:foreach(fun(_If=#interface {pid = Pid, mon = Ref, 
-				      bnumber = B, attributes = A}) ->
-			  io:format("pid ~p, ref ~p, bnumber ~p, attributes ~p~n",
-				    [Pid, Ref, B, A]) 
-		  end, 
-		  Ifs),
+    lists:foreach(fun(_If=#interface {pid = Pid, mon = Ref, module = Mod,
+                                      bnumber = B, attributes = A}) ->
+                          io:format("pid ~p, ref ~p, bnumber ~p, "
+				    "module = ~p, attributes ~p~n",
+                                    [Pid, Ref, B, Mod, A])
+                  end,
+                  Ifs),
     {reply, ok, State};
 
 handle_call(_Request, _From, State) ->
@@ -258,12 +264,12 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({'DOWN',Ref,process,Pid,_Reason}, State) ->
     case lists:keytake(Ref, #subscription.ref, State#state.subs) of
-	false -> 
+	false ->
 	    case lists:keytake(Pid, #interface.pid, State#state.ifs) of
 		false ->
 		    {noreply, State};
 		{value,_If,Ifs} ->
-		    ?debug("gsms_router: interface ~p died, reason ~p\n", 
+		    ?debug("gsms_router: interface ~p died, reason ~p\n",
 			   [_If, _Reason]),
 		    %% Restart done by gsms_if_sup
 		    {noreply,State#state { ifs = Ifs }}
@@ -274,14 +280,14 @@ handle_info({'DOWN',Ref,process,Pid,_Reason}, State) ->
 
 handle_info({input_from, BNumber, Pdu}, State) ->
     lager:debug("input bnumber: ~p, pdu=~p\n", [BNumber,Pdu]),
-    lists:foreach(fun(S) -> match_filter(S, BNumber, Pdu) end, 
-		  State#state.subs),
+    lists:foreach(fun(S) -> match_filter(S, BNumber, Pdu) end,
+                  State#state.subs),
     {noreply, State};
 handle_info({timeout, Tmr, csq}, State) when State#state.csq_tmr =:= Tmr ->
     Is =
 	lists:map(
-	  fun(I) ->
-		  R = gsms_0705:get_signal_strength(I#interface.pid),
+	  fun(#interface{module = M, pid = Pid} = I) ->
+		  R = M:get_signal_strength(Pid),
 		  lager:debug("csq result: ~p\n", [R]),
 		  case R of
 		      {ok,"+CSQ:"++Params} ->
@@ -311,19 +317,19 @@ handle_info({timeout, Tmr, csq}, State) when State#state.csq_tmr =:= Tmr ->
     Csq_ival = State#state.csq_ival,
     Csq_tmr  = if is_integer(Csq_ival), Csq_ival > 0 ->
                     erlang:start_timer(Csq_ival, self(), csq);
-		  true -> undefined
-	       end,
+                  true -> undefined
+               end,
     {noreply, State#state { ifs = Is, csq_tmr=Csq_tmr }};
 handle_info({'EXIT', Pid, Reason}, State) ->
     case lists:keytake(Pid, #interface.pid, State#state.ifs) of
 	{value,_If,Ifs} ->
 	    %% One of our interfaces died, log and ignore
-	    ?debug("gsms_router: interface ~p died, reason ~p\n", 
+	    ?debug("gsms_router: interface ~p died, reason ~p\n",
 		   [_If, Reason]),
 	    {noreply,State#state { ifs = Ifs }};
 	false ->
 	    %% Someone else died, log and terminate
-	    ?debug("gsms_router: linked process ~p died, reason ~p, terminating\n", 
+	    ?debug("gsms_router: linked process ~p died, reason ~p, terminating\n",
 		   [Pid, Reason]),
 	    {stop, Reason, State}
     end;
@@ -359,16 +365,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-add_interface(Pid,BNumber,Attributes,State) ->
+add_interface(Pid,BNumber,Module,Attributes,State) ->
     Mon = erlang:monitor(process, Pid),
-    I = #interface { pid=Pid, mon=Mon,
+    I = #interface { pid=Pid, mon=Mon, module=Module,
 		     bnumber=BNumber, attributes=Attributes },
     link(Pid),
     State#state { ifs = [I | State#state.ifs ] }.
 
 match_filter(_S=#subscription {filter = Filter,
-			pid = Pid,
-			ref = Ref}, 
+                        pid = Pid,
+                        ref = Ref},
       BNumber, Pdu) ->
     lager:debug("match filter: ~p", [Filter]),
     case match(Filter, BNumber, Pdu) of
@@ -389,7 +395,7 @@ match({'and',A,B}, BNum, Sms) ->
     match(A,BNum,Sms) andalso match(B,BNum,Sms);
 match({'or',A,B}, BNum, Sms) ->
     match(A,BNum,Sms) orelse match(B,BNum,Sms);
-match({bnumber,Addr}, BNum, _Sms) -> 
+match({bnumber,Addr}, BNum, _Sms) ->
     %% receiving modem
     match_addr(Addr, BNum);
 match(Match, _BNum, Sms) when is_record(Sms,gsms_deliver_pdu) ->
@@ -403,8 +409,8 @@ match(_, _BNum, _)->
 
 match_clause([A|As], BNum, Sms) ->
     case match(A, BNum, Sms) of
-	true -> match_clause(As, BNum, Sms);
-	false -> false
+        true -> match_clause(As, BNum, Sms);
+        false -> false
     end;
 match_clause([], _BNum, _Sms) ->
     true.

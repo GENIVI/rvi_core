@@ -22,18 +22,23 @@ alias realpath="python -c 'import os, sys; print os.path.realpath(sys.argv[1])'"
 SELF_DIR=$(dirname $(realpath "$0"))
 
 usage() {
-    echo "Usage: $0 -n node_name"
+    echo "Usage: $0 [-d] -n node_name"
     echo "  -n node_name          Specify the name of the rvi node to launch"
+    echo "  -d                    Daemon mode (using start_erl)"
     echo "Configuration data is read from the configuration file"
     echo "provided to the setup_rvi_node.sh script that created the node."
     exit 1
 }
 
 mode=build
-while getopts ":n:brp:s:" o; do
+daemon=0
+while getopts ":n:dbrp:s:" o; do
     case "${o}" in
         n)
             node_name=${OPTARG}
+            ;;
+        d)
+            daemon=1
             ;;
         *)
             usage
@@ -56,7 +61,21 @@ then
 	echo "$SELF_DIR/setup_rvi_node.sh -n ${node_name} -c <configuration_file>"
 	exit 2
     fi
-    exec erl -boot ${node_name}/start -config ${node_name}/sys 
+    xboot="-boot ${node_name}/start"
+    xname="-name ${node_name}"
+    xcfg="-config ${node_name}/sys"
+    CMD="erl ${xboot} ${xname} ${xcfg} -setcookie rvi_core"
+    if [ ${daemon} = 1 ]
+    then
+	PIPE=/tmp/rvi_node/${node_name}
+	LOG=${node_name}/log
+	mkdir -p ${PIPE}
+	mkdir -p ${LOG}
+	echo "starting with run_erl"
+        exec run_erl -daemon ${PIPE} ${LOG} "exec ${CMD}"
+    else
+	exec ${CMD}
+    fi
 
 elif [ "${mode}" = "release" ]
 then
