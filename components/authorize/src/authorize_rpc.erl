@@ -25,7 +25,7 @@
 	 validate_authorization/4,
 	 authorize_local_message/3,
 	 authorize_remote_message/3]).
--export([filter_by_destination/3]).
+-export([filter_by_service/3]).
 
 %% for testing & development
 -export([sign/1, sign_default_cert/0]).
@@ -69,7 +69,7 @@ get_certificate_body(_Service) ->
      [
       %% Topic tree patterns that this node is authorized to
       %% process requests for.
-      { "sources", 
+      { sources,
 	{ array, [ 
 		   "jaguarlandrover.com/cloud/media_server" 
 		 ]
@@ -164,10 +164,10 @@ authorize_remote_message(CompSpec, Service, Params) ->
 			{parameters, Params}],
 		       [status], CompSpec).
 
-filter_by_destination(CompSpec, Services, Conn) ->
-    ?debug("authorize_rpc:filter_by_destination(): services: ~p ~n", [Services]),
-    ?debug("authorize_rpc:filter_by_destination(): conn: ~p ~n", [Conn]),
-    rvi_common:request(authorize, ?MODULE, filter_by_destination, 
+filter_by_service(CompSpec, Services, Conn) ->
+    ?debug("authorize_rpc:filter_by_service(): services: ~p ~n", [Services]),
+    ?debug("authorize_rpc:filter_by_service(): conn: ~p ~n", [Conn]),
+    rvi_common:request(authorize, ?MODULE, filter_by_service,
 		       [{ services, Services },
 			{ conn, Conn }],
 		       [status, services], CompSpec).
@@ -238,12 +238,12 @@ handle_rpc("authorize_remote_message", Args) ->
 					     [Service, Params]}),
     { ok, rvi_common:json_rpc_status(Status)};
 
-handle_rpc("filter_by_destination", Args) ->
-    ?debug("authorize_rpc:handle_rpc(\"filter_by_destination\", ~p)~n", [Args]),
+handle_rpc("filter_by_service", Args) ->
+    ?debug("authorize_rpc:handle_rpc(\"filter_by_service\", ~p)~n", [Args]),
     {ok, Services} = rvi_common:get_json_element(["services"], Args),
     {ok, Conn} = rvi_common:get_json_element(["conn"], Args),
     [ Status, FilteredServices ] =
-	gen_server:call(?SERVER, { rvi, filter_by_destination,
+	gen_server:call(?SERVER, { rvi, filter_by_service,
 				   [Services, Conn] }),
     {ok, [{status, rvi_common:json_rpc_status(Status)},
 	  {services, {array, FilteredServices}}]};
@@ -295,7 +295,7 @@ handle_call({rvi, validate_authorization, [JWT, Certs, Conn] }, _From, State) ->
 handle_call({rvi, authorize_local_message, [Service, Params] } = R, _From,
 	    #st{private_key = Key} = State) ->
     ?debug("authorize_rpc:handle_call(~p)~n", [R]),
-    case authorize_keys:find_cert_by_destination(Service) of
+    case authorize_keys:find_cert_by_service(Service) of
 	{ok, Cert} ->
 	    Msg = Params ++ [{"certificate", Cert}],
 	    ?debug("authorize_rpc:authorize_local_message~nMsg = ~p~n", [Msg]),
@@ -333,8 +333,8 @@ handle_call({rvi, authorize_remote_message, [_Service, Params]}=R,
 	    end
     end;
 
-handle_call({rvi, filter_by_destination, [Services, Conn]}, _From, State) ->
-    Filtered = authorize_keys:filter_by_destination(Services, Conn),
+handle_call({rvi, filter_by_service, [Services, Conn]}, _From, State) ->
+    Filtered = authorize_keys:filter_by_service(Services, Conn),
     {reply, [ok, Filtered], State};
 
 handle_call({sign, Term}, _From, #st{private_key = Key} = State) ->

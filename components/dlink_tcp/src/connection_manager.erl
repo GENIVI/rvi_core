@@ -31,6 +31,7 @@
 -export([delete_connection_by_address/2]).
 -export([find_connection_by_pid/1]).
 -export([find_connection_by_address/2]).
+-export([connections/0]).
 
 -define(SERVER, ?MODULE). 
 
@@ -58,6 +59,8 @@ find_connection_by_pid(Pid) ->
 find_connection_by_address(IP, Port) ->
     gen_server:call(?SERVER, { find_connection_by_address, IP, Port } ).
 
+connections() ->
+    gen_server:call(?SERVER, connections).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -202,6 +205,8 @@ handle_call({find_connection_by_address, IP, Port}, _From,
 	    {reply, {ok, Pid}, St}
     end;
 
+handle_call(connections, _From, #st{conn_by_addr = ConAddr} = St) ->
+    {reply, [Addr || {Addr, _} <- dict:to_list(ConAddr)], St};
 
 handle_call(_Request, _From, State) ->
     ?warning("~p:handle_call(): Unknown call: ~p", [ ?MODULE, _Request]),

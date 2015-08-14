@@ -23,7 +23,7 @@ def usage():
     print "  service      Service to invoke in RVI."
     print "  key=val      Named arguments to provide to service."
     print
-    print "Example: ./callrvi.py http://rvi1.nginfotpdx.net:8801 \\"
+    print "Example: ./callrvi.py -n http://rvi1.nginfotpdx.net:8801 \\"
     print "                      jlr.com/vin/aaron/4711/test/ping \\"
     print "                      arg1=val1 arg2=val2"                    
 

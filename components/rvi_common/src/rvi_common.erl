@@ -219,6 +219,13 @@ notification(Component,
     InArg = [ Val || { _Key, Val } <- InArgPropList ],
     InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
     %% Figure out how we are to invoke this MFA.
+    ?debug("~p:notification(", [?MODULE]),
+    ?debug("      Component : ~p", [Component]),
+    ?debug("         Module : ~p", [Module]),
+    ?debug("       Function : ~p", [Function]),
+    ?debug("  InArgPropList : ~p", [InArgPropList]),
+    ?debug("       CompSpec : ~p", [CompSpec]),
+
     case get_module_type(Component, Module, CompSpec) of
 	%% We have a gen_server
 	{ ok, gen_server } ->
@@ -233,6 +240,11 @@ notification(Component,
 	    JSONArg = json_argument(InArg, InArgSpec),
 	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),	
 	    send_json_notification(URL, atom_to_list(Function),  JSONArg),
+	    ok;
+	{ error, _ } = Error ->
+	    ?warning("get_module_type(~p,~p,~p) -> ~p",
+		     [Component, Module, CompSpec, Error]),
+	    %% ignore
 	    ok
     end.
 
@@ -331,20 +343,27 @@ get_json_element_([], JSON) ->
 get_json_element_([Elem | T], JSON ) when is_atom(Elem) ->
     get_json_element_([atom_to_list(Elem) | T], JSON);
 
-get_json_element_([Elem | T], {struct, JSON} ) ->
-    Res = get_json_element_(T, proplists:get_value(Elem, JSON, undefined)),
-    Res;
-
-get_json_element_([Elem | T], {array, JSON} ) ->
-    Res = get_json_element_(T, proplists:get_value(Elem, JSON, undefined)),
-    Res;
+get_json_element_([Elem | T], {Type, JSON} ) when Type==array; Type==struct ->
+    case Elem of
+	{'OR', Alts} ->
+	    get_json_element_(T, get_json_element_alt(Alts, JSON));
+	_ ->
+	    get_json_element_(T, proplists:get_value(Elem, JSON, undefined))
+    end;
 
 get_json_element_(Path,JSON) ->
     ?warning("get_json_element_(): Unhandled: Path: ~p | JSON: ~p",
 	     [Path, JSON]),
     { error, undefined }.
 
-    
+get_json_element_alt(Alts, [{K, V}|T]) ->
+    case lists:member(K, Alts) of
+	true  -> V;
+	false -> get_json_element_alt(Alts, T)
+    end;
+get_json_element_alt(_, []) ->
+    undefined.
+
 json_reply(ArgList, JSON) ->
     retrieve_json_reply_elements(ArgList, JSON, []).
 

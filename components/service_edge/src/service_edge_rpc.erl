@@ -482,7 +482,7 @@ handle_cast({rvi, handle_remote_message,
 		   SvcName, 
 		   [{remote_ip, IP},
 		    {remote_port, Port},
-		    {service, SvcName},
+		    {service_name, SvcName},
 		    {timeout, Timeout},
 		    {parameters, Parameters},
 		    {signature, Signature}]) of
