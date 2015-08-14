@@ -26,6 +26,7 @@
 %% FIXME: Should be rvi_service_discovery behavior
 -export([service_available/3,
 	 service_unavailable/3]).
+-export([connections/1]).
 
 -export([setup_data_link/3,
 	 disconnect_data_link/2,
@@ -154,6 +155,8 @@ service_unavailable(CompSpec, SvcName, DataLinkModule) ->
 			     { data_link_module, DataLinkModule }],
 			    CompSpec).
 
+connections(CompSpec) ->
+    rvi_common:request(data_link, ?MODULE, connections, []).
 
 setup_data_link(CompSpec, Service, Opts) ->
     rvi_common:request(data_link, ?MODULE, setup_data_link,
@@ -175,7 +178,6 @@ send_data(CompSpec, ProtoMod, Service, DataLinkOpts, Data) ->
 			      { opts, DataLinkOpts }
 			     ], 
 		       [status], CompSpec).
-
 
 %% End of behavior
 
@@ -444,7 +446,10 @@ handle_rpc("send_data", Args) ->
     { ok,  DataLinkOpts } = rvi_common:get_json_element(["opts"], Args),
     [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
-    
+
+handle_rpc("connections", []) ->
+    Res = gen_server:call(?SERVER, connections),
+    {ok, [ {status, ok} | {connections, {array, Res}} ]};
 
 handle_rpc(Other, _Args) ->
     ?info("dlink_tcp:handle_rpc(~p): unknown", [ Other ]),
@@ -708,7 +713,7 @@ connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
     %% that just authorized to us.
     [ ok, LocalServices ] = service_discovery_rpc:get_services_by_module(CompSpec, local),
 
-    [ ok, FilteredServices ] = authorize_rpc:filter_by_destination(
+    [ ok, FilteredServices ] = authorize_rpc:filter_by_service(
                                  CompSpec, LocalServices, Conn),
 
     %% Send an authorize back to the remote node

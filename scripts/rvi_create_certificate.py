@@ -23,6 +23,23 @@ import jwt
 import time
 import json
 import base64
+import struct
+
+def long2intarr(long_int):
+    _bytes = []
+    while long_int:
+        long_int, r = divmod(long_int, 256)
+        _bytes.insert(0, r)
+    return _bytes
+
+# copied from https://github.com/rohe/pyjwkest
+def long_to_base64(n):
+    bys = long2intarr(n)
+    data = struct.pack('%sB' % len(bys), *bys)
+    if not len(data):
+        data = '\x00'
+    s = base64.urlsafe_b64encode(data).rstrip(b'=')
+    return s
 
 def usage():
     print "Usage:", sys.argv[0], "--id=<id> --invoke='<services>' -register='<services>' \\"
@@ -208,8 +225,8 @@ cert = {
 	"kty": "RSA",
         "alg": "RS256",
         "use": "sig",
-        "e": base64.urlsafe_b64encode(str(device_key.e)),
-        "n": base64.urlsafe_b64encode(str(device_key.n))
+        "e": long_to_base64(device_key.e),
+        "n": long_to_base64(device_key.n)
     }],
     'validity': { 
         'start': start,

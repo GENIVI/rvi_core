@@ -12,8 +12,8 @@
 -export([get_certificates/0,
 	 get_certificates/1]).
 -export([validate_message/2]).
--export([filter_by_destination/2,
-	 find_cert_by_destination/1]).
+-export([filter_by_service/2,
+	 find_cert_by_service/1]).
 -export([public_key_to_json/1,
 	 json_to_public_key/1]).
 
@@ -35,8 +35,8 @@
 	     authorize_jwt}).
 
 -record(cert, {id,
-	       sources = [],
-	       destinations = [],
+	       register = [],
+	       invoke = [],
 	       validity = [],
 	       jwt,
 	       cert}).
@@ -107,11 +107,11 @@ get_certificates() ->
 get_certificates(Conn) ->
     gen_server:call(?MODULE, {get_certificates, Conn}).
 
-filter_by_destination(Services, Conn) ->
-    gen_server:call(?MODULE, {filter_by_destination, Services, Conn}).
+filter_by_service(Services, Conn) ->
+    gen_server:call(?MODULE, {filter_by_service, Services, Conn}).
 
-find_cert_by_destination(Service) ->
-    gen_server:call(?MODULE, {find_cert_by_destination, Service}).
+find_cert_by_service(Service) ->
+    gen_server:call(?MODULE, {find_cert_by_service, Service}).
 
 provisioning_key() ->
     gen_server:call(?MODULE, provisioning_key).
@@ -178,14 +178,14 @@ handle_call_({save_cert, Cert, JWT, Conn}, _, S) ->
 	    ets:insert(?CERTS, {{Conn, C#cert.id}, C}),
 	    {reply, ok, S}
     end;
-handle_call_({filter_by_destination, Services, Conn} =R, _From, State) ->
+handle_call_({filter_by_service, Services, Conn} =R, _From, State) ->
     ?debug("authorize_keys:handle_call(~p,...)~n", [R]),
-    Filtered = filter_by_destination_(Services, Conn),
+    Filtered = filter_by_service_(Services, Conn),
     ?debug("Filtered = ~p~n", [Filtered]),
     {reply, Filtered, State};
-handle_call_({find_cert_by_destination, Service} = R, _From, State) ->
+handle_call_({find_cert_by_service, Service} = R, _From, State) ->
     ?debug("authorize_keys:handle_call(~p,...)~n", [R]),
-    Res = find_cert_by_destination_(Service),
+    Res = find_cert_by_service_(Service),
     ?debug("Res = ~p~n", [Res]),
     {reply, Res, State};
 handle_call_(_, _, S) ->
@@ -215,34 +215,39 @@ certs_by_conn(Conn) ->
     ?debug("rough selection: ~p~n", [Certs]),
     [C || {C,V} <- Certs, check_validity(V, UTC)].
 
-filter_by_destination_(Services, Conn) ->
-    Dests = ets:select(?CERTS, [{ {{Conn,'_'}, #cert{destinations = '$1',
+filter_by_service_(Services, Conn) ->
+    ?debug("Filter: certs = ~p", [ets:tab2list(?CERTS)]),
+    Invoke = ets:select(?CERTS, [{ {{Conn,'_'}, #cert{invoke = '$1',
 						     _ = '_'}},
 				  [], ['$1'] }]),
-    ?debug("Dests by conn (~p) -> ~p~n", [Conn, Dests]),
-    filter_svcs_by_dest_(Services, Dests).
+    ?debug("Services by conn (~p) -> ~p~n", [Conn, Invoke]),
+    filter_svcs_(Services, Invoke).
 
-filter_svcs_by_dest_([S|Svcs], Dests) ->
+filter_svcs_([S|Svcs], Invoke) ->
     case lists:any(fun(Ds) ->
 			   lists:any(
 			     fun(D) ->
-				     match_dest(D, S)
+				     match_svc(D, S)
 			     end, Ds)
-		   end, Dests) of
+		   end, Invoke) of
 	true ->
-	    [S|filter_svcs_by_dest_(Svcs, Dests)];
+	    [S|filter_svcs_(Svcs, Invoke)];
 	false ->
-	    filter_svcs_by_dest_(Svcs, Dests)
+	    filter_svcs_(Svcs, Invoke)
     end;
-filter_svcs_by_dest_([], _) ->
+filter_svcs_([], _) ->
     [].
 
-find_cert_by_destination_(Service) ->
+find_cert_by_service_(Service) ->
     SvcParts = split_path(strip_prot(Service)),
     LocalCerts = ets:select(?CERTS, [{ {{local,'_'}, '$1'}, [], ['$1'] }]),
+    ?debug("find_cert_by_service(~p~nLocalCerts = ~p~n",
+	   [Service, [{Id,Reg,Inv} || #cert{id = Id,
+					    invoke = Inv,
+					    register = Reg} <- LocalCerts]]),
     case lists:foldl(
-	   fun(#cert{destinations = Dests} = C, {Max, _} = Acc) ->
-		   case match_length(Dests, SvcParts) of
+	   fun(#cert{register = Register} = C, {Max, _} = Acc) ->
+		   case match_length(Register, SvcParts) of
 		       L when L > Max ->
 			   {L, C};
 		       _ ->
@@ -255,12 +260,12 @@ find_cert_by_destination_(Service) ->
 	    {ok, Found#cert.jwt}
     end.
 
-match_length(Dests, Svc) ->
+match_length(Invoke, Svc) ->
     R = lists:foldl(fun(D, Max) ->
 			    DParts = split_path(strip_prot(D)),
 			    erlang:max(match_length_(DParts, Svc), Max)
-		    end, 0, Dests),
-    ?debug("match_length(~p,~p) -> ~p~n", [Dests, Svc, R]),
+		    end, 0, Invoke),
+    ?debug("match_length(~p,~p) -> ~p~n", [Invoke, Svc, R]),
     R.
 
 match_length_(D, Svc) ->
@@ -277,11 +282,11 @@ match_length_([_|_], [], _) ->
 match_length_([], _, L) ->
     L.
 
-match_dest(D, S) ->
+match_svc(D, S) ->
     A = split_path(strip_prot(D)),
     B = split_path(strip_prot(S)),
-    ?debug("match_dest_(~p, ~p)~n", [A, B]),
-    match_dest_(A, B).
+    ?debug("match_svc_(~p, ~p)~n", [A, B]),
+    match_svc_(A, B).
 
 strip_prot(P) ->
     case re:split(P, ":", [{return,list}]) of
@@ -292,13 +297,13 @@ strip_prot(P) ->
 split_path(P) ->
     re:split(P, "/", [{return, list}]).
 
-match_dest_([H|T], [H|T1]) ->
-    match_dest_(T, T1);
-match_dest_(["+"|T], [_|T1]) ->
-    match_dest_(T, T1);
-match_dest_([], _) ->
+match_svc_([H|T], [H|T1]) ->
+    match_svc_(T, T1);
+match_svc_(["+"|T], [_|T1]) ->
+    match_svc_(T, T1);
+match_svc_([], _) ->
     true;
-match_dest_(_, _) ->
+match_svc_(_, _) ->
     false.
 
 get_env(K) ->
@@ -412,11 +417,20 @@ process_cert_struct(Cert, Bin) ->
     process_cert_struct(Cert, Bin, rvi_common:utc_timestamp()).
 
 process_cert_struct(Cert, Bin, UTC) ->
+    try process_cert_struct_(Cert, Bin, UTC)
+    catch
+	error:Err ->
+	    ?warning("Failure processing Cert ~p~n~p",
+		     [Cert, {Err, erlang:get_stacktrace()}]),
+	    invalid
+    end.
+
+process_cert_struct_(Cert, Bin, UTC) ->
     ID = cert_id(Cert),
-    {ok, Sources} = rvi_common:get_json_element(
-		      ["sources"], Cert),
-    {ok, Dests} = rvi_common:get_json_element(
-		    ["destinations"], Cert),
+    {ok, Register} = rvi_common:get_json_element(
+		      [{'OR', ["sources", "register"]}], Cert),
+    {ok, Invoke} = rvi_common:get_json_element(
+		    [{'OR', ["destinations", "invoke"]}], Cert),
     {ok, Start} = rvi_common:get_json_element(
 		    ["validity", "start"], Cert),
     {ok, Stop}  = rvi_common:get_json_element(
@@ -426,8 +440,8 @@ process_cert_struct(Cert, Bin, UTC) ->
     case check_validity(Start, Stop, UTC) of
 	true ->
 	    #cert{id = ID,
-		  sources = Sources,
-		  destinations = Dests,
+		  register = Register,
+		  invoke = Invoke,
 		  validity = Validity,
 		  jwt = Bin,
 		  cert = Cert};
