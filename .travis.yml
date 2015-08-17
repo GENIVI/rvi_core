@@ -4,6 +4,7 @@ script: "make ci"
 otp_release: R16B03-1
 python: 2.7
 install:
+    - "pip install --upgrade pip"
     - "pip install cryptography"
     - "pip install PyJWT"
 after_failure: "echo 'logs/raw.log\n'; cat logs/raw.log; for f in `find logs/ct_run*/log*/ -type f`; do echo \"\n$f\n\" ; cat $f; done"
