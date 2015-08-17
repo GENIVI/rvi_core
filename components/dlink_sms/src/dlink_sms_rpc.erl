@@ -661,7 +661,7 @@ connection_authorized(FromPid, {RemoteAddr, 0} = Conn, CompSpec) ->
     %% that just authorized to us.
     [ok, LocalServices] = service_discovery_rpc:get_services_by_module(CompSpec, local),
 
-    [ok, FilteredServices] = authorize_rpc:filter_by_destination(
+    [ok, FilteredServices] = authorize_rpc:filter_by_service(
 			       CompSpec, LocalServices, Conn),
 
     %% Send an authorize back to the remote node

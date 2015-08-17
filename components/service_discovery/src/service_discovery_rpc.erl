@@ -91,12 +91,20 @@ get_modules_by_service(CompSpec, Service) ->
 
 
 register_services(CompSpec, Services, DataLinkModule) ->
+    ?debug("~p:register_services()", [?MODULE]),
+    ?debug("     CompSpec : ", [CompSpec]),
+    ?debug("     Services : ", [Services]),
+    ?debug("  DataLinkMod : ", [DataLinkModule]),
     rvi_common:notification(service_discovery, ?MODULE, register_services, 
 			    [{ services, Services },
 			     { data_link_module, DataLinkModule }],
 			    CompSpec).
 
 unregister_services(CompSpec, Services, DataLinkModule) ->
+    ?debug("~p:unregister_services()", [?MODULE]),
+    ?debug("     CompSpec : ", [CompSpec]),
+    ?debug("     Services : ", [Services]),
+    ?debug("  DataLinkMod : ", [DataLinkModule]),
     rvi_common:notification(service_discovery, ?MODULE, unregister_services, 
 			    [{ services,  Services },
 			     { data_link_module, DataLinkModule}],
@@ -192,23 +200,32 @@ handle_rpc( Other, _Args) ->
     ?info("svc_disc:handle_rpc(~p): unknown", [ Other ]),
     {ok, [ { status, invalid_command } ]}.
 
+handle_call(Req, From, St) ->
+    try handle_call_(Req, From, St)
+    catch
+	error:Reason ->
+	    ?debug("~p:handle_call_(~p,~p,~p) -> ERROR: ~p~n~p",
+		   [?MODULE, Req, From, St, Reason,
+		    erlang:get_stacktrace()]),
+	    {reply, [internal_error], St}
+    end.
 
-handle_call({rvi, get_all_services, _Args}, _From, St) ->
+handle_call_({rvi, get_all_services, _Args}, _From, St) ->
     Svcs = ets:foldl(fun(#service_entry {service = ServiceName}, Acc) -> 
 			    [ ServiceName | Acc ] end, 
 		    [], ?SERVICE_TABLE),
     {reply,  [ok, Svcs], St };
 
 
-handle_call({rvi, get_services_by_module, [Module]}, _From, St) ->
+handle_call_({rvi, get_services_by_module, [Module]}, _From, St) ->
     {reply,  [ok, get_services_by_module_(Module)], St };
 
 
-handle_call({rvi, get_modules_by_service, [Service]}, _From, St) ->
+handle_call_({rvi, get_modules_by_service, [Service]}, _From, St) ->
     {reply,  [ok, get_modules_by_service_(Service)], St };
 
 
-handle_call(Other, _From, St) ->
+handle_call_(Other, _From, St) ->
     ?warning("svc_disc:handle_call(~p): unknown", [ Other ]),
     { reply,  [unknown_command] , St}.
 

@@ -36,22 +36,25 @@ instance(SupMod, AppMod, Opts) ->
 handle_body(Socket, Request, Body, AppMod) when Request#http_request.method == 'POST' ->
     try decode_json(Body) of
 	{call, Id, Method, Args} ->
-	    case handle_rpc(AppMod, Method, Args) of
+	    try handle_rpc(AppMod, Method, Args) of
 		{ok, Reply} ->
 		    success_response(Socket, Id, Reply);
 		ok ->
 		    ok;
 		{error, Error} ->
 		    error_response(Socket, Id, Error)
+	    catch
+		error:Reason ->
+		    ?debug("~p:handle_rpc(~p, ~p, ~p) ERROR: ~p~n~p",
+			   [?MODULE, AppMod, Method, Args, Reason,
+			    erlang:get_stacktrace()]),
+		    error_response(Socket, Id, internal_error)
 	    end;
-
 	{notification, Method, Args} ->
 	    handle_notification(AppMod, Method, Args),
 	    exo_http_server:response(Socket, undefined, 200, "OK", "");
-
 	{error, _} ->
 	    error_response(Socket, parse_error)
-
     catch
 	error:_ ->
 	    exo_http_server:response(Socket, undefined, 501,

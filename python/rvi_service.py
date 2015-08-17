@@ -28,7 +28,7 @@ def usage():
     print "The Service Edge URL is also logged as a notice when the"
     print "RVI node is started."
     print
-    print "Example: ./rvi_service.py /test/some_service http://rvi1.nginfotpdx.net:8801"
+    print "Example: ./rvi_service.py -n http://rvi1.nginfotpdx.net:8801 /test/some_service"
     sys.exit(255)
 
 
