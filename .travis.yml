@@ -1,7 +1,12 @@
-sudo:
+sudo: false
 language: erlang
 otp_release: R16B03-1
 python: 2.7
+addons:
+  apt:
+    packages:
+      - bluez
+      - bluez-dev
 before_script:
   - export PATH=$HOME/.local/bin:$PATH
   - pip install -r requirements.txt --user `whoami`
