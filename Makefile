@@ -10,7 +10,7 @@
 # Makefile for the RVI node.
 # 
 
-.PHONY:	all deps compile clean rpm rpmclean test ci
+.PHONY:	all deps compile clean rpm rpmclean test xref ci
 
 SCRIPTS=scripts/setup_gen \
 	scripts/author
@@ -49,7 +49,10 @@ rpmclean:
 		./rpm/SOURCES/* \
 		./rpm/SRPMS/*
 
-ci: test
+xref: compile
+	ERL_LIBS=$(PWD):$(PWD)/components:$(PWD)/deps rebar xref skip_deps=true
+
+ci: xref test
 
 test: compile
 	rebar ct
