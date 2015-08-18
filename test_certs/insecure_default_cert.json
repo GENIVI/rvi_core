@@ -1,9 +1,9 @@
 {
-    "create_timestamp": 1439589302,
+    "create_timestamp": 1439925416,
     "destinations": [
-        "jlr.com/"
+        "jlr.com"
     ],
-    "id": "insecure_test_cert",
+    "id": "insecure_cert",
     "iss": "jaguarlandrover.com",
     "keys": [
         {
@@ -15,10 +15,10 @@
         }
     ],
     "sources": [
-        "jlr.com/"
+        "jlr.com"
     ],
     "validity": {
         "start": 1420099200,
-        "stop": 1451635199
+        "stop": 1925020799
     }
 }
