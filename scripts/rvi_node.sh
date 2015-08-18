@@ -62,7 +62,7 @@ then
 	exit 2
     fi
     xboot="-boot ${node_name}/start"
-    xname="-name ${node_name}"
+    xname="-sname ${node_name}"
     xcfg="-config ${node_name}/sys"
     CMD="erl ${xboot} ${xname} ${xcfg} -setcookie rvi_core"
     if [ ${daemon} = 1 ]

@@ -92,9 +92,9 @@ get_modules_by_service(CompSpec, Service) ->
 
 register_services(CompSpec, Services, DataLinkModule) ->
     ?debug("~p:register_services()", [?MODULE]),
-    ?debug("     CompSpec : ", [CompSpec]),
-    ?debug("     Services : ", [Services]),
-    ?debug("  DataLinkMod : ", [DataLinkModule]),
+    ?debug("     CompSpec : ~p", [CompSpec]),
+    ?debug("     Services : ~p", [Services]),
+    ?debug("  DataLinkMod : ~p", [DataLinkModule]),
     rvi_common:notification(service_discovery, ?MODULE, register_services, 
 			    [{ services, Services },
 			     { data_link_module, DataLinkModule }],

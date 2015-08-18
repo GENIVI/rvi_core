@@ -329,6 +329,7 @@ take(K, L, Def) ->
 await_started(Name) ->
     timer:sleep(1000),
     Node = node_name(Name),
+    ct:log("Node = ~p", [Node]),
     true = net_kernel:hidden_connect(Node),
     save_ospid(Node),
     timer:sleep(3000),
