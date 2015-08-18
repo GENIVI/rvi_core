@@ -530,7 +530,15 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 
 	%% FIXME: What to do if we have multiple connections to the same service?
 	[ConnPid | _T] -> 
-	    Res = connection:send(ConnPid, {receive_data, ProtoMod, Data}),
+ 	    Res = connection:send(ConnPid, 
+ 				  term_to_json(
+ 				    { struct, 		     
+ 				      [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
+ 					{ ?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE },
+ 					{ ?DLINK_ARG_MODULE, atom_to_list(ProtoMod) },
+ 					{ ?DLINK_ARG_DATA, base64:encode_to_string(Data) }
+ 				      ]})),
+
 	    { reply, [ Res ], St}
     end;
 	    
@@ -565,7 +573,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     case connection:is_connection_up(Pid) of
 	true ->
 	    ?info("dlink_tcp:ping(): Pinging: ~p:~p", [Address, Port]),
-	    connection:send(Pid, ping),
+ 	    connection:send(Pid, term_to_json({ struct, [{ ?DLINK_ARG_CMD, ?DLINK_CMD_PING }]})),
 	    erlang:send_after(Timeout, self(), 
 			      { rvi_ping, Pid, Address, Port, Timeout });
 
