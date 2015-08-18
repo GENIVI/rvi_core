@@ -2,11 +2,8 @@ sudo: true
 language: erlang
 otp_release: R16B03-1
 python: 2.7
-addons:
-  apt:
-    packages:
-      - bluez
-      - libbluetooth-dev
+before_install:
+  - sudo apt-get install bluez libbluetooth-dev
 before_script:
   - export PATH=$HOME/.local/bin:$PATH
   - pip install -r requirements.txt --user `whoami`
