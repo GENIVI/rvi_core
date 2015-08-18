@@ -142,11 +142,11 @@ handle_call(Other, _From, St) ->
     { reply, [ invalid_command ], St}.
 
 %% Convert list-based data to binary.
-handle_cast({rvi, receive_message, [Data]}, St) when is_list(Data)->
-    handle_cast({ rvi, receive_message, [ list_to_binary(Data) ] }, St);
+handle_cast({rvi, receive_message, [Payload, IP, Port]}, St) when is_binary(Payload)->
+    handle_cast({ rvi, receive_message, [ binary_to_list(Payload), IP, Port ] }, St);
 
 handle_cast({rvi, receive_message, [Payload, IP, Port]}, St) ->
-    {ok, {struct, Elems}} = exo_json:decode_string(binary_to_list(Payload)),
+    {ok, {struct, Elems}} = exo_json:decode_string(Payload),
 
     [ ServiceName, Timeout, {array, Parameters}, Signature ] = 
 	opts(["service", "timeout", "parameters", "signature"], Elems, undefined),
