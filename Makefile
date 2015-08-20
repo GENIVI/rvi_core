@@ -10,7 +10,7 @@
 # Makefile for the RVI node.
 # 
 
-.PHONY:	all deps compile clean rpm rpmclean test xref ci
+.PHONY:	all deps compile clean rpm rpmclean test xref ci escript
 
 SCRIPTS=scripts/setup_gen \
 	scripts/author
@@ -54,8 +54,8 @@ xref: compile
 
 ci: xref test
 
-test: compile
-	rebar ct
+test: compile escript
+	rebar ct skip_deps=true
 
 # Create a SOURCES tarball for RPM
 rpm_tarball: rpmclean clean
