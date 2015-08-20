@@ -6,7 +6,7 @@ addons:
   apt:
     packages:
       - bluez
-      - bluez-dev
+      - libbluetooth-dev
 before_script:
   - export PATH=$HOME/.local/bin:$PATH
   - pip install -r requirements.txt --user `whoami`
