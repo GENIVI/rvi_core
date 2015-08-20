@@ -25,7 +25,9 @@ start(_StartType, _StartArgs) ->
 
 start_phase(json_rpc, _, _) ->
     service_discovery_rpc:start_json_server(),
-    ok.
+    ok;
+start_phase(announce, _, _) ->
+    rvi_common:announce({n,l,service_discovery}).
 
 stop(_State) ->
     ok.

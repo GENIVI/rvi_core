@@ -16,6 +16,8 @@
 	 start_phase/3,
 	 stop/1]).
 
+-include_lib("lager/include/log.hrl").
+
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
@@ -35,8 +37,7 @@ start_phase(connection_manager, _, _) ->
     ok;
 
 start_phase(announce, _, _) ->
-    gproc:reg({n, l, dlink_tcp}),
-    ok.
+    rvi_common:announce({n, l, dlink_tcp}).
 
 stop(_State) ->
     ok.

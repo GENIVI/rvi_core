@@ -34,6 +34,6 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
-	    %% ?CHILD(rvi_server, worker)
+	    ?CHILD(rvi_server, worker)
 	   ]} }.
 

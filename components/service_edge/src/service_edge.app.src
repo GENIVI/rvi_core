@@ -20,5 +20,8 @@
                  ]},
   {mod, { service_edge_app, []}},
 
-  {start_phases, [{json_rpc, []},{websocket, []}]}
+  {start_phases, [{json_rpc, []},{websocket, []}, {announce, []}]},
+  {env, [
+	 {rvi_core_await, [{n,l,service_edge}]}
+	]}
  ]}.

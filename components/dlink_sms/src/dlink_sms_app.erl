@@ -16,6 +16,8 @@
 	 start_phase/3,
 	 stop/1]).
 
+-include_lib("lager/include/log.hrl").
+
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
@@ -32,8 +34,10 @@ start_phase(json_rpc, _, _) ->
 
 start_phase(connection_manager, _, _) ->
     dlink_sms_rpc:start_connection_manager(),
-    ok.
+    ok;
 
+start_phase(announce, _, _) ->
+    rvi_common:announce({n, l, dlink_sms}).
 
 stop(_State) ->
     ok.

@@ -27,6 +27,9 @@ start_phase(json_rpc, _, _) ->
     authorize_rpc:start_json_server(),
     ok;
 
+start_phase(announce, _, _) ->
+    rvi_common:announce({n, l, authorize});
+
 start_phase(_Other, _, _) ->
     ok.
 

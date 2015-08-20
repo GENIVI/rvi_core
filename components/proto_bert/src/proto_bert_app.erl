@@ -29,7 +29,10 @@ start_phase(init, _, _) ->
 
 start_phase(json_rpc, _, _) ->
     proto_bert_rpc:start_json_server(),
-    ok.
+    ok;
+
+start_phase(announce, _, _) ->
+    rvi_common:announce({n, l, proto_bert}).
 
 stop(_State) ->
     ok.

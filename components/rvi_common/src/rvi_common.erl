@@ -44,6 +44,7 @@
 
 -export([start_json_rpc_server/3]).
 -export([extract_json/2]).
+-export([announce/1]).
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
 -define(NODE_ADDRESS, node_address).
@@ -56,81 +57,32 @@
 	  escaped = false
 	 }).
 
+json_rpc_status([I] = Str) when I >= $0, I =< $9 ->
+    try json_rpc_status(list_to_integer(Str))
+    catch error:_ -> undefined
+    end;
+json_rpc_status(I) when is_integer(I)->
+    case lists:keyfind(I, 1, status_values()) of
+	{_, St} -> St;
+	false   -> undefined
+    end;
+json_rpc_status(A) when is_atom(A) ->
+    case lists:keyfind(A, 2, status_values()) of
+	{I, _} -> I;
+	false  -> 999
+    end;
+json_rpc_status(L) when is_list(L) ->
+    undefined.
 
-json_rpc_status(0) ->
-    ok;
-
-json_rpc_status("0") ->
-    ok;
-
-json_rpc_status(1) ->
-    invalid_command;
-
-json_rpc_status("1") ->
-    invalid_command;
-
-json_rpc_status(2) ->
-    not_found;
-
-json_rpc_status("2") ->
-    not_found;
-
-json_rpc_status(3) ->
-    not_available;
-
-json_rpc_status("3") ->
-    not_available;
-
-json_rpc_status(4) ->
-    internal;
-
-json_rpc_status("4") ->
-    internal;
-
-json_rpc_status(5) ->
-    already_connected;
-
-json_rpc_status("5") ->
-    already_connected;
-
-
-json_rpc_status(6) ->
-    no_route;
-
-json_rpc_status("6") ->
-    no_route;
-
-
-json_rpc_status(Unknown) when is_integer(Unknown)->
-    undefined;
-
-json_rpc_status(Unknown) when is_list(Unknown)->
-    undefined;
-
-json_rpc_status(ok) ->
-    0;
-
-json_rpc_status(invalid_command) ->
-    1;
-
-json_rpc_status(not_found) ->
-    2;
-
-json_rpc_status(not_available) ->
-    3;
-
-json_rpc_status(internal) ->
-    4;
-
-json_rpc_status(already_connected) ->
-    5;
-
-
-json_rpc_status(no_route) ->
-    6;
-
-json_rpc_status(_) ->
-    999.
+status_values() ->
+    [{0, ok},
+     {1, invalid_command},
+     {2, not_found},
+     {3, not_available},
+     {4, internal},
+     {5, already_connected},
+     {6, no_route},
+     {7, unauthorized}].
 
 get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
     case get_json_element(["result", "status"], JSONBody) of 
@@ -829,3 +781,8 @@ extract_json(Buf, undefined) ->
 
 extract_json(Buf, PST) ->
     extract_json(Buf, PST,[]).
+
+announce(Name) ->
+    ?debug("Announce ~p~n", [Name]),
+    gproc:reg(Name),
+    ok.

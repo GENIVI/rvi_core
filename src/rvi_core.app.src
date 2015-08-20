@@ -23,9 +23,6 @@
 		  lager,
 		  service_edge,
 		  authorize,
-		  dlink_tcp,
-		  bt,
-		  dlink_bt,
 		  proto_json,
 		  proto_bert
                  ]},

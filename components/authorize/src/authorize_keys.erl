@@ -139,7 +139,8 @@ init([]) ->
     ProvisioningKey = get_pub_key(get_env(provisioning_key)),
     ?debug("ProvisioningKey = ~p~n", [ProvisioningKey]),
     CertDir = setup:verify_dir(get_env(cert_dir)),
-    {ok, AuthJwt} = file:read_file(get_env(authorize_jwt)),
+    {ok, AuthJwt0} = file:read_file(get_env(authorize_jwt)),
+    AuthJwt = strip_nl(AuthJwt0),
     ?debug("CertDir = ~p~n", [CertDir]),
     Certs = scan_certs(CertDir, ProvisioningKey),
     ?debug("scan_certs found ~p certificates~n", [length(Certs)]),
@@ -390,7 +391,7 @@ scan_certs(Dir, Key) ->
 process_cert(F, Key, UTC, Acc) ->
     case file:read_file(F) of
 	{ok, Bin} ->
-	    try authorize_sig:decode_jwt(Bin, Key) of
+	    try authorize_sig:decode_jwt(strip_nl(Bin), Key) of
 		{_, Cert} ->
 		    ?info("Unpacked Cert ~p:~n~p~n", [F, Cert]),
 		    case process_cert_struct(Cert, Bin, UTC) of
@@ -411,6 +412,12 @@ process_cert(F, Key, UTC, Acc) ->
 	Error ->
 	    ?warning("Cannot read cert ~p: ~p~n", [F, Error]),
 	    Acc
+    end.
+
+strip_nl(Bin) ->
+    case re:split(Bin,"\\s+$",[{return,binary},trim]) of
+	[Trimmed] -> Trimmed;
+	_ -> Bin
     end.
 
 process_cert_struct(Cert, Bin) ->

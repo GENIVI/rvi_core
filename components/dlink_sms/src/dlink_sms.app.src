@@ -19,5 +19,8 @@
 		  rvi_common
                  ]},
   {mod, { dlink_sms_app, []}},
-  {start_phases, [{json_rpc, []}, {connection_manager, []}]}
+  {start_phases, [{json_rpc, []}, {connection_manager, []}, {announce, []}]},
+  {env, [
+	 {rvi_core_await, [{n,l,dlink_sms}]}
+	]}
  ]}.

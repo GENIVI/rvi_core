@@ -27,10 +27,12 @@ start_phase(init, _, _) ->
     schedule_rpc:init(),
     ok;
 
-
 start_phase(json_rpc, _, _) ->
     schedule_rpc:start_json_server(),
-    ok.
+    ok;
+
+start_phase(announce, _, _) ->
+    rvi_common:announce({n, l, schedule}).
 
 stop(_State) ->
     ok.

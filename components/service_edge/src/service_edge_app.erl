@@ -29,7 +29,10 @@ start_phase(json_rpc, _, _) ->
 
 start_phase(websocket, _, _) ->
     service_edge_rpc:start_websocket(),
-    ok.
+    ok;
+
+start_phase(announce, _, _) ->
+    rvi_common:announce({n, l, service_edge}).
 
 stop(_State) ->
     ok.

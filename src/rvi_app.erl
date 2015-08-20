@@ -10,6 +10,8 @@
 -module(rvi_app).
 
 -behaviour(application).
+-include_lib("lager/include/log.hrl").
+
 
 %% Application callbacks
 -export([start/2,
@@ -24,8 +26,8 @@ start(_StartType, _StartArgs) ->
     rvi_sup:start_link().
 
 start_phase(announce, _, _) ->
-    gproc:reg({n,l,rvi_core}),
-    ok;
+    rvi_server:await();
+
 start_phase(ping, _, _) ->
 %%    exoport:ping(),
     ok.

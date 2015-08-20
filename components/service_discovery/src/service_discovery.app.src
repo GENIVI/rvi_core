@@ -19,5 +19,8 @@
 		  rvi_common
                  ]},
   {mod, { service_discovery_app, []}},
-  {start_phases, [{json_rpc, []}]}
+  {start_phases, [{json_rpc, []}, {announce, []}]},
+  {env, [
+	 {rvi_core_await, [{n,l,service_discovery}]}
+	]}
  ]}.
