@@ -305,15 +305,20 @@ handle_call({rvi, authorize_local_message, [Service, Params] } = R, _From,
 	    {reply, [ not_found ], State}
     end;
 
-handle_call({rvi, authorize_remote_message, [_Service, Params]}=R,
+handle_call({rvi, authorize_remote_message, [_Service, Params]},
 	    _From, State) ->
-    ?debug("authorize_rpc:handle_call(~p)~n", [R]),
     IP = proplists:get_value(remote_ip, Params),
     Port = proplists:get_value(remote_port, Params),
     Timeout = proplists:get_value(timeout, Params),
-    SvcName = proplists:get_value(service, Params),
+    SvcName = proplists:get_value(service_name, Params),
     Parameters = proplists:get_value(parameters, Params),
     Signature = proplists:get_value(signature, Params),
+    ?debug("authorize_rpc:authorize_remote_message(): remote_ip:     ~p~n", [IP]),
+    ?debug("authorize_rpc:authorize_remote_message(): remote_port:   ~p~n", [Port]),
+    ?debug("authorize_rpc:authorize_remote_message(): timeout:       ~p~n", [Timeout]),
+    ?debug("authorize_rpc:authorize_remote_message(): service_name:  ~p~n", [SvcName]),
+    ?debug("authorize_rpc:authorize_remote_message(): parameters:    ~p~n", [Parameters]),
+    ?debug("authorize_rpc:authorize_remote_message(): signature:     ~40s~n", [Signature]),
     case authorize_keys:validate_message(
 	   iolist_to_binary(Signature), {IP, Port}) of
 	invalid ->
@@ -322,7 +327,11 @@ handle_call({rvi, authorize_remote_message, [_Service, Params]}=R,
 	    {ok, Timeout1} = rvi_common:get_json_element(["timeout"], Msg),
 	    {ok, SvcName1} = rvi_common:get_json_element(["service_name"], Msg),
 	    {ok, Params1} = rvi_common:get_json_element(["parameters"], Msg),
-	    if Timeout =:= Timeout1,
+	    ?debug("authorize_rpc:authorize_remote_message(): timeout1:      ~p~n", [Timeout1]),
+	    ?debug("authorize_rpc:authorize_remote_message(): service_name1: ~p~n", [SvcName1]),
+	    ?debug("authorize_rpc:authorize_remote_message(): parameters1:   ~p~n", [Params1]),
+
+	    if Timeout =:= Timeout1 * 1000,
 	       SvcName =:= SvcName1,
 	       Parameters =:= Params1 ->
 		    ?debug("Remote message authorized.~n", []),
