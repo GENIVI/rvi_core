@@ -10,7 +10,7 @@
 # Makefile for the RVI node.
 # 
 
-.PHONY:	all deps compile clean rpm rpmclean test
+.PHONY:	all deps compile clean rpm rpmclean test ci
 
 SCRIPTS=scripts/setup_gen \
 	scripts/author
@@ -48,6 +48,8 @@ rpmclean:
 		./rpm/RPMS/* \
 		./rpm/SOURCES/* \
 		./rpm/SRPMS/*
+
+ci: test
 
 test: compile
 	rebar ct
