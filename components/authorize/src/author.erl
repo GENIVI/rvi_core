@@ -76,7 +76,7 @@ cmd("read_sig", Opts) ->
     {_, Pub} = get_key_pair(Root),
     case file:read_file(Sig) of
         {ok, JWT} ->
-            case authorize_sig:decode_jwt(JWT, Pub) of
+            case authorize_sig:decode_jwt(strip_nl(JWT), Pub) of
                 invalid ->
                     fail("Cannot validate ~s~n", [Sig]);
                 {Header, Payload} ->
@@ -182,6 +182,11 @@ l2i(Str) ->
 i2l(I) ->
     integer_to_list(I).
 
+strip_nl(Bin) ->
+    case re:split(Bin,"\\s+$",[{return,binary},trim]) of
+	[Trimmed] -> Trimmed;
+	_ -> Bin
+    end.
 
 make_auth(RPriv, Pub, Fmt, Opts) ->
     case Fmt of
