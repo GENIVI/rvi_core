@@ -618,7 +618,7 @@ If a configuration file, ```rvi_sample.config``` is to be used when building
 release ```test_rel```, the following command can be run from the
 build root:
 
-    ./script/setup_rvi_node.sh -d -n test_rel -c rvi_sample.config
+    ./scripts/setup_rvi_node.sh -d -n test_rel -c rvi_sample.config
 
 Once executed (and no errors were found in test.config), a
 subdirectory called ```test_rel``` has been created. This directory
