@@ -183,6 +183,7 @@ handle_websocket(WSock, Mesg, Arg) ->
     ok.
 
 
+
 %% Websocket interface
 handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
     { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
@@ -198,7 +199,8 @@ handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
 
     ?debug("service_edge_rpc:wse_message(~p) Res:      ~p", [ WSock, Res ]),
     { ok, [ { status, rvi_common:json_rpc_status(Res) }, 
-	    { transaction_id, TID} ] };
+	    { transaction_id, TID},
+	    { method, "message"} ] };
 
 handle_ws_json_rpc(WSock, "register_service", Params,_Arg ) ->
     { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
@@ -210,7 +212,8 @@ handle_ws_json_rpc(WSock, "register_service", Params,_Arg ) ->
 					     "ws:" ++ pid_to_list(WSock)]}),
     
     { ok, [ { status, rvi_common:json_rpc_status(ok)}, 
-	    { service, FullSvcName }]};
+	    { service, FullSvcName },
+	    { method, "register_service"}]};
 
 handle_ws_json_rpc(WSock, "unregister_service", Params, _Arg ) ->
     { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
@@ -222,7 +225,8 @@ handle_ws_json_rpc(_Ws , "get_available_services", _Params, _Arg ) ->
     ?debug("service_edge_rpc:websocket_get_available()"),
     [ Services ] = gen_server:call(?SERVER, { rvi, get_available_services, []}),
     { ok, [ { status, rvi_common:json_rpc_status(ok)},
-	    { services, Services}] }.
+	    { services, Services},
+	    { method, "get_available_services"}] }.
 
 
 %% Invoked by locally connected services.
@@ -236,20 +240,27 @@ handle_rpc("register_service", Args) ->
 					 { rvi, register_local_service, 
 					   [ SvcName, URL]}),
 
-    {ok, [ {status, rvi_common:json_rpc_status(ok) }, { service, FullSvcName }]};
+    {ok, [ {status, rvi_common:json_rpc_status(ok) }, 
+	   { service, FullSvcName },
+	   { method, "register_service"} 
+	 ]};
 
 
 handle_rpc("unregister_service", Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     gen_server:call(?SERVER, { rvi, unregister_local_service, [ SvcName]}),
-    {ok, [ { status, rvi_common:json_rpc_status(ok) }]};
+    {ok, [ { status, rvi_common:json_rpc_status(ok) },
+	   { method, "unregister_service"} 
+	 ]};
 
 
 handle_rpc("get_available_services", _Args) ->
     [ Status, Services ] = gen_server:call(?SERVER, { rvi, get_available_services, []}),
     ?debug("get_available_services(): ~p ~p", [ Status, Services ]),
     {ok, [ { status, rvi_common:json_rpc_status(ok)},
-	   { services, {array, Services}} ]};
+	   { services, {array, Services}},
+	   { method, "get_available_services"} 
+	 ]};
 
 
 handle_rpc("message", Args) ->
@@ -260,7 +271,9 @@ handle_rpc("message", Args) ->
 					      [ SvcName, Timeout, Parameters]}),
 
     {ok, [ { status, rvi_common:json_rpc_status(Res) },
-	   { transaction_id, TID } ]};
+	   { transaction_id, TID },
+	   { method, "message"} 
+	 ]};
 
 handle_rpc(Other, _Args) ->
     ?warning("service_edge_rpc:handle_rpc(~p): unknown command", [ Other ]),
