@@ -49,11 +49,11 @@ if len(args) < 1:
 # Construct a dictionary from the provided paths.
 i = 0
 service = args[0]
-rvi_args = []
+rvi_args = {}
 for i in args[1:]:
     print i
     [k, v] = i.split('=')
-    rvi_args = rvi_args + [{ k: v}]
+    rvi_args[k] = v
 
 
 
