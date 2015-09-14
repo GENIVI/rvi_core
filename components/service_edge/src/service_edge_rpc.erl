@@ -406,7 +406,9 @@ handle_call({ rvi, handle_local_message,
 	authorize_rpc:authorize_local_message(
 	  St#st.cs, SvcName, [{service_name, SvcName},
 			      {timeout, TimeoutArg},
-			      {parameters, Parameters}]),
+			      %% {parameters, Parameters},
+			      {parameters,  {struct, Parameters}}
+			      ]),
 
     %%
     %% Slick but ugly.
@@ -497,6 +499,7 @@ handle_cast({rvi, handle_remote_message,
 		    {remote_port, Port},
 		    {service_name, SvcName},
 		    {timeout, Timeout},
+		    %% {parameters, [ {struct, Parameters}]},
 		    {parameters, Parameters},
 		    {signature, Signature}]) of
 		[ ok ] -> 
@@ -606,21 +609,16 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
     ok;
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, 
-			 {struct, [{ service_name, SvcName}, { parameters, [ { struct, Args} ]}]} ) ->
-    ?info("service_edge:dispatch_to_local_service(message, websock): ~p", [Args]),
-    wse_server:send(list_to_pid(WSPidStr), 
-	     json_rpc_notification("message",
-				   [{ "service_name", SvcName}, {parameters, { struct, Args}}])),
-    %% No response expected.
-    ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
-    ok;
+			 {struct, [{ service_name, SvcName}, 
+				   { parameters, { struct, Parameters} }
+				  ]} ) ->
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, 
-			 {struct, [{ service_name, SvcName}, { parameters,{array,[{struct, Args}]}}]}) ->
-    ?info("service_edge:dispatch_to_local_service(message/alt, websock): ~p", [Args]),
+    ?info("service_edge:dispatch_to_local_service(message, websock): ~p", 
+	  [Parameters]),
     wse_server:send(list_to_pid(WSPidStr), 
 	     json_rpc_notification("message",
-				   [{ "service_name", SvcName}, {parameters, { struct, Args}}])),
+				   [{ "service_name", SvcName}, 
+				    {parameters, { struct, Parameters}}])),
     %% No response expected.
     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
     ok;
@@ -663,7 +661,7 @@ forward_message_to_local_service(URL,SvcName, Parameters, _CompSpec) ->
 		    dispatch_to_local_service(URL, 
 					      message, 
 					      {struct, [ { service_name, LocalSvcName },
-							 { parameters, Parameters }]}))
+							 { parameters,  { struct, Parameters }}]}))
 	  end),
     [ ok, -1 ].
     
