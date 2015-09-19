@@ -17,6 +17,8 @@
     t_install_sample_node/1,
     t_install_sms_backend_node/1,
     t_install_sms_sample_node/1,
+    t_install_tls_backend_node/1,
+    t_install_tls_sample_node/1,
     t_start_basic_backend/1,
     t_start_basic_sample/1,
     t_register_lock_service/1,
@@ -44,7 +46,9 @@ groups() ->
        t_install_backend_node,
        t_install_sample_node,
        t_install_sms_backend_node,
-       t_install_sms_sample_node
+       t_install_sms_sample_node,
+       t_install_tls_backend_node,
+       t_install_tls_sample_node
       ]},
      {test_run, [],
       [
@@ -119,6 +123,14 @@ t_install_sms_backend_node(Config) ->
 t_install_sms_sample_node(Config) ->
     install_rvi_node("sms_sample", env(),
 		     [root(), "/test/config/sms_sample.config"]).
+
+t_install_tls_backend_node(Config) ->
+    install_rvi_node("tls_backend", env(),
+		     [root(), "/test/config/tls_backend.config"]).
+
+t_install_tls_sample_node(Config) ->
+    install_rvi_node("tls_sample", env(),
+		     [root(), "/test/config/tls_sample.config"]).
 
 t_start_basic_backend(Config) ->
     cmd([scripts(), "/rvi_node.sh -d -n basic_backend"]),
