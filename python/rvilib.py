@@ -176,16 +176,11 @@ class RVI(SimpleJSONRPCServer):
             # a regular dictionary: {'vin': 1234, hello: 'world'}
 
             # print "Parameters:", params['parameters']
-            msg_params = params['parameters'] 
-            for i in range(0, len(msg_params)):
-                for j in range(0, len(msg_params[i].keys())):
-                    # print "params", msg_params[i].keys()[j], "=", msg_params[i].values()[j]
-                    dict_param[msg_params[i].keys()[j]] = msg_params[i].values()[j]
 
             # print "Parameter disctionary: ", dict_param
             # print 
             # Ship the processed dispatch info upward.
-            return SimpleJSONRPCServer._dispatch(self, params['service_name'], dict_param)           
+            return SimpleJSONRPCServer._dispatch(self, params['service_name'], params['parameters'])
 
         # Fallthrough to all other methods.
         # Will handle service_re3
