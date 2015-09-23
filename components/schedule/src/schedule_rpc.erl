@@ -130,7 +130,7 @@ schedule_message(CompSpec,
 		       schedule_message, 
 		       [{ service, SvcName }, 
 			{ timeout, Timeout },
-			{ parameters, Parameters }, 
+			{ parameters, {struct, Parameters } }, 
 			{ signature, Signature }], 
 		       [status, transaction_id], CompSpec).
 

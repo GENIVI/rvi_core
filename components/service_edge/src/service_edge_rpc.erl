@@ -195,7 +195,7 @@ handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
     ?debug("service_edge_rpc:handle_websocket(~p) parameters:   ~p", [ WSock, Parameters ]),
 
     [ Res, TID ] = gen_server:call(?SERVER, { rvi, handle_local_message, 
-					      [ SvcName, Timeout, [{struct, Parameters}]]}),
+					      [ SvcName, Timeout, Parameters]}),
 
     ?debug("service_edge_rpc:wse_message(~p) Res:      ~p", [ WSock, Res ]),
     { ok, [ { status, rvi_common:json_rpc_status(Res) }, 
@@ -437,7 +437,7 @@ handle_call({ rvi, handle_local_message,
 	    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
 	    Res = forward_message_to_local_service(URL, 
 						   SvcName, 
-						   Parameters,
+						   {struct, Parameters},
 						   St#st.cs),
 	    { reply, Res , St};
 
@@ -492,6 +492,7 @@ handle_cast({rvi, handle_remote_message,
     %% Check if this is a local message.
     case ets:lookup(?SERVICE_TABLE, SvcName) of
 	[ #service_entry { url = URL }] -> %% This is a local message
+	    {struct, Parameters1} = Parameters,
 	    case authorize_rpc:authorize_remote_message(
 		   St#st.cs, 
 		   SvcName, 
@@ -500,7 +501,7 @@ handle_cast({rvi, handle_remote_message,
 		    {service_name, SvcName},
 		    {timeout, Timeout},
 		    %% {parameters, [ {struct, Parameters}]},
-		    {parameters, Parameters},
+		    {parameters, Parameters1},
 		    {signature, Signature}]) of
 		[ ok ] -> 
 		    forward_message_to_local_service(URL, SvcName, 
@@ -609,8 +610,8 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
     ok;
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], message, 
-			 {struct, [{ service_name, SvcName}, 
-				   { parameters, { struct, Parameters} }
+			 {struct, [{ service_name, SvcName }, 
+				   { parameters, Parameters }
 				  ]} ) ->
 
     ?info("service_edge:dispatch_to_local_service(message, websock): ~p", 
@@ -618,7 +619,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
     wse_server:send(list_to_pid(WSPidStr), 
 	     json_rpc_notification("message",
 				   [{ "service_name", SvcName}, 
-				    {parameters, { struct, Parameters}}])),
+				    {parameters, Parameters}])),
     %% No response expected.
     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
     ok;
@@ -661,7 +662,7 @@ forward_message_to_local_service(URL,SvcName, Parameters, _CompSpec) ->
 		    dispatch_to_local_service(URL, 
 					      message, 
 					      {struct, [ { service_name, LocalSvcName },
-							 { parameters,  { struct, Parameters }}]}))
+							 { parameters,  Parameters }]}))
 	  end),
     [ ok, -1 ].
     

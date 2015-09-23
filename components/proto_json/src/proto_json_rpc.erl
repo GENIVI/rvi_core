@@ -127,7 +127,7 @@ handle_call({rvi, send_message,
 			  [
 			   { "service", ServiceName },
 			   { "timeout", Timeout }, 
-			   { "parameters", {array, Parameters} },
+			   { "parameters", Parameters },
 			   { "signature", Signature }
 			  ]
 			}),
@@ -148,7 +148,7 @@ handle_cast({rvi, receive_message, [Payload, IP, Port]}, St) when is_binary(Payl
 handle_cast({rvi, receive_message, [Payload, IP, Port]}, St) ->
     {ok, {struct, Elems}} = exo_json:decode_string(Payload),
 
-    [ ServiceName, Timeout, {array, Parameters}, Signature ] = 
+    [ ServiceName, Timeout, Parameters, Signature ] = 
 	opts(["service", "timeout", "parameters", "signature"], Elems, undefined),
 
     ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
