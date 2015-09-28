@@ -216,7 +216,6 @@ handle_info({tcp, Sock, Data},
 	    #st { ip = undefined } = St) ->
     {ok, {IP, Port}} = inet:peername(Sock),
     NSt = St#st { ip = inet_parse:ntoa(IP), port = Port },
-    ?warning("YESSSS"),
     handle_info({tcp, Sock, Data}, NSt);
  
 
