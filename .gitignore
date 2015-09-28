@@ -1,5 +1,4 @@
 ebin
-deps
 .eunit
 *.o
 *.beam
