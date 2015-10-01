@@ -169,7 +169,7 @@ class RVI(SimpleJSONRPCServer):
     def _dispatch(self, method, params):
         if method == 'message':
             # print "Will dispatch message to: " + params['service_name']
-            dict_param = {}
+            # dict_param = {}
             # Extract the 'parameters' element from the top level JSON-RPC
             # 'param'. 
             # Convert 'parameters' from [{'vin': 1234}, {hello: 'world'}] to
