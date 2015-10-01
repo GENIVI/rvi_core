@@ -1,7 +1,7 @@
 {application, base64url, [
   {description, "URL safe base64-compatible codec"},
   {vsn, "0.0.1"},
-  {id, "git"},
+  {id, "repo"},
   {registered, []},
   {applications, [
     kernel,
@@ -9,6 +9,6 @@
   ]},
   {env, []},
   {contributors, ["Vladimir Dronnikov"]},
-  {licenses, ["MIT"]},
-  {links, [{"Github", "https://github.com/dvv/base64url"}]}
+  {licenses, ["MIT"]}
+%%  {links, [{"Github", "https://github.com/dvv/base64url"}]}
 ]}.
