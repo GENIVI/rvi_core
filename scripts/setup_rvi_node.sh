@@ -113,7 +113,7 @@ then
 	cp $NODE_NAME/sys.config rel/files/sys.config
 	./rebar generate 
 	# Rename the release after the node name
-	mv rel/rvi_core rel/$NODE_NAME
+	mv rel/rvi rel/$NODE_NAME
 	echo "Stand alone release for $NODE_NAME created under project "
 	echo "root directory's ./rel/$NODE_NAME."
 	echo

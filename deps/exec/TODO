@@ -1,0 +1,2 @@
+1. Rewrite non-portable sigwaitinfo and sigpending implementation to using
+   a dedicated pipe and streaming signals through it to the main select() loop

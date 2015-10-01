@@ -1,10 +1,10 @@
 Summary:    Remote Vehicle Interaction Node, running on top of Erlang,
-Name:       rvi
+Name:       rvi_core
 Version:    0.4.0
 Release:    1
 Group:      App Framework/Application Communication
 License:    Mozilla Public License 2.0
-Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi-0.4.0.tgz
+Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi_core-0.4.0.tgz
 
 BuildRequires:  make
 BuildRequires:  glib2-devel
@@ -18,19 +18,18 @@ BuildRequires:  bluez-devel
 RVI Node running on Tizen. Needs erlang. See README.md
 
 %prep
-%setup -c rvi-$RPM_PACKAGE_VERSION
+%setup -c rvi_core-$RPM_PACKAGE_VERSION
 
-%build
 for i in $(find deps -name '*.app.src'); do sed 's/git/"1.0"/' < $i > $i.tmp; mv $i.tmp $i; done
 
 
 make compile
 # Create a tizen node if that is what we have.
-./scripts/setup_rvi_node.sh -n rvi-$RPM_PACKAGE_VERSION -c ./packaging/tizen.config
+./scripts/setup_rvi_node.sh -n rvi_tizen -c ./packaging/tizen.config
 %install
 rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION
-cp -ar rel/rvi-$RPM_PACKAGE_VERSION $RPM_BUILD_ROOT/opt/
+cp -ar rel/rvi_tizen $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION
 cp -ar python $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION
 mkdir -p $RPM_BUILD_ROOT/usr/lib/systemd/system/
 mkdir -p $RPM_BUILD_ROOT/etc/systemd/system/multi-user.target.wants/
@@ -46,7 +45,7 @@ echo "default_vin" > $RPM_BUILD_ROOT/home/app/content/Documents/vin
 rm -rf $RPM_BUILD_ROOT
 
 %files 
-%manifest packaging/rvi.manifest 
+%manifest packaging/rvi_core.manifest 
 %defattr(-,root,root)
 %attr(644,app,users) /home/app/content/Documents/vin
 /usr/lib/systemd/system/rvi.service 
