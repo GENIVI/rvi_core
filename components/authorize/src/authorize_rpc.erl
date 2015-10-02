@@ -331,7 +331,7 @@ handle_call({rvi, authorize_remote_message, [_Service, Params]},
 	    ?debug("authorize_rpc:authorize_remote_message(): service_name1: ~p~n", [SvcName1]),
 	    ?debug("authorize_rpc:authorize_remote_message(): parameters1:   ~p~n", [Params1]),
 
-	    if Timeout =:= Timeout1 * 1000,
+	    if Timeout =:= Timeout1,
 	       SvcName =:= SvcName1,
 	       Parameters =:= Params1 ->
 		    ?debug("Remote message authorized.~n", []),
