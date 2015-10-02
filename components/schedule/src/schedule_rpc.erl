@@ -168,7 +168,7 @@ handle_rpc("schedule_message", Args) ->
     [ok, TransID] = gen_server:call(?SERVER, { rvi, schedule_message, 
 					       [ SvcName,
 						 Timeout,
-						 Parameters,
+						 {struct, Parameters},
 						 Signature]}),
 
     {ok, [ { status, rvi_common:json_rpc_status(ok)},
