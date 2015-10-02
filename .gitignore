@@ -9,4 +9,4 @@ erl_crash.dump
 rel/example_project
 .concrete/DEV_MODE
 .rebar
-
+scrits/setup_gen
