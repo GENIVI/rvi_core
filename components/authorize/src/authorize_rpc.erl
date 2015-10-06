@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -28,15 +28,15 @@
 -export([filter_by_service/3]).
 
 %% for testing & development
--export([sign/1, sign_default_cert/0]).
+-export([sign/1]).
 -export([public_key/0, public_key_json/0,
 	 private_key/0]).
 
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
 
--define(SERVER, ?MODULE). 
--record(st, { 
+-define(SERVER, ?MODULE).
+-record(st, {
 	  next_transaction_id = 1, %% Sequentially incremented transaction id.
 	  services_tid = undefined, %% Known services.
 	  cs = #component_spec{},
@@ -60,65 +60,6 @@ start_json_server() ->
     rvi_common:start_json_rpc_server(authorize, ?MODULE, authorize_sup),
     ok.
 
-
-%% Retrieve certificate. 
-%% Certificate will be passed to exo_json:encode() in order
-%% to be translated to JSON.
-get_certificate_body(_Service) ->
-    {struct, 
-     [
-      %% Topic tree patterns that this node is authorized to
-      %% process requests for.
-      { sources,
-	{ array, [ 
-		   "jaguarlandrover.com/cloud/media_server" 
-		 ]
-	}
-      },
-      %% Services that can be accessed by the source service.
-      { destinations, 
-	{ array, [
-		  "rpc:jaguarlandrover.com/vin/+/services/media_player"
-		 ]
-	}
-
-      },
-      %% Public key for source.
-      %% Used to validate signature of requests, etc.
-      { public_key, 
-	{ struct, [
-		   { algorithm, "some_algorithm" },
-		   { key, "some_public_key" }
-		  ]
-	}
-      },
-      %% Period during which certificate is valid. UTC
-      { validity,  
-	{ struct, [
-		   { start, 1401918299 },
-		   { stop, 1402000000 }
-		  ]
-	}
-      },
-      %% A system wide unique id for the certificate
-      { id, "b674546e-76ae-4204-b551-3f850fbffb4b" },
-
-      %% UTC timestamp of when the certificate was created.
-      { create_timestamp, 1403825201 },
-
-      %% Signed by provisioning server.
-      %% All nodes have provisioning server's public key.
-      %% Signature covers all data in claims element.
-      { signature, 
-	{ struct, [ 
-		    { algorithm, "signature_algorithm" },
-		    { signature, "signature" } 
-		  ]
-	}
-      }
-     ]
-    }.
-
 sign_message(CompSpec, Message) ->
     ?debug("authorize_rpc:sign_message()~n", []),
     rvi_common:request(authorize, ?MODULE, sign_message,
@@ -134,12 +75,12 @@ get_authorize_jwt(CompSpec) ->
     ?debug("authorize_rpc:get_authorize_jwt()~n", []),
     rvi_common:request(authorize, ?MODULE, get_authorize_jwt,
 		       [], [status, jwt], CompSpec).
-    
+
 get_certificates(CompSpec) ->
     ?debug("authorize_rpc:get_certificates()~n", []),
     rvi_common:request(authorize, ?MODULE, get_certificates,
 		       [], [status, certs], CompSpec).
-    
+
 validate_authorization(CompSpec, JWT, Certs, Conn) ->
     ?debug("authorize_rpc:validate_authorization():"
 	   " Conn = ~p~n", [Conn]),
@@ -151,7 +92,7 @@ validate_authorization(CompSpec, JWT, Certs, Conn) ->
 
 authorize_local_message(CompSpec, Service, Params) ->
     ?debug("authorize_rpc:authorize_local_msg(): params:    ~p ~n", [Params]),
-    rvi_common:request(authorize, ?MODULE, authorize_local_message, 
+    rvi_common:request(authorize, ?MODULE, authorize_local_message,
 		       [{service, Service},
 			{parameters, Params}],
 		       [status, signature], CompSpec).
@@ -159,7 +100,7 @@ authorize_local_message(CompSpec, Service, Params) ->
 authorize_remote_message(CompSpec, Service, Params) ->
     ?debug("authorize_rpc:authorize_remote_msg(): service: ~p ~n", [Service]),
     ?debug("authorize_rpc:authorize_remote_msg(): parameters: ~p ~n", [Params]),
-    rvi_common:request(authorize, ?MODULE,authorize_remote_message, 
+    rvi_common:request(authorize, ?MODULE,authorize_remote_message,
 		       [{service, Service},
 			{parameters, Params}],
 		       [status], CompSpec).
@@ -176,9 +117,6 @@ filter_by_service(CompSpec, Services, Conn) ->
 sign(Term) ->
     %% Use private key of authorize_rpc to make a JWT token
     gen_server:call(?SERVER, {sign, Term}).
-
-sign_default_cert() ->
-    gen_server:call(?SERVER, sign_default_cert).
 
 public_key() ->
     gen_server:call(?SERVER, public_key).
@@ -199,6 +137,7 @@ handle_rpc("sign_message", Args) ->
     {ok, [ {status, rvi_common:json_rpc_status(Status)},
 	   {jwt, JWT} ]};
 handle_rpc("validate_message", Args) ->
+    ?debug("validate_message; Args = ~p~n", [Args]),
     {ok, JWT} = rvi_common:get_json_element(["jwt"], Args),
     {ok, Conn} = rvi_common:get_json_element(["conn"], Args),
     [ Status, Msg ] =
@@ -224,8 +163,8 @@ handle_rpc("validate_authorization", Args) ->
 handle_rpc("authorize_local_message", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Params} = rvi_common:get_json_element(["parameters"], Args),
-    [ Status | Rem ] = 
-	gen_server:call(?SERVER, { rvi, authorize_local_message, 
+    [ Status | Rem ] =
+	gen_server:call(?SERVER, { rvi, authorize_local_message,
 				   [Service, Params]}),
 
     { ok, [ rvi_common:json_rpc_status(Status) | Rem] };
@@ -234,7 +173,7 @@ handle_rpc("authorize_local_message", Args) ->
 handle_rpc("authorize_remote_message", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
     {ok, Params} = rvi_common:get_json_element(["parameters"], Args),
-    [ Status ]  = gen_server:call(?SERVER, { rvi, authorize_remote_message, 
+    [ Status ]  = gen_server:call(?SERVER, { rvi, authorize_remote_message,
 					     [Service, Params]}),
     { ok, rvi_common:json_rpc_status(Status)};
 
@@ -246,7 +185,7 @@ handle_rpc("filter_by_service", Args) ->
 	gen_server:call(?SERVER, { rvi, filter_by_service,
 				   [Services, Conn] }),
     {ok, [{status, rvi_common:json_rpc_status(Status)},
-	  {services, {array, FilteredServices}}]};
+	  {services, FilteredServices}]};
 
 handle_rpc(Other, _Args) ->
     ?debug("authorize_rpc:handle_rpc(~p): unknown", [ Other ]),
@@ -291,15 +230,15 @@ handle_call({rvi, validate_authorization, [JWT, Certs, Conn] }, _From, State) ->
 	    ?warning("Auth validation exception: ~p~n", [_Err]),
 	    {reply, [not_found], State}
     end;
-	
+
 handle_call({rvi, authorize_local_message, [Service, Params] } = R, _From,
 	    #st{private_key = Key} = State) ->
     ?debug("authorize_rpc:handle_call(~p)~n", [R]),
     case authorize_keys:find_cert_by_service(Service) of
 	{ok, Cert} ->
-	    Msg = Params ++ [{"certificate", Cert}],
+	    Msg = Params ++ [{<<"certificate">>, Cert}],
 	    ?debug("authorize_rpc:authorize_local_message~nMsg = ~p~n", [Msg]),
-	    Sig = authorize_sig:encode_jwt({struct, Msg}, Key),
+	    Sig = authorize_sig:encode_jwt(Msg, Key),
 	    {reply, [ok, Sig], State};
 	_ ->
 	    {reply, [ not_found ], State}
@@ -348,9 +287,6 @@ handle_call({rvi, filter_by_service, [Services, Conn]}, _From, State) ->
 
 handle_call({sign, Term}, _From, #st{private_key = Key} = State) ->
     {reply, authorize_sig:encode_jwt(Term, Key), State};
-
-handle_call(sign_default_cert, _From, #st{private_key = Key} = State) ->
-    {reply, authorize_sig:encode_jwt(get_certificate_body(default), Key), State};
 
 handle_call(public_key, _From, #st{public_key = Key} = State) ->
     {reply, Key, State};
@@ -411,4 +347,3 @@ store_cert(Cert, Keys, JWT, Conn) ->
 	    ?warning("Invalid certificate from ~p~n", [Conn]),
 	    ok
     end.
-

@@ -20,9 +20,9 @@
 -behaviour(exo_socket_server).
 
 %% exo_socket_server callbacks
--export([init/2, 
-	 data/3, 
-	 close/2, 
+-export([init/2,
+	 data/3,
+	 close/2,
 	 error/3]).
 
 -export([control/4]).
@@ -50,13 +50,13 @@
 %%-----------------------------------------------------------------------------
 %% @doc
 %%  Starts a socket server on port Port with server options ServerOpts
-%% that are sent to the server when a connection is established, 
+%% that are sent to the server when a connection is established,
 %% i.e init is called.
 %%
 %% @end
 %%-----------------------------------------------------------------------------
--spec start(Port::integer(), 
-	    ServerOptions::list({Option::atom(), Value::term()})) -> 
+-spec start(Port::integer(),
+	    ServerOptions::list({Option::atom(), Value::term()})) ->
 		   {ok, ChildPid::pid()} |
 		   {error, Reason::term()}.
 
@@ -74,13 +74,13 @@ start(Port, ServerOptions) ->
 %%-----------------------------------------------------------------------------
 %% @doc
 %%  Starts and links a socket server on port Port with server options ServerOpts
-%% that are sent to the server when a connection is established, 
+%% that are sent to the server when a connection is established,
 %% i.e init is called.
 %%
 %% @end
 %%-----------------------------------------------------------------------------
--spec start_link(Port::integer(), 
-		 ServerOptions::list({Option::atom(), Value::term()})) -> 
+-spec start_link(Port::integer(),
+		 ServerOptions::list({Option::atom(), Value::term()})) ->
 			{ok, ChildPid::pid()} |
 			{error, Reason::term()}.
 
@@ -101,8 +101,8 @@ start_link(Port, ServerOptions) ->
 %%
 %% @end
 %%-----------------------------------------------------------------------------
--spec init(Socket::#exo_socket{}, 
-	   ServerOptions::list({Option::atom(), Value::term()})) -> 
+-spec init(Socket::#exo_socket{},
+	   ServerOptions::list({Option::atom(), Value::term()})) ->
 		  {ok, State::#state{}}.
 
 init(Socket, Options) ->
@@ -111,7 +111,7 @@ init(Socket, Options) ->
 	   [_IP, _Port, Options]),
     Access = proplists:get_value(access, Options, []),
     Module = proplists:get_value(request_handler, Options, undefined),
-    {ok, #state{ access = Access, request_handler = Module}}.    
+    {ok, #state{ access = Access, request_handler = Module}}.
 
 
 %% To avoid a compiler warning. Should we actually support something here?
@@ -124,9 +124,9 @@ control(_Socket, _Request, _From, State) ->
 %%
 %% @end
 %%-----------------------------------------------------------------------------
--spec data(Socket::#exo_socket{}, 
+-spec data(Socket::#exo_socket{},
 	   Data::term(),
-	   State::#state{}) -> 
+	   State::#state{}) ->
 		  {ok, NewState::#state{}} |
 		  {stop, {error, Reason::term()}, NewState::#state{}}.
 
@@ -142,7 +142,7 @@ data(Socket, Data, State) ->
 		Error ->
 		    {stop, Error, State}
 	    end;
-	{http_error, ?CRNL} -> 
+	{http_error, ?CRNL} ->
 	    {ok, State};
 	{http_error, ?NL} ->
 	    {ok, State};
@@ -159,8 +159,8 @@ data(Socket, Data, State) ->
 %%
 %% @end
 %%-----------------------------------------------------------------------------
--spec close(Socket::#exo_socket{}, 
-	    State::#state{}) -> 
+-spec close(Socket::#exo_socket{},
+	    State::#state{}) ->
 		   {ok, NewState::#state{}}.
 
 close(_Socket, State) ->
@@ -176,16 +176,16 @@ close(_Socket, State) ->
 %%-----------------------------------------------------------------------------
 -spec error(Socket::#exo_socket{},
 	    Error::term(),
-	    State::#state{}) -> 
+	    State::#state{}) ->
 		   {stop, {error, Reason::term()}, NewState::#state{}}.
 
 error(_Socket,Error,State) ->
     ?debug("exo_http_serber: error = ~p\n", [Error]),
-    {stop, Error, State}.    
+    {stop, Error, State}.
 
 
 handle_request(Socket, R, State) ->
-    ?debug("exo_http_server: request = ~s\n", 
+    ?debug("exo_http_server: request = ~s\n",
 	 [[exo_http:format_request(R),?CRNL,
 	   exo_http:format_hdr(R#http_request.headers),
 	   ?CRNL]]),
@@ -197,11 +197,11 @@ handle_request(Socket, R, State) ->
 	Error ->
 	    {stop, Error, State}
     end.
-	    
-handle_body(Socket, Request, Body, 
+
+handle_body(Socket, Request, Body,
 	    State=#state {request_handler = RH}) when is_tuple(RH) ->
     {M, F, As} = request_handler(RH, Socket, Request, Body),
-    ?debug("exo_http_server: calling ~p with -BODY:\n~s\n-END-BODY\n", 
+    ?debug("exo_http_server: calling ~p with -BODY:\n~s\n-END-BODY\n",
 	   [RH, Body]),
     case apply(M, F, As) of
 	ok -> {ok, State};
@@ -220,7 +220,7 @@ handle_body(Socket, Request, Body, State) ->
 	    response(Socket, undefined, 200, "OK", "OK"),
 	    {ok, State};
        true ->
-	    response(Socket, undefined, 404, "Not Found", 
+	    response(Socket, undefined, 404, "Not Found",
 		     "Object not found"),
 	    {ok, State}
     end.
@@ -238,11 +238,11 @@ request_handler({Module, Function, XArgs}, Socket, Request, Body) ->
 %%
 %% @end
 %%-----------------------------------------------------------------------------
--spec response(Socket::#exo_socket{}, 
+-spec response(Socket::#exo_socket{},
 	      Connection::string() | undefined,
 	      Status::integer(),
 	      Phrase::string(),
-	      Status::string()) -> 
+	      Status::string()) ->
 				ok |
 				{error, Reason::term()}.
 
@@ -263,7 +263,7 @@ response(S, Connection, Status, Phrase, Body, Opts) ->
 		exo_http:format_hdr(H),
 		?CRNL,
 		Body],
-    ?debug("exo_http_server: response:\n~s\n", [Response]),
+    ?debug("exo_http_server: response:\n~s\n", [iolist_to_binary(Response)]),
     exo_socket:send(S, Response).
 
 content_length(B) when is_binary(B) ->
@@ -288,4 +288,3 @@ test() ->
 			     {keyfile, filename:join(Dir, "host.key")},
 			     {certfile, filename:join(Dir, "host.cert")}],
 			    ?MODULE, []).
-

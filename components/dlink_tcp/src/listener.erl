@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -63,7 +63,7 @@ terminate(_Reason, _State) ->
     ok.
 
 sock_opts() ->
-    [list, {active, once}, {packet, 0}].
+    [binary, {active, once}, {packet, 4}].
 
 new_connection(IP, Port, Sock, State) ->
     ?debug("listener:new_connection(): Peer IP:    ~p (ignored)", [IP]),
@@ -73,7 +73,7 @@ new_connection(IP, Port, Sock, State) ->
     %% IP and Port are garbage. We'll grab peername when we get our
     %% first data.
     %% Provide component spec as extra arg.
-    {ok, _P} = connection:setup(undefined, 0, Sock, 
-				dlink_tcp_rpc, 
+    {ok, _P} = connection:setup(undefined, 0, Sock,
+				dlink_tcp_rpc,
 				handle_socket, [gen_nb_server:get_cb_state(State)]),
     {ok, State}.

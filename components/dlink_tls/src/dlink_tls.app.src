@@ -7,8 +7,6 @@
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
-
-%% -*- erlang -*-
 {application, dlink_tls,
  [
   {description, ""},

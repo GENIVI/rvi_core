@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -20,13 +20,14 @@
 -include_lib("lager/include/log.hrl").
 -include_lib("rvi_common/include/rvi_common.hrl").
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 -export([start_json_server/0]).
--export([send_message/8,
+-export([send_message/9,
 	 receive_message/3]).
 
--record(st, { 
+-record(st, {
 	  %% Component specification
+	  queue = [],
 	  cs = #component_spec{}
 	  }).
 
@@ -42,26 +43,28 @@ start_json_server() ->
 
 
 
-send_message(CompSpec, 
-	     ServiceName, 
-	     Timeout, 
+send_message(CompSpec,
+	     TID,
+	     ServiceName,
+	     Timeout,
 	     ProtoOpts,
 	     DataLinkMod,
 	     DataLinkOpts,
-	     Parameters, 
+	     Parameters,
 	     Signature) ->
     rvi_common:request(protocol, ?MODULE, send_message,
-		       [ { service, ServiceName },
-			 { timeout, Timeout },
-			 { protocol_opts, ProtoOpts },
-			 { data_link_mod, DataLinkMod },
-			 { data_link_opts, DataLinkOpts },
-			 { parameters, Parameters },
-			 { signature, Signature }],
+		       [{ transaction_id, TID },
+			{ service, ServiceName },
+			{ timeout, Timeout },
+			{ protocol_opts, ProtoOpts },
+			{ data_link_mod, DataLinkMod },
+			{ data_link_opts, DataLinkOpts },
+			{ parameters, Parameters },
+			{ signature, Signature }],
 		       [ status ], CompSpec).
 
 receive_message(CompSpec, {IP, Port}, Data) ->
-    rvi_common:notification(protocol, ?MODULE, receive_message, 
+    rvi_common:notification(protocol, ?MODULE, receive_message,
 			    [ {data, Data },
                               {remote_ip, IP},
                               {remote_port, Port} ],
@@ -71,6 +74,7 @@ receive_message(CompSpec, {IP, Port}, Data) ->
 
 %% CAlled by local exo http server
 handle_rpc("send_message", Args) ->
+    {ok, TID} = rvi_common:get_json_element(["transaction_id"], Args),
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
     {ok, ProtoOpts} = rvi_common:get_json_element(["protocol_opts"], Args),
@@ -78,8 +82,9 @@ handle_rpc("send_message", Args) ->
     {ok, DataLinkOpts} = rvi_common:get_json_element(["data_link_opts"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
     {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
-    [ ok ] = gen_server:call(?SERVER, { rvi, send_message, 
-					[ServiceName,
+    [ ok ] = gen_server:call(?SERVER, { rvi, send_message,
+					[TID,
+					 ServiceName,
 					 Timeout,
 					 ProtoOpts,
 					 DataLinkMod,
@@ -87,7 +92,7 @@ handle_rpc("send_message", Args) ->
 					 Parameters,
 					 Signature]}),
     {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
-				 
+
 
 
 handle_rpc(Other, _Args) ->
@@ -107,14 +112,16 @@ handle_notification(Other, _Args) ->
     ok.
 
 
-handle_call({rvi, send_message, 
-	     [ServiceName,
+handle_call({rvi, send_message,
+	     [TID,
+	      ServiceName,
 	      Timeout,
 	      ProtoOpts,
 	      DataLinkMod,
 	      DataLinkOpts,
 	      Parameters,
 	      Signature]}, _From, St) ->
+    ?debug("    protocol:send(): transaction id:  ~p~n", [TID]),
     ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
     ?debug("    protocol:send(): opts:            ~p~n", [ProtoOpts]),
@@ -122,48 +129,57 @@ handle_call({rvi, send_message,
     ?debug("    protocol:send(): data_link_opts:  ~p~n", [DataLinkOpts]),
     ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
     ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
-    
-    Data = term_to_json({ struct, 
-			  [
-			   { "service", ServiceName },
-			   { "timeout", Timeout }, 
-			   { "parameters", Parameters },
-			   { "signature", Signature }
-			  ]
-			}),
+    Data = jsx:encode([
+		       { "tid", TID },
+		       { "service", ServiceName },
+		       { "timeout", Timeout },
+		       { "parameters", Parameters },
+		       { "signature", Signature }
+		      ]),
 
-    Res = DataLinkMod:send_data(St#st.cs, ?MODULE, ServiceName, DataLinkOpts, Data),
-
-    { reply, Res, St };
-
+    case use_frag(Parameters, DataLinkOpts) of
+	{true, Window} ->
+	    {Res, St1} =
+		chunk_message(Window, TID, ServiceName, DataLinkMod,
+			      DataLinkOpts, iolist_to_binary(Data), St),
+	    {reply, Res, St1};
+	false ->
+	    Res = DataLinkMod:send_data(
+		    St#st.cs, ?MODULE, ServiceName, DataLinkOpts, Data),
+	    {reply, Res, St}
+    end;
 
 handle_call(Other, _From, St) ->
     ?warning("proto_json_rpc:handle_call(~p): unknown", [ Other ]),
     { reply, [ invalid_command ], St}.
 
 %% Convert list-based data to binary.
-handle_cast({rvi, receive_message, [Payload, IP, Port]}, St) when is_binary(Payload)->
-    handle_cast({ rvi, receive_message, [ binary_to_list(Payload), IP, Port ] }, St);
+handle_cast({rvi, receive_message, [Payload, IP, Port]} = Msg, St) ->
+    ?debug("~p:handle_cast(~p)", [?MODULE, Msg]),
+    Elems = jsx:decode(Payload),
 
-handle_cast({rvi, receive_message, [Payload, IP, Port]}, St) ->
-    {ok, {struct, Elems}} = exo_json:decode_string(Payload),
+    case Elems of
+	[{<<"frg">>, _}|_] ->
+	    St1 = handle_frag(Elems, IP, Port, St),
+	    {noreply, St1};
+	_ ->
+	    [ ServiceName, Timeout, Parameters, Signature ] =
+		opts([<<"service">>, <<"timeout">>, <<"parameters">>, <<"signature">>],
+		     Elems, undefined),
 
-    [ ServiceName, Timeout, Parameters, Signature ] = 
-	opts(["service", "timeout", "parameters", "signature"], Elems, undefined),
+	    ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
+	    ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
+	    ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
+	    ?debug("    protocol:rcv(): remote IP/Port:  ~p~n", [{IP, Port}]),
 
-    ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
-    ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
-%%    ?debug("    protocol:rcv(): parameters:      ~p~n", [Parameters]),
-    ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
-    ?debug("    protocol:rcv(): remote IP/Port:  ~p~n", [{IP, Port}]),
-
-    service_edge_rpc:handle_remote_message(St#st.cs,
-                                           {IP, Port},
-					   ServiceName,
-					   Timeout,
-					   Parameters,
-					   Signature),
-    {noreply, St};
+	    service_edge_rpc:handle_remote_message(St#st.cs,
+						   {IP, Port},
+						   ServiceName,
+						   Timeout,
+						   Parameters,
+						   Signature),
+	    {noreply, St}
+    end;
 
 
 handle_cast(Other, St) ->
@@ -178,9 +194,6 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
-term_to_json(Term) ->
-    binary_to_list(iolist_to_binary(exo_json:encode(Term))).
-
 opt(K, L, Def) ->
     case lists:keyfind(K, 1, L) of
 	{_, V} -> V;
@@ -189,3 +202,44 @@ opt(K, L, Def) ->
 
 opts(Keys, Elems, Def) ->
     [ opt(K, Elems, Def) || K <- Keys].
+
+use_frag(Params, DLinkOpts) ->
+    case p_reliable(Params) of
+	undefined ->
+	    d_reliable(DLinkOpts);
+	Other ->
+	    Other
+    end.
+
+%% We use reliable send (i.e. fragmentation support) if:
+%% - rvi.max_msg_size is set in the Params (overrides static config)
+%% - rvi.reliable = true in the Params
+%% - max_msg_size is set for the data link
+%% - {reliable, true} defined for the data link
+%%
+%% If {reliable, true} and no max_message_size, we send a single packet
+%% as one fragment (marking it as first and last fragment) and use the
+%% ack mechanism to acknowledge successful delivery.
+%%
+p_reliable([{"rvi.max_msg_size", Sz}|_]) -> {true, Sz};
+p_reliable([{"rvi.reliable", true}|_])   -> {true, infinity};
+p_reliable([{"rvi.reliable", false}|_])  -> false;
+p_reliable([_|T]) -> p_reliable(T);
+p_reliable([])    -> undefined.
+
+d_reliable([{max_msg_size, Sz}|_]) -> {true, Sz};
+d_reliable([{reliable, true}|_])   -> {true, infinity};
+d_reliable([{reliable, false}|_])  -> false;
+d_reliable([_|T]) -> d_reliable(T);
+d_reliable([])    -> false.
+
+chunk_message(Window, TID, _ServiceName, _DLinkMod, _DLinkOpts, Data, St) ->
+    _Frag = first_frag(Window, TID, Data),
+
+    {ok, St}.
+
+handle_frag(_Elems, _IP, _Port, _St) ->
+    error(nyi).
+
+first_frag(_Window, _TID, _Data) ->
+    error(nyi).

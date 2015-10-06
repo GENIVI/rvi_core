@@ -62,7 +62,8 @@
 	 }).
 
 -record(st, {
-	  cs = #component_spec{}
+	  cs = #component_spec{},
+	  tid = 1
 	 }).
 
 
@@ -93,11 +94,11 @@ start_json_server() ->
 
 start_connection_manager() ->
     CompSpec = rvi_common:get_component_specification(),
-    {ok, BertOpts } = rvi_common:get_module_config(data_link,
-						   ?MODULE,
-						   ?SERVER_OPTS,
-						   [],
-						   CompSpec),
+    {ok, BertOpts} = rvi_common:get_module_config(data_link,
+						  ?MODULE,
+						  ?SERVER_OPTS,
+						  [],
+						  CompSpec),
     IP = proplists:get_value(ip, BertOpts, ?DEFAULT_TCP_ADDRESS),
     Port = proplists:get_value(port, BertOpts, ?DEFAULT_TCP_PORT),
 
@@ -125,8 +126,6 @@ start_connection_manager() ->
 								?PERSISTENT_CONNECTIONS,
 								[],
 								CompSpec),
-
-
     setup_persistent_connections_(PersistentConnections, CompSpec),
     ok.
 
@@ -328,12 +327,9 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
     ?info("dlink_tls:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
     ok.
 
-handle_socket(FromPid, PeerIP, PeerPort, data, Payload, [CompSpec]) ->
+handle_socket(FromPid, PeerIP, PeerPort, data, Elems, [CompSpec]) ->
 
-    ?debug("dlink_tls:data(): Payload ~p", [Payload ]),
-    {ok, {struct, Elems}} = exo_json:decode_string(Payload),
-
-    ?debug("dlink_tls:data(): Got ~p", [ Elems ]),
+    ?debug("dlink_tls:data(): Elems ~p", [Elems]),
 
     case opt(?DLINK_ARG_CMD, Elems, undefined) of
         ?DLINK_CMD_AUTHORIZE ->
@@ -521,29 +517,22 @@ handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
     { reply, [ Res ], St };
 
 
-handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, St) ->
-
+handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]},
+	    _From, #st{tid = Tid} = St) ->
     %% Resolve connection pid from service
     case get_connections_by_service(Service) of
 	[] ->
-	    { reply, [ no_route ], St};
+	    {reply, [no_route], St};
 
 	%% FIXME: What to do if we have multiple connections to the same service?
 	[ConnPid | _T] ->
- 	    Res = dlink_tls_conn:send(ConnPid,
- 				  term_to_json(
- 				    { struct,
- 				      [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
- 					{ ?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE },
- 					{ ?DLINK_ARG_MODULE, atom_to_list(ProtoMod) },
- 					{ ?DLINK_ARG_DATA, base64:encode_to_string(Data) }
- 				      ]})),
-
-	    { reply, [ Res ], St}
+ 	    Res = dlink_tls_conn:send(
+		    ConnPid, [{?DLINK_ARG_TRANSACTION_ID, Tid},
+			      {?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE},
+			      {?DLINK_ARG_MODULE, atom_to_list(ProtoMod)},
+			      {?DLINK_ARG_DATA, Data}]),
+	    {reply, [Res], St#st{tid = Tid + 1}}
     end;
-
-
-
 
 handle_call({setup_initial_ping, Address, Port, Pid}, _From, St) ->
     %% Create a timer to handle periodic pings.

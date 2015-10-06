@@ -20,12 +20,12 @@
 -export([parse/1, parse/2, format/1, format_path/1]).
 -export([parse_path/2]).
 
-%% returns a #url{} 
+%% returns a #url{}
 parse(Str) ->
     parse(Str, strict).
 
 parse(Str, Strict) ->
-    case Str of
+    case str(Str) of
 	"http://" ++ Rest ->
 	    parse_host(Strict, #url{scheme = http}, Rest, []);
 	"HTTP://" ++ Rest ->
@@ -42,10 +42,15 @@ parse(Str, Strict) ->
 	    parse_host(Strict, #url{scheme = http}, Str, [])
     end.
 
+str(S) when is_binary(S) ->
+    binary_to_list(S);
+str(S) when is_list(S) ->
+    S.
+
 parse_host(Strict, U, Str, Ack) ->
     case Str of
 	[] ->
-	    U#url{host = lists:reverse(Ack), 
+	    U#url{host = lists:reverse(Ack),
 		  path = "/"
 		 };
 	[$/|Tail] ->
@@ -83,7 +88,7 @@ parse_path(Strict, U, Str, Ack) ->
 	    parse_path(Strict, U, T, [H|Ack])
     end.
 
-		
+
 format(Url) when is_record(Url, url) ->
     if Url#url.scheme == undefined ->
 	    format_path(Url);

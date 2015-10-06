@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -41,9 +41,11 @@
 	 get_module_genserver_pid/3
 	]).
 -export([utc_timestamp/0]).
-
+-export([bin/1]).
 -export([start_json_rpc_server/3]).
--export([extract_json/2]).
+-export([extract_json/2,
+	 normalize_json/1,
+	 term_to_json/1]).
 -export([announce/1]).
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
@@ -85,7 +87,7 @@ status_values() ->
      {7, unauthorized}].
 
 get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
-    case get_json_element(["result", "status"], JSONBody) of 
+    case get_json_element(["result", "status"], JSONBody) of
 	{ok, Value} ->
 	    { json_rpc_status(Value), JSONBody };
 
@@ -103,7 +105,7 @@ get_request_result(ok)->
     { ok, ok, "{}"};
 
 get_request_result(Other)->
-    ?error("get_request_result(): Unhandled result: ~p", [Other]),    
+    ?error("get_request_result(): Unhandled result: ~p", [Other]),
     { error, format }.
 
 
@@ -121,30 +123,30 @@ json_argument([Arg | AT], [Spec | ST], Acc) ->
 json_argument(ArgList, SpecList) ->
     { struct, json_argument(ArgList, SpecList, []) }.
 
-request(Component, 
-	Module, 
-	Function, 
+request(Component,
+	Module,
+	Function,
 	InArgPropList,
 	OutArgSpec,
 	CompSpec) ->
 
     %% Split [ { network_address, "127.0.0.1:888" } , { timeout, 34 } ] to
-    %% [ "127.0.0.1:888", 34] [ network_address, timeout ] 
+    %% [ "127.0.0.1:888", 34] [ network_address, timeout ]
     InArg = [ Val || { _Key, Val } <- InArgPropList ],
     InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
     %% Figure out how we are to invoke this MFA.
     case get_module_type(Component, Module, CompSpec) of
 	%% We have a gen_server
 	{ ok, gen_server } ->
-	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),	
+	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),
 	    gen_server:call(Module, { rvi, Function, InArg});
 
 	%% We have a JSON-RPC server
 	{ ok,  json_rpc } ->
 	    URL = get_module_json_rpc_url(Component, Module, CompSpec),
-	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, URL]),	
+	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, URL]),
 	    JSONArg = json_argument(InArg, InArgSpec),
-	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),	
+	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),
 
 	    case get_request_result(
 		   send_json_request(URL, atom_to_list(Function),  JSONArg)
@@ -160,14 +162,14 @@ request(Component,
     end.
 
 
-notification(Component, 
-	     Module, 
-	     Function, 
+notification(Component,
+	     Module,
+	     Function,
 	     InArgPropList,
 	     CompSpec) ->
 
     %% Split [ { network_address, "127.0.0.1:888" } , { timeout, 34 } ] to
-    %% [ "127.0.0.1:888", 34] [ network_address, timeout ] 
+    %% [ "127.0.0.1:888", 34] [ network_address, timeout ]
     InArg = [ Val || { _Key, Val } <- InArgPropList ],
     InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
     %% Figure out how we are to invoke this MFA.
@@ -181,17 +183,17 @@ notification(Component,
     case get_module_type(Component, Module, CompSpec) of
 	%% We have a gen_server
 	{ ok, gen_server } ->
-	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),	
+	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),
 	    gen_server:cast(Module, { rvi, Function, InArg}),
 	    ok;
 
 	%% We have a JSON-RPC server
 	{ ok,  json_rpc } ->
 	    URL = get_module_json_rpc_url(Component, Module, CompSpec),
-	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, URL]),	
+	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, URL]),
 	    JSONArg = json_argument(InArg, InArgSpec),
-	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),	
-	    send_json_notification(URL, atom_to_list(Function),  JSONArg),
+	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),
+	    send_json_notification(URL, atom_to_binary(Function, latin1),  JSONArg),
 	    ok;
 	{ error, _ } = Error ->
 	    ?warning("get_module_type(~p,~p,~p) -> ~p",
@@ -202,17 +204,14 @@ notification(Component,
 
 send_json_request(Url,Method, Args) ->
 
-    Req = binary_to_list(
-	    iolist_to_binary(
-	      exo_json:encode({struct, [{"jsonrpc", "2.0"},
-					{"id", 1},
-					{"method",  Method},
-					{"params", Args}
-				       ]
-			      }))),
+    Req = jsx_encode([{<<"jsonrpc">>, <<"2.0">>},
+		      {<<"id">>, 1},
+		      {<<"method">>,  Method},
+		      {<<"params">>, normalize_json(Args)}
+		     ]),
 
     Hdrs = [{'Content-Type', "application/json"} ],
-    %%?debug("rvi_common:send_json_request() Sending:      ~p", [Req]),
+    ?debug("rvi_common:send_json_request() Sending:      ~p", [Req]),
     try
         exo_http:wpost(Url, {1,1}, Hdrs, Req, 1000)
     catch
@@ -226,16 +225,15 @@ send_json_request(Url,Method, Args) ->
             {error, internal}
     end.
 
-	
+jsx_encode(J) ->
+    jsx:encode(normalize_json(J)).
+
 send_json_notification(Url,Method, Args) ->
 
-    Req = binary_to_list(
-	    iolist_to_binary(
-	      exo_json:encode({struct, [{"jsonrpc", "2.0"},
-					{"method",  Method},
-					{"params", Args}
-				       ]
-			      }))),
+    Req = jsx_encode([{<<"jsonrpc">>, <<"2.0">>},
+		      {<<"method">>,  Method},
+		      {<<"params">>, normalize_json(Args)}
+		     ]),
 
     Hdrs = [{'Content-Type', "application/json"} ],
     %%?debug("rvi_common:send_json_notification() Sending:      ~p", [Req]),
@@ -251,7 +249,22 @@ send_json_notification(Url,Method, Args) ->
             ?error("rvi_common:send_json_notification() CRASHED: Stack:    ~p", [ erlang:get_stacktrace()]),
             {error, internal}
     end.
-	
+
+term_to_json(Term) ->
+    jsx:encode(normalize_json(Term)).
+
+normalize_json(J) ->
+    {ok, JSX} = msgpack:unpack(
+		  msgpack:pack(unstruct(J), [jsx,
+					     {allow_atom,pack}]), [jsx]),
+    JSX.
+
+unstruct({struct, Elems}) -> unstruct(Elems);
+unstruct({array, Elems})  -> unstruct(Elems);
+unstruct([_|_] = Elems)   -> [unstruct(X) || X <- Elems];
+unstruct(X) ->
+    X.
+
 
 %% If Path is just a single element, convert to list and try again.
 get_json_element(ElemPath, JSON) when is_atom(ElemPath) ->
@@ -263,12 +276,14 @@ get_json_element(ElemPath, JSON) when is_binary(JSON) ->
 get_json_element(ElemPath, JSON) when is_tuple(JSON) ->
     get_json_element_(ElemPath, JSON);
 
+get_json_element(ElemPath, [T|_] = JSON) when is_tuple(T) ->
+    get_json_element_(ElemPath, JSON);
 get_json_element(ElemPath, JSON) when is_list(JSON) ->
     case  exo_json:decode_string(JSON) of
 	{ok,  Data } ->
 	    get_json_element_(ElemPath, Data);
 
-	Err -> 
+	Err ->
 	    Err
     end;
 
@@ -290,17 +305,20 @@ get_json_element_([], JSON) ->
     {ok, JSON};
 
 
-%% All proplist keys in JSON are strings. 
+%% All proplist keys in JSON are strings.
 %% Convert atomically provided path elements to strings
 get_json_element_([Elem | T], JSON ) when is_atom(Elem) ->
     get_json_element_([atom_to_list(Elem) | T], JSON);
 
-get_json_element_([Elem | T], {Type, JSON} ) when Type==array; Type==struct ->
+get_json_element_(Path, {Type, JSON}) when Type==array;
+					   Type==struct ->
+    get_json_element_(Path, JSON);
+get_json_element_([Elem | T], JSON) ->
     case Elem of
 	{'OR', Alts} ->
 	    get_json_element_(T, get_json_element_alt(Alts, JSON));
 	_ ->
-	    get_json_element_(T, proplists:get_value(Elem, JSON, undefined))
+	    get_json_element_(T, get_value(Elem, JSON, undefined))
     end;
 
 get_json_element_(Path,JSON) ->
@@ -309,12 +327,36 @@ get_json_element_(Path,JSON) ->
     { error, undefined }.
 
 get_json_element_alt(Alts, [{K, V}|T]) ->
-    case lists:member(K, Alts) of
+    case member(K, Alts) of
 	true  -> V;
 	false -> get_json_element_alt(Alts, T)
     end;
 get_json_element_alt(_, []) ->
     undefined.
+
+member(K, [H|T]) ->
+    case comp(K, H) of
+	true -> true;
+	false -> member(K, T)
+    end;
+member(_, []) ->
+    false.
+
+get_value(K, [{K1,V}|T], Def) ->
+    case comp(K, K1) of
+	true -> V;
+	false -> get_value(K, T, Def)
+    end;
+get_value(_, [], Def) ->
+    Def.
+
+comp(A, A) -> true;
+comp(A, B) when is_list(A), is_binary(B) ->
+    list_to_binary(A) =:= B;
+comp(A, B) when is_binary(A), is_list(B) ->
+    A =:= list_to_binary(B);
+comp(_, _) ->
+    false.
 
 json_reply(ArgList, JSON) ->
     retrieve_json_reply_elements(ArgList, JSON, []).
@@ -324,11 +366,11 @@ retrieve_json_reply_elements([], _, Acc) ->
 
 retrieve_json_reply_elements([Elem | T], JSON, Acc) when is_atom(Elem) ->
     retrieve_json_reply_elements([[Elem] | T], JSON, Acc);
-    
+
 
 retrieve_json_reply_elements([Elem | T], JSON, Acc) when is_list(Elem) ->
     %% prefix with result since that is where all reply elements are stored.
-    case get_json_element([ result | Elem ], JSON) of 
+    case get_json_element([ result | Elem ], JSON) of
 	{ ok, Value } ->
 	    retrieve_json_reply_elements(T, JSON, [ Value | Acc ]);
 	{ error, undefined } ->
@@ -344,58 +386,69 @@ sanitize_service_string(Service) when is_list(Service) ->
     %% rpc:/jaguarlandrover.com/1234/hvac",
     %% If so, drop message type.
     case string:tokens(Service, ":") of
-	[ Res ] -> 
+	[ Res ] ->
 	    Res;
 
 	[_Type, Res ] ->
 	    Res
     end.
 
-
+bin(L) ->
+    iolist_to_binary(L).
 
 local_service_to_string(Type, Svc) ->
-    Type ++ ":" ++ local_service_to_string(Svc).
+    bin([Type, ":", local_service_to_string(Svc)]).
 
 
 %% Make sure we don't get two slashes between the prefix and the service name
+local_service_to_string(<<"/", Service/binary>>) ->
+    bin([local_service_prefix(), Service]);
 local_service_to_string([ $/ | Service]) ->
-    local_service_prefix() ++ Service;
+    bin([local_service_prefix(), Service]);
 
 %% Make sure we don't get two slashes
 local_service_to_string(Svc) ->
-    local_service_prefix() ++ Svc.
+    bin([local_service_prefix(), Svc]).
 
 remote_service_to_string(Service) ->
     Service.
 
 remote_service_to_string(Type, Service) ->
-    Type ++ ":" ++ Service.
+    bin([Type, ":", Service]).
 
 local_service_prefix() ->
-    Prefix = 
+    Prefix =
 	case application:get_env(rvi_core, ?NODE_SERVICE_PREFIX) of
-	    {ok, P} when is_atom(P) -> atom_to_list(P);
-	    {ok, P} when is_list(P) -> P;
-	    undefined -> 
-		?debug("WARNING: Please set application rvi environment ~p", 
+	    {ok, P} when is_atom(P) -> atom_to_binary(P, latin1);
+	    {ok, P} when is_list(P) -> iolist_to_binary(P);
+	    {ok, P} when is_binary(P) -> P;
+	    undefined ->
+		?debug("WARNING: Please set application rvi environment ~p",
 			  [?NODE_SERVICE_PREFIX]),
 		error({missing_env, ?NODE_SERVICE_PREFIX})
 	end,
 
     %% Tag on a trailing slash if not there already.
-    case lists:last(Prefix) of
-	$/ -> Prefix;
+    case last(Prefix) of
+	$/ -> bin(Prefix);
 
-	_ -> Prefix ++ "/"
+	_ -> bin([Prefix, "/"])
     end.
 
+last(L) when is_list(L) ->
+    lists:last(L);
+last(B) when is_binary(B) ->
+    Sz = byte_size(B)-1,
+    <<_:Sz/binary, Last>> = B,
+    Last.
 
 node_address_string() ->
     case application:get_env(rvi_core, ?NODE_ADDRESS) of
-	{ok, P} when is_atom(P) -> atom_to_list(P);
-	{ok, P} when is_list(P) -> P;
-	undefined -> 
-	    ?warning("WARNING: Please set application rvi environment ~p", 
+	{ok, P} when is_atom(P) -> atom_to_binary(P, latin1);
+	{ok, P} when is_list(P) -> list_to_binary(P);
+	{ok, P} when is_binary(P) -> P;
+	undefined ->
+	    ?warning("WARNING: Please set application rvi environment ~p",
 		      [?NODE_ADDRESS]),
 	    error({missing_env, ?NODE_ADDRESS})
     end.
@@ -404,8 +457,8 @@ node_address_tuple() ->
     case node_address_string() of
 	{missing_env, _} = Err -> Err;
 	Addr ->
-	    [ Address, Port ] = string:tokens(Addr, ":"),	
-	    { Address, list_to_integer(Port) }
+	    [ Address, Port ] = re:split(Addr,":",[{return,binary}]),
+	    { Address, binary_to_integer(Port) }
     end.
 
 node_msisdn() ->
@@ -420,12 +473,12 @@ node_msisdn() ->
 get_component_config_(Component, Default, CompList) ->
     case proplists:get_value(Component, CompList, undefined) of
 	undefined ->
-	    %% ?debug("get_component_config(~p): Default: ~p", 
+	    %% ?debug("get_component_config(~p): Default: ~p",
 	    %% 	   [Component, Default]),
 	     Default;
-	
+
 	ModList ->
-	    %% ?debug("get_component_config(~p) -> ~p", 
+	    %% ?debug("get_component_config(~p) -> ~p",
 	    %% 	   [Component, ModList]),
 	    ModList
     end.
@@ -437,8 +490,8 @@ get_component_specification() ->
 
 get_component_specification_() ->
     case application:get_env(rvi_core, components, undefined) of
-	undefined -> 
-	    #component_spec { 
+	undefined ->
+	    #component_spec {
 	       service_edge = ?COMP_SPEC_SERVICE_EDGE_DEFAULT,
 	       schedule = ?COMP_SPEC_SCHEDULE_DEFAULT,
 	       service_discovery = ?COMP_SPEC_SERVICE_DISCOVERY_DEFAULT,
@@ -448,23 +501,23 @@ get_component_specification_() ->
 	      };
 
 	CompList ->
-	    #component_spec { 
-	       service_edge = get_component_config_(service_edge, 
+	    #component_spec {
+	       service_edge = get_component_config_(service_edge,
 						    ?COMP_SPEC_SERVICE_EDGE_DEFAULT,
-						    CompList), 
+						    CompList),
 	       schedule = get_component_config_(schedule,
 						 ?COMP_SPEC_SCHEDULE_DEFAULT,
 						 CompList),
-	       service_discovery = get_component_config_(service_discovery, 
+	       service_discovery = get_component_config_(service_discovery,
 							 ?COMP_SPEC_SERVICE_DISCOVERY_DEFAULT,
 							 CompList),
-	       authorize = get_component_config_(authorize, 
+	       authorize = get_component_config_(authorize,
 						 ?COMP_SPEC_AUTHORIZE_DEFAULT,
 						 CompList),
-	       data_link = get_component_config_(data_link, 
+	       data_link = get_component_config_(data_link,
 						 ?COMP_SPEC_DATA_LINK_DEFAULT,
 						 CompList),
-	       protocol =  get_component_config_(protocol, 
+	       protocol =  get_component_config_(protocol,
 						 ?COMP_SPEC_PROTOCOL_DEFAULT,
 						 CompList)
 	      }
@@ -491,17 +544,17 @@ get_component_modules(data_link, CompSpec) ->
 
 get_component_modules(protocol, CompSpec) ->
     CompSpec#component_spec.protocol;
-    
+
 get_component_modules(_, _) ->
     undefined.
 
-	
+
 %% Get the spec for a specific module (protocol_bert_rpc) within
 %% a component (protocol).
 get_module_specification(Component, Module, CompSpec) ->
     case get_component_modules(Component, CompSpec) of
 	undefined ->
-	    ?debug("get_module_specification(): Missing: rvi_core:component: ~p: ~p", 
+	    ?debug("get_module_specification(): Missing: rvi_core:component: ~p: ~p",
 		   [Component, CompSpec]),
 	    undefined;
 
@@ -512,13 +565,13 @@ get_module_specification(Component, Module, CompSpec) ->
 			   "rvi_core:component:~p:~p:{...}: ~p", [Component, Module, Modules]),
 		    {error, {not_found, Module}};
 
-		{ Module, Type, ModConf } -> 
+		{ Module, Type, ModConf } ->
 		    %% ?debug("get_module_specification(): ~p:~p -> ~p ",
 		    %% 	   [Component, Module, { Module, Type, ModConf}]),
 		    {ok, Module, Type, ModConf };
 
 		IllegalFormat ->
-		    ?warning("get_module_specification(): Illegal format: ~p: ~p", 
+		    ?warning("get_module_specification(): Illegal format: ~p: ~p",
 			     [Module, IllegalFormat]),
 		    {error, {illegal_format,{ Module, IllegalFormat } } }
 	    end
@@ -532,20 +585,20 @@ get_module_config(Component, Module, Key, CompSpec) ->
 	    case proplists:get_value(Key, ModConf, undefined ) of
 		undefined ->
 		    ?debug("get_module_config(): Missing component spec: "
-			   "rvi_core:component:~p:~p:~p{...}: ~p", 
+			   "rvi_core:component:~p:~p:~p{...}: ~p",
 			   [Component, Module, Key, ModConf]),
 		    {error, {not_found, Component, Module, Key}};
 
 
-		Config -> 
+		Config ->
 		    ?debug("get_module_config(): ~p:~p:~p -> ~p: ",
 			   [Component, Module, Key, Config]),
 		    {ok, Config }
 	    end;
-	Err -> 
+	Err ->
 	    ?debug("get_module_config(): ~p:~p:~p: Failed: ~p ",
 		   [Component, Module, Key, Err]),
-	    
+
 	    Err
     end.
 
@@ -572,44 +625,44 @@ get_module_type(Component, Module, CompSpec) ->
 get_module_json_rpc_address(Component, Module, CompSpec) ->
     %% Dig out the JSON RPC address
     case get_module_config(Component,
-			   Module, 
+			   Module,
 			   json_rpc_address,
-			   undefined, 
+			   undefined,
 			   CompSpec) of
 	{ok, undefined } ->
 	    ?debug("get_module_json_rpc_address(): Missing component spec: "
 		   "rvi_core:component:~p:~p:json_rpc_address, {...}", [Component, Module]),
 	    {error, {not_found, Component, Module, json_rpc_address}};
 
-	{ok, { IP, Port }} -> 
-	    ?debug("get_module_json_rpc_address(~p, ~p) -> ~p:~p", 
+	{ok, { IP, Port }} ->
+	    ?debug("get_module_json_rpc_address(~p, ~p) -> ~p:~p",
 		   [ Component, Module, IP, Port]),
-	    {ok,  IP, Port };
+	    {ok,  bin(IP), Port };
 
-	{ok, Port } -> 
-	    ?debug("get_module_json_rpc_address(~p, ~p) -> 127.0.0.1:~p", 
+	{ok, Port } ->
+	    ?debug("get_module_json_rpc_address(~p, ~p) -> 127.0.0.1:~p",
 		   [ Component, Module, Port]),
-	    {ok,   "127.0.0.1", Port}
+	    {ok,   <<"127.0.0.1">>, Port}
     end.
 
 
 get_module_json_rpc_url(Component, Module, CompSpec) ->
-    case get_module_json_rpc_address(Component, Module, CompSpec) of 
+    case get_module_json_rpc_address(Component, Module, CompSpec) of
 	{ ok, IP, Port } when is_integer(Port)->
-	    Res = "http://" ++ IP ++ ":" ++ integer_to_list(Port),
+	    Res = bin(["http://", IP, ":", integer_to_binary(Port)]),
 	    ?debug("get_module_json_rpc_url(~p, ~p) ->~p", [ Component, Module, Res ]),
 	    Res;
 
 
 	{ ok, IP, Port } when is_list(Port)->
-	    Res = "http://" ++ IP ++ ":" ++ Port,
+	    Res = bin(["http://", IP, ":", Port]),
 	    ?debug("get_module_json_rpc_url(~p, ~p) ->~p", [ Component, Module, Res ]),
 	    Res;
-	Err -> 
+	Err ->
 	    ?debug("get_module_json_rpc_url(~p, ~p) Failed: ~p", [ Component, Module, Err ]),
 	    Err
     end.
-	  
+
 
 
 get_module_genserver_pid(Component, Module, CompSpec) ->
@@ -630,18 +683,18 @@ get_module_genserver_pid(Component, Module, CompSpec) ->
 
 
 start_json_rpc_server(Component, Module, Supervisor) ->
-    Addr = get_module_json_rpc_address(Component, 
+    Addr = get_module_json_rpc_address(Component,
 				       Module,
 				       get_component_specification()),
 
-    case Addr of 
+    case Addr of
 	{ ok, IP, Port } ->
 	    ExoHttpOpts = [ { ip, IP }, { port, Port } ],
 
-	    exoport_exo_http:instance(Supervisor, 
+	    exoport_exo_http:instance(Supervisor,
 				      Module,
 				      ExoHttpOpts);
-	Err -> 
+	Err ->
 	    ?info("rvi_common:start_json_rpc_server(~p:~p): "
 		  "No JSON-RPC address setup. skip",
 		  [ Component, Module ]),
@@ -660,27 +713,27 @@ seconds_jan_1970() ->
 
 
 
-count_brackets([], 
-	       #pst { 
-		  buffer = [], 
+count_brackets([],
+	       #pst {
+		  buffer = [],
 		  balance = start } = PSt)  ->
     { incomplete, PSt#pst {}};
 
-count_brackets([], 
-	       #pst { 
-		  buffer = Buffer, 
+count_brackets([],
+	       #pst {
+		  buffer = Buffer,
 		  balance = start } = PSt)  ->
-    count_brackets(Buffer, 
-		   PSt#pst { 
-		     buffer = [], 
+    count_brackets(Buffer,
+		   PSt#pst {
+		     buffer = [],
 		     balance = start } );
-count_brackets([${ | Rem], 
-	       #pst { 
-		  buffer = Buffer, 
+count_brackets([${ | Rem],
+	       #pst {
+		  buffer = Buffer,
 		  balance = start } = PSt)  ->
-    count_brackets(Rem, 
-		   PSt#pst{ 
-		     buffer = [ ${ | Buffer ], 
+    count_brackets(Rem,
+		   PSt#pst{
+		     buffer = [ ${ | Buffer ],
 		     balance = 1});
 
 %% Drop any initial characters prior to opening bracket
@@ -690,16 +743,16 @@ count_brackets([_ | Rem],
 
 %% If balance is back to zero, we have completed a JSON
 %% element.
-count_brackets(Rem, 
-	       #pst { 
-		  buffer = Buffer, 
+count_brackets(Rem,
+	       #pst {
+		  buffer = Buffer,
 		  balance = 0 } = PSt) ->
 
-    { complete, lists:reverse(Buffer), 
+    { complete, lists:reverse(Buffer),
       PSt#pst {
 	buffer = Rem,
 	balance = start
-       } 
+       }
     };
 
 %% If we still have balance, but no more input
@@ -712,48 +765,48 @@ count_brackets([], PSt) ->
 %% Flip our in-string state
 count_brackets([$" | Rem],
 	       #pst {
-		  buffer = Buffer, 
+		  buffer = Buffer,
 		  in_string = InString,
 		  escaped = false} = PSt) ->
 
-    count_brackets(Rem, PSt#pst { 
+    count_brackets(Rem, PSt#pst {
 			  buffer = [ $" | Buffer ],
 			  in_string = not InString });
- 
+
 
 %% We have an escape character, and we are in a string. Turn on our escape state
 count_brackets([$\\ | Rem],
-	       #pst { 
+	       #pst {
 		  buffer = Buffer,
 		  in_string = true,
 		  escaped = false } = PSt) ->
 
-    count_brackets(Rem, PSt#pst { 
+    count_brackets(Rem, PSt#pst {
 			  buffer = [ $\\ | Buffer ],
 			  escaped = true});
- 
+
 %% We have an opening bracket and we are not in a string
-count_brackets([${ | Rem], 
-	       #pst { 
-		  buffer = Buffer, 
+count_brackets([${ | Rem],
+	       #pst {
+		  buffer = Buffer,
 		  balance = Balance,
 		  in_string = false } = PSt) ->
 
     count_brackets(Rem,
-		   PSt#pst { 
-		     buffer = [ ${ | Buffer ], 
+		   PSt#pst {
+		     buffer = [ ${ | Buffer ],
 		     balance = Balance + 1});
 
 %% We have an closing bracket and we are not in a string
-count_brackets([$} | Rem], 
-	       #pst { 
-		  buffer = Buffer, 
+count_brackets([$} | Rem],
+	       #pst {
+		  buffer = Buffer,
 		  balance = Balance,
 		  in_string = false } = PSt) ->
 
     count_brackets(Rem,
-		   PSt#pst { 
-		     buffer = [ $} | Buffer ], 
+		   PSt#pst {
+		     buffer = [ $} | Buffer ],
 		     balance = Balance - 1});
 
 %% We have just regular data to feed over.
@@ -761,11 +814,11 @@ count_brackets([$} | Rem],
 count_brackets([C | Rem],
 	       #pst { buffer = Buffer } = PSt) ->
 
-    count_brackets(Rem, PSt#pst { 
+    count_brackets(Rem, PSt#pst {
 			  buffer = [ C | Buffer ],
 			  escaped = false
 			 } ).
-    
+
 extract_json(Buf, PST, Acc) ->
     case count_brackets(Buf, PST) of
 	{ complete, Processed, NPST} ->

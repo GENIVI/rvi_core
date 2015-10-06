@@ -38,16 +38,18 @@
 
 
 -define(SERVER, ?MODULE).
+-define(PACKET_MOD, dlink_data_msgpack).
 
 -record(st, {
 	  ip = {0,0,0,0},
 	  port = 0,
 	  sock = undefined,
 	  mode = tcp :: tcp | tls,
+          packet_mod = ?PACKET_MOD,
+          packet_st = [],
 	  mod = undefined,
 	  func = undefined,
-	  args = undefined,
-	  pst = undefined %%  Payload state
+	  args = undefined
 	 }).
 
 %%%===================================================================
@@ -56,7 +58,11 @@
 %% MFA is to deliver data received on the socket.
 
 setup(IP, Port, Sock, Mod, Fun, Arg) ->
-    case gen_server:start_link(?MODULE, {IP, Port, Sock, Mod, Fun, Arg},[]) of
+    setup(IP, Port, Sock, Mod, Fun, Arg, []).
+
+setup(IP, Port, Sock, Mod, Fun, Arg, Opts) ->
+    Params = {IP, Port, Sock, Mod, Fun, Arg, Opts},
+    case gen_server:start_link(?MODULE, Params ,[]) of
 	{ ok, GenSrvPid } = Res ->
 	    gen_tcp:controlling_process(Sock, GenSrvPid),
 	    gen_server:cast(GenSrvPid, {activate_socket, Sock}),
@@ -126,7 +132,7 @@ is_connection_up(IP, Port) ->
 %% MFA used to handle socket closed, socket error and received data
 %% When data is received, a separate process is spawned to handle
 %% the MFA invocation.
-init({IP, Port, Sock, Mod, Fun, Arg}) ->
+init({IP, Port, Sock, Mod, Fun, Arg, Opts}) ->
     case IP of
 	undefined -> ok;
 	_ -> dlink_tls_connmgr:add_connection(IP, Port, self())
@@ -139,14 +145,17 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
     ?debug("connection:init(): Function: ~p", [Fun]),
     ?debug("connection:init(): Arg:      ~p", [Arg]),
     %% Grab socket control
+    PktMod = opt(packet_mod, Opts, ?PACKET_MOD),
+    PktSt = PktMod:init(Opts),
     {ok, #st{
 	    ip = IP,
 	    port = Port,
 	    sock = Sock,
 	    mod = Mod,
+            packet_mod = PktMod,
+            packet_st = PktSt,
 	    func = Fun,
-	    args = Arg,
-	    pst = undefined
+	    args = Arg
 	   }}.
 
 
@@ -201,14 +210,15 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({send, Data},  St) ->
+handle_cast({send, Data},  #st{packet_mod = PMod, packet_st = PSt} = St) ->
     ?debug("~p:handle_call(send): Sending: ~p",
 	   [ ?MODULE, Data]),
+    {ok, Encoded, PSt1} = PMod:encode(Data, PSt),
     case St#st.mode of
-	tcp -> gen_tcp:send(St#st.sock, Data);
-	tls -> ssl:send(St#st.sock, Data)
+	tcp -> gen_tcp:send(St#st.sock, Encoded);
+	tls -> ssl:send(St#st.sock, Encoded)
     end,
-    {noreply, St};
+    {noreply, St#st{packet_st = PSt1}};
 
 handle_cast({activate_socket, Sock}, State) ->
     Res = inet:setopts(Sock, [{active, once}]),
@@ -242,21 +252,24 @@ handle_info({tcp, Sock, Data},
 handle_info({ssl, Sock, Data},
 	    #st{ip = IP, port = Port,
 		mod = Mod, func = Fun, args = Arg,
-		pst = PST} = State) ->
+                packet_mod = PMod, packet_st = PSt} = State) ->
     ?debug("handle_info(data): ~p", [Data]),
-    case rvi_common:extract_json(Data, PST) of
-	{[], NPST} ->
-	    ?debug("data incomplete", []),
-	    ssl:setopts(Sock, [{active, once}]),
-	    {noreply, State#st{pst = NPST}};
-	{JSONElements, NPST} ->
-	    ?debug("data complete; Processed: ~p", [JSONElements]),
-	    FromPid = self(),
-	    spawn(fun() -> [Mod:Fun(FromPid, IP, Port, data, SingleElem, Arg)
-			    || SingleElem <- JSONElements]
-		  end),
-	    ssl:setopts(Sock, [{active, once}]),
-	    {noreply, State#st{pst = NPST}}
+    case PMod:decode(Data, PSt) of
+        {ok, Elements, PSt1} ->
+	    ?debug("~p:handle_info(data complete): Processed: ~p",
+                   [?MODULE, Elements]),
+            FromPid = self(),
+            spawn(fun() -> [Mod:Fun(FromPid, IP, Port,
+                                    data, Elem, Arg) || Elem <- Elements]
+                  end),
+            ssl:setopts(Sock, [{active, once}]),
+            {noreply, State#st{packet_st = PSt1}};
+        {error, Reason} ->
+            {stop, Reason, State};
+        {more, PSt1} ->
+	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
+            ssl:setopts(Sock, [{active, once}]),
+            {noreply, State#st{packet_st = PSt1}}
     end;
 handle_info({tcp, Sock, Data},
 	    #st { ip = IP,
@@ -264,27 +277,28 @@ handle_info({tcp, Sock, Data},
 		  mod = Mod,
 		  func = Fun,
 		  args = Arg,
-		  pst = PST} = State) ->
+                  packet_mod = PMod,
+                  packet_st = PSt} = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
 
-    case rvi_common:extract_json(Data, PST) of
-	{ [], NPST } ->
+    case PMod:decode(Data, PSt) of
+        {ok, Elements, PSt1} ->
+	    ?debug("~p:handle_info(data complete): Processed: ~p",
+                   [?MODULE, Elements]),
+            FromPid = self(),
+            spawn(fun() -> [Mod:Fun(FromPid, IP, Port,
+                                    data, Elem, Arg) || Elem <- Elements]
+                  end),
+            inet:setopts(Sock, [{active, once}]),
+            {noreply, State#st{packet_st = PSt1}};
+        {error, Reason} ->
+            {stop, Reason, State};
+        {more, PSt1} ->
 	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
-	    inet:setopts(Sock, [{active, once}]),
-	    {noreply, State#st { pst = NPST} };
-
-	{ JSONElements, NPST } ->
-	    ?debug("~p:handle_info(data complete): Processed: ~p", [ ?MODULE, JSONElements]),
-	    FromPid = self(),
-	    spawn(fun() -> [ Mod:Fun(FromPid, IP, Port,
-				     data, SingleElem, Arg) || SingleElem <- JSONElements ]
-		  end),
-	    inet:setopts(Sock, [ { active, once } ]),
-	    {noreply, State#st { pst = NPST} }
+            inet:setopts(Sock, [{active, once}]),
+            {noreply, State#st{packet_st = PSt1}}
     end;
-
-
 
 handle_info({tcp_closed, Sock},
 	    #st { ip = IP,
@@ -360,3 +374,12 @@ do_upgrade(Sock, client) ->
     ssl:connect(Sock, tls_opts(client));
 do_upgrade(Sock, server) ->
     ssl:ssl_accept(Sock, tls_opts(server)).
+
+
+opt(K, Opts, Def) ->
+    case lists:keyfind(K, 1, Opts) of
+        {_, V} ->
+            V;
+        false ->
+            Def
+    end.

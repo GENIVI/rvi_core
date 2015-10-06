@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -33,7 +33,7 @@ start_link() ->
 
 init([]) ->
     {ok, { {one_for_one, 5, 10},
-	   [ 
-%%	    ?CHILD(service_edge_can, worker),
+	   [
+	    ?CHILD(rvi_log, worker),
+	    ?CHILD(rvi_frag, worker)
 	   ]} }.
-

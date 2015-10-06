@@ -48,13 +48,14 @@
 -define(KEYS,  authorize_keys).
 
 public_key_to_json(#'RSAPublicKey'{modulus = N, publicExponent = E}) ->
-    {struct, [{"kty", "RSA"},
-	      {"alg", "RS256"},
-	      {"use", "sig"},
-	      {"kid", "1"},
-	      {"e", base64url:encode(binary:encode_unsigned(E))},
-	      {"n", base64url:encode(binary:encode_unsigned(N))}
-	     ]}.
+    [
+     {<<"kty">>, <<"RSA">>},
+     {<<"alg">>, <<"RS256">>},
+     {<<"use">>, <<"sig">>},
+     {<<"kid">>, <<"1">>},
+     {<<"e">>, base64url:encode(binary:encode_unsigned(E))},
+     {<<"n">>, base64url:encode(binary:encode_unsigned(N))}
+    ].
 
 self_signed_public_key() ->
     Key = filename:join([code:priv_dir(rvi), "keys",
@@ -64,9 +65,9 @@ self_signed_public_key() ->
     signed_public_key(MyPub, Priv).
 
 signed_public_key(MyPub, Priv) ->
-    JSON = {struct, [
-		     {"keys", {array, [public_key_to_json(MyPub)]}}
-		    ]},
+    JSON = [
+	    {<<"keys">>, [public_key_to_json(MyPub)]}
+	   ],
     authorize_sig:encode_jwt(JSON, Priv).
 
 json_to_public_key(JSON) ->
@@ -496,6 +497,9 @@ save_key(K, Conn) ->
     end.
 
 keys_by_conn(Conn) ->
+    ?debug("keys_by_conn(~p); all keys: ~p",
+	   [Conn, ets:select(?KEYS, [{ #key{id = '$1', _='_'},
+				       [], ['$1'] }])]),
     ets:select(?KEYS, [{ #key{id = {Conn,'$1'},
 			      key = '$2', _='_'}, [], [{{'$1', '$2'}}] }]).
 

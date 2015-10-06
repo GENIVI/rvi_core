@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -35,7 +35,7 @@
 -export([terminate_connection/2]).
 
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 
 -record(st, {
 	  ip = {0,0,0,0},
@@ -71,8 +71,8 @@ send(IP, Port, Data) ->
 	{ok, Pid} ->
 	    gen_server:cast(Pid, {send, Data});
 
-	_Err -> 
-	    ?info("connection:send(): Connection ~p:~p not found for data: ~p", 
+	_Err ->
+	    ?info("connection:send(): Connection ~p:~p not found for data: ~p",
 		  [ IP, Port, Data]),
 	    not_found
 
@@ -98,7 +98,7 @@ is_connection_up(IP, Port) ->
 	{ok, Pid} ->
 	    is_connection_up(Pid);
 
-	_Err -> 
+	_Err ->
 	    false
     end.
 
@@ -121,7 +121,7 @@ is_connection_up(IP, Port) ->
 %% When data is received, a separate process is spawned to handle
 %% the MFA invocation.
 init({IP, Port, Sock, Mod, Fun, Arg}) ->
-    case IP of 
+    case IP of
 	undefined -> ok;
 	_ -> connection_manager:add_connection(IP, Port, self())
     end,
@@ -161,7 +161,7 @@ init({IP, Port, Sock, Mod, Fun, Arg}) ->
 
 
 handle_call(terminate_connection, _From,  St) ->
-    ?debug("~p:handle_call(terminate_connection): Terminating: ~p", 
+    ?debug("~p:handle_call(terminate_connection): Terminating: ~p",
 	   [ ?MODULE, {St#st.ip, St#st.port}]),
 
     {stop, Reason, NSt} = handle_info({tcp_closed, St#st.sock}, St),
@@ -183,18 +183,17 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({send, Data},  St) ->
-    ?debug("~p:handle_call(send): Sending: ~p", 
+    ?debug("~p:handle_cast(send): Sending: ~p",
 	   [ ?MODULE, Data]),
 
     gen_tcp:send(St#st.sock, Data),
 
     {noreply, St};
-
 handle_cast({activate_socket, Sock}, State) ->
     Res = inet:setopts(Sock, [{active, once}]),
     ?debug("connection:activate_socket(): ~p", [Res]),
     {noreply, State};
-    
+
 
 handle_cast(_Msg, State) ->
     ?warning("~p:handle_cast(): Unknown call: ~p", [ ?MODULE, _Msg]),
@@ -212,14 +211,14 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 
 %% Fill in peername if empty.
-handle_info({tcp, Sock, Data}, 
+handle_info({tcp, Sock, Data},
 	    #st { ip = undefined } = St) ->
     {ok, {IP, Port}} = inet:peername(Sock),
     NSt = St#st { ip = inet_parse:ntoa(IP), port = Port },
     handle_info({tcp, Sock, Data}, NSt);
- 
 
-handle_info({tcp, Sock, Data}, 
+
+handle_info({tcp, Sock, Data},
 	    #st { ip = IP,
 		  port = Port,
 		  mod = Mod,
@@ -229,7 +228,7 @@ handle_info({tcp, Sock, Data},
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
 
-    case rvi_common:extract_json(Data, PST) of
+    case jsx_decode_stream(Data, PST) of
 	{ [], NPST } ->
 	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
 	    inet:setopts(Sock, [{active, once}]),
@@ -238,16 +237,15 @@ handle_info({tcp, Sock, Data},
 	{ JSONElements, NPST } ->
 	    ?debug("~p:handle_info(data complete): Processed: ~p", [ ?MODULE, JSONElements]),
 	    FromPid = self(),
-	    spawn(fun() -> [ Mod:Fun(FromPid, IP, Port, 
-				     data, SingleElem, Arg) || SingleElem <- JSONElements ]
-		  end),
+	    [Mod:Fun(FromPid, IP, Port, data, SingleElem, Arg)
+	     || SingleElem <- JSONElements],
 	    inet:setopts(Sock, [ { active, once } ]),
 	    {noreply, State#st { pst = NPST} }
     end;
 
 
 
-handle_info({tcp_closed, Sock}, 
+handle_info({tcp_closed, Sock},
 	    #st { ip = IP,
 		  port = Port,
 		  mod = Mod,
@@ -260,7 +258,7 @@ handle_info({tcp_closed, Sock},
     {stop, normal, State};
 
 
-handle_info({tcp_error, _Sock}, 
+handle_info({tcp_error, _Sock},
 	    #st { ip = IP,
 		  port = Port,
 		  mod = Mod,
@@ -306,3 +304,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+jsx_decode_stream(Data, St) ->
+    jsx_decode_stream(Data, St, []).
+
+jsx_decode_stream(Data, undefined, Acc) ->
+    case jsx:decode(Data, [stream, return_tail]) of
+	{incomplete, Cont} ->
+	    {lists:reverse(Acc), Cont};
+	{with_tail, Elems, <<>>} ->
+	    {lists:reverse([Elems|Acc]), undefined};
+	{with_tail, Elems, Rest} ->
+	    jsx_decode_stream(Rest, undefined, [Elems|Acc])
+    end.

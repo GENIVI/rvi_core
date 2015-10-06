@@ -1,6 +1,6 @@
 %% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %%
-%% Copyright (C) 2014, Jaguar Land Rover
+%% Copyright (C) 2014-15, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
 %% Mozilla Public License, version 2.0.  The full text of the

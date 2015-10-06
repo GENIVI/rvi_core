@@ -34,8 +34,8 @@ encode_jwt(JSON, PrivKey) ->
     encode_jwt(JSON, header(), PrivKey).
 
 encode_jwt(Payload0, Header0, PrivKey) ->
-    ?debug("encode_jwt(~p,~p,_)~n", [ensure_json(Payload0),
-				     ensure_json(Header0)]),
+    ?debug("encode_jwt(~p,~p,_)~n", [catch ensure_json(Payload0),
+				     catch ensure_json(Header0)]),
     Header = base64url:encode(ensure_json(Header0)),
     Payload = base64url:encode(ensure_json(Payload0)),
     SigningInput = <<Header/binary, ".", Payload/binary>>,
@@ -51,11 +51,15 @@ ensure_json("{" ++ _ = JSON) ->
 ensure_json(<<"{", _/binary>> = JSON) ->
     JSON;
 ensure_json({struct, _} = JSON) ->
-    list_to_binary(exo_json:encode(JSON)).
+    list_to_binary(exo_json:encode(JSON));
+ensure_json([_|_] = JSON) ->
+    %% Since there may be atoms
+    {ok, Normalized} = msgpack:unpack(msgpack:pack(JSON, [jsx,
+							  {allow_atom,pack}]), [jsx]),
+    ?debug("Normalized = ~p~n", [Normalized]),
+    jsx:encode(Normalized).
 
-decode_json("{" ++ _ = JSON) ->
-    {ok, Res} = exo_json:decode_string(JSON),
-    Res;
-decode_json(<<"{", _/binary>> = JSON) ->
-    {ok, Res} = exo_json:decode_string(binary_to_list(JSON)),
-    Res.
+decode_json(JSON) when is_list(JSON) ->
+    jsx:decode(iolist_to_binary(JSON));
+decode_json(JSON) when is_binary(JSON) ->
+    jsx:decode(JSON).
