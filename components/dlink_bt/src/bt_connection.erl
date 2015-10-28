@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -25,8 +25,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--export([connect/5]).
--export([accept/5]).
+-export([connect/6]).
+-export([accept/6]).
 -export([send/2]).
 -export([send/3]).
 -export([is_connection_up/1]).
@@ -35,13 +35,14 @@
 -export([terminate_connection/2]).
 
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 
 -record(st, {
 	  remote_addr = "00:00:00:00:00:00",
 	  channel = 0,
 	  rfcomm_ref = undefined,
 	  listen_ref = undefined,
+	  mode = bt,
 	  mod = undefined,
 	  func = undefined,
 	  args = undefined
@@ -52,29 +53,30 @@
 %%%===================================================================
 %% MFA is to deliver data received on the socket.
 
-connect(Addr, Channel, Mod, Fun, Arg) ->
-    gen_server:start_link(?MODULE, 
-			  {connect, Addr, Channel, Mod, Fun, Arg },
+connect(Addr, Channel, Mode, Mod, Fun, Arg) ->
+    gen_server:start_link(?MODULE,
+			  {connect, Addr, Channel, Mode, Mod, Fun, Arg },
 			  []).
 
-accept(Channel, ListenRef, Mod, Fun, Arg) ->
-    gen_server:start_link(?MODULE, {accept, 
-				    Channel, 
-				    ListenRef, 
+accept(Channel, ListenRef, Mode, Mod, Fun, Arg) ->
+    gen_server:start_link(?MODULE, {accept,
+				    Channel,
+				    ListenRef,
+				    Mode,
 				    Mod,
-				    Fun, 
+				    Fun,
 				    Arg},[]).
 
 send(Pid, Data) when is_pid(Pid) ->
     gen_server:cast(Pid, {send, Data}).
-    
+
 send(Addr, Channel, Data) ->
     case bt_connection_manager:find_connection_by_address(Addr, Channel) of
 	{ok, Pid} ->
 	    gen_server:cast(Pid, {send, Data});
 
-	_Err -> 
-	    ?info("connection:send(): Connection ~p:~p not found for data: ~p", 
+	_Err ->
+	    ?info("connection:send(): Connection ~p:~p not found for data: ~p",
 		  [ Addr, Channel, Data]),
 	    not_found
 
@@ -82,7 +84,7 @@ send(Addr, Channel, Data) ->
 
 terminate_connection(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, terminate_connection).
-    
+
 terminate_connection(Addr, Channel) ->
     case bt_connection_manager:find_connection_by_address(Addr, Channel) of
 	{ok, Pid} ->
@@ -100,10 +102,10 @@ is_connection_up(Addr, Channel) ->
 	{ok, Pid} ->
 	    is_connection_up(Pid);
 
-	_Err -> 
+	_Err ->
 	    false
     end.
-    
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -122,8 +124,8 @@ is_connection_up(Addr, Channel) ->
 %% MFA used to handle socket closed, socket error and received data
 %% When data is received, a separate process is spawned to handle
 %% the MFA invocation.
-init({connect, BTAddr, Channel, Mod, Fun, Arg}) ->
-    
+init({connect, BTAddr, Channel, Mode, Mod, Fun, Arg}) ->
+
     %% connect will block on rfcomm:open, so cast to self
     %% in order to let init return.
     gen_server:cast(self(), connect),
@@ -131,6 +133,7 @@ init({connect, BTAddr, Channel, Mod, Fun, Arg}) ->
 	    remote_addr = BTAddr,
 	    channel = Channel,
 	    rfcomm_ref = undefined,
+	    mode = Mode,
 	    mod = Mod,
 	    func = Fun,
 	    args = Arg
@@ -138,8 +141,15 @@ init({connect, BTAddr, Channel, Mod, Fun, Arg}) ->
 
 
 
-init({accept, Channel, ListenRef, Mod, Fun, Arg}) ->
-    { ok, ARef } = rfcomm:accept(ListenRef, infinity, self()),
+init({accept, Channel, ListenRef, Mode, Mod, Fun, Arg}) ->
+    ARef = case Mode of
+	       tcp ->
+		   {ok, R} = exo_socket:async_accept(ListenRef),
+		   R;
+	       bt ->
+		   {ok, R} = rfcomm:accept(ListenRef, infinity, self()),
+		   R
+	   end,
     ?debug("bt_connection:init(accept): self():    ~p", [self()]),
     ?debug("bt_connection:init(accept): Channel:   ~p", [Channel]),
     ?debug("bt_connection:init(accept): ListenRef: ~p", [ListenRef]),
@@ -152,6 +162,7 @@ init({accept, Channel, ListenRef, Mod, Fun, Arg}) ->
 	    channel = Channel,
 	    rfcomm_ref = ARef,
 	    listen_ref = ListenRef,
+	    mode = Mode,
 	    mod = Mod,
 	    func = Fun,
 	    args = Arg
@@ -173,7 +184,7 @@ init({accept, Channel, ListenRef, Mod, Fun, Arg}) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(terminate_connection, _From,  St) ->
-    ?debug("~p:handle_call(terminate_connection): Terminating: ~p", 
+    ?debug("~p:handle_call(terminate_connection): Terminating: ~p",
 	     [ ?MODULE, {St#st.remote_addr, St#st.channel}]),
 
     {stop, Reason, NSt} = handle_info({tcp_closed, St#st.rfcomm_ref}, St),
@@ -197,13 +208,20 @@ handle_call(_Request, _From, State) ->
 handle_cast(connect,  #st {
 			 remote_addr = BTAddr,
 			 channel = Channel,
+			 mode = Mode,
 			 mod = Mod,
 			 func = Fun,
 			 args = Arg
 			} = St) ->
 
     %% Looong call that blocks for ever.
-    case rfcomm:open(BTAddr, Channel) of
+    ConnRes = case Mode of
+		  bt ->
+		      rfcomm:open(BTAddr, Channel);
+		  tcp ->
+		      exo_socket:connect(BTAddr, Channel)
+	      end,
+    case ConnRes of
 	{ok, ConnRef} ->
 	    ?debug("bt_connection:init(connect): self():   ~p", [self()]),
 	    ?debug("bt_connection:init(connect): BTAddr:   ~p", [BTAddr]),
@@ -229,7 +247,7 @@ handle_cast(connect,  #st {
     end;
 
 handle_cast({send, Data},  St) ->
-    ?debug("~p:handle_call(send): Sending: ~p", 
+    ?debug("~p:handle_call(send): Sending: ~p",
 	     [ ?MODULE, Data]),
 
     rfcomm:send(St#st.rfcomm_ref, Data),
@@ -253,21 +271,21 @@ handle_cast(_Msg, State) ->
 
 %% An accept reference we've setup now has accetpted an
 %% incoming connection.
-handle_info({rfcomm, _ARef, { accept, BTAddr, _ } }, 
+handle_info({rfcomm, _ARef, { accept, BTAddr, _ } },
 	    #st { mod = Mod,
 		  func = Fun,
 		  args = Arg,
 		  channel = Channel } = St)  ->
 
-    ?info("~p:handle_info(): bt_connection from ~w:~w\n", 
+    ?info("~p:handle_info(): bt_connection from ~w:~w\n",
 	  [?MODULE, BTAddr,Channel]),
-    
+
     Mod:Fun(self(), BTAddr, Channel, accepted, Arg),
-    { noreply, St#st { remote_addr = BTAddr, 
+    { noreply, St#st { remote_addr = BTAddr,
 		       channel = Channel } };
 
 
-handle_info({rfcomm, _ConnRef, {data, Data}}, 
+handle_info({rfcomm, _ConnRef, {data, Data}},
 	    #st { remote_addr = BTAddr,
 		  channel = Channel,
 		  mod = Mod,
@@ -275,16 +293,16 @@ handle_info({rfcomm, _ConnRef, {data, Data}},
 		  args = Arg } = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?info("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, BTAddr, Channel]),
-    ?info("~p:handle_info(data): ~p:~p -> ~p:~p", 
+    ?info("~p:handle_info(data): ~p:~p -> ~p:~p",
 	  [ ?MODULE, BTAddr, Channel, Mod, Fun]),
     Self = self(),
-    spawn(fun() -> Mod:Fun(Self, BTAddr, Channel, 
+    spawn(fun() -> Mod:Fun(Self, BTAddr, Channel,
 			   data, Data, Arg) end),
 
     {noreply, State};
 
 
-handle_info({rfcomm, ConnRef, closed}, 
+handle_info({rfcomm, ConnRef, closed},
 	    #st { remote_addr = BTAddr,
 		  channel = Channel,
 		  listen_ref = ListenRef,
@@ -295,20 +313,20 @@ handle_info({rfcomm, ConnRef, closed},
     Mod:Fun(self(), BTAddr, Channel, closed, Arg),
     bt_connection_manager:delete_connection_by_pid(self()),
     rfcomm:close(ConnRef),
-    
+
     %% Fire up a new accept process to take care of the next incomign connectionX
-    gen_server:start_link(?MODULE, {accept, 
-				    Channel, 
-				    ListenRef, 
+    gen_server:start_link(?MODULE, {accept,
+				    Channel,
+				    ListenRef,
 				    Mod,
-				    Fun, 
+				    Fun,
 				    Arg},[]),
 
     %% Stop this process.
     {stop, normal, State};
 
 
-handle_info({rfcomm, ConnRef, error}, 
+handle_info({rfcomm, ConnRef, error},
 	    #st { remote_addr = BTAddr,
 		  channel = Channel,
 		  mod = Mod,
@@ -321,6 +339,13 @@ handle_info({rfcomm, ConnRef, error},
     bt_connection_manager:delete_connection_by_pid(self()),
     {stop, normal, State};
 
+handle_info({inet_async, _L, _Ref, {ok, Sock}} = Msg, #st{mod = Mod,
+							  func = Fun,
+							  args = Arg} = St) ->
+    ?debug("~p:handle_info(~p)", [?MODULE, Msg]),
+    {ok, {BTAddr, Channel}} = inet:peername(Sock),
+    Mod:Fun(self(), BTAddr, Channel, accepted, Arg),
+    {noreply, St};
 
 handle_info(_Info, State) ->
     ?warning("~p:handle_info(): Unknown info: ~p", [ ?MODULE, _Info]),

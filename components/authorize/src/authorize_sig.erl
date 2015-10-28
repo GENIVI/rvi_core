@@ -12,11 +12,11 @@ decode_jwt(JWT, PubKey) when is_list(JWT)->
     decode_jwt(list_to_binary(JWT), PubKey);
 
 decode_jwt(JWT, PubKey) when is_binary(JWT)->
-    ?debug("authorize_sig:decode_jwt(JWT, PubKey=~p)~n", [PubKey]),
+    ?debug("authorize_sig:decode_jwt(JWT, PubKey=~s)~n", [authorize_keys:pp_key(PubKey)]),
     [H, P, S] = binary:split(JWT, <<".">>, [global]),
     Header = decode_json(base64url:decode(H)),
     Payload = decode_json(base64url:decode(P)),
-    ?debug("JWT Header = ~p~nPayload: ~p~n", [Header, Payload]),
+    ?debug("JWT Header = ~p~nPayload: ~p~n", [Header, authorize_keys:abbrev_payload(Payload)]),
     Signature = base64url:decode(S),
     SigningInput = <<H/binary, ".", P/binary>>,
     Res = case public_key:verify(
@@ -27,15 +27,14 @@ decode_jwt(JWT, PubKey) when is_binary(JWT)->
 	      true ->
 		  {Header, Payload}
 	  end,
-    ?debug("decoded JWT = ~p~n", [Res]),
+    ?debug("decoded JWT = ~p~n", [authorize_keys:abbrev_jwt(Res)]),
     Res.
 
 encode_jwt(JSON, PrivKey) ->
     encode_jwt(JSON, header(), PrivKey).
 
 encode_jwt(Payload0, Header0, PrivKey) ->
-    ?debug("encode_jwt(~p,~p,_)~n", [catch ensure_json(Payload0),
-				     catch ensure_json(Header0)]),
+    ?debug("encode_jwt()", []),
     Header = base64url:encode(ensure_json(Header0)),
     Payload = base64url:encode(ensure_json(Payload0)),
     SigningInput = <<Header/binary, ".", Payload/binary>>,
@@ -56,7 +55,7 @@ ensure_json([_|_] = JSON) ->
     %% Since there may be atoms
     {ok, Normalized} = msgpack:unpack(msgpack:pack(JSON, [jsx,
 							  {allow_atom,pack}]), [jsx]),
-    ?debug("Normalized = ~p~n", [Normalized]),
+    ?debug("Normalized = ~p~n", [authorize_keys:abbrev_payload(Normalized)]),
     jsx:encode(Normalized).
 
 decode_json(JSON) when is_list(JSON) ->

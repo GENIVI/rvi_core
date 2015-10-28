@@ -10,7 +10,7 @@
 port_options() ->
     [binary, {packet, 0}].
 
-init(_Opts) ->
+init(_CS) ->
     #st{}.
 
 decode(Msg0, #st{buf = Prev, opts = Opts} = St) ->

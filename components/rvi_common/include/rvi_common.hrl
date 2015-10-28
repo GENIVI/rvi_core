@@ -2,11 +2,11 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
-%% A record defining the modules to use 
+%% A record defining the modules to use
 %% Used by rvi_common:request() to
 %% figure out how to route an intra-component call
 
@@ -16,9 +16,11 @@
 	  service_edge :: ?COMP_SPEC_TYPE,
 	  schedule :: ?COMP_SPEC_TYPE,
 	  service_discovery :: ?COMP_SPEC_TYPE,
-	  authorize :: ?COMP_SPEC_TYPE, 
-	  data_link :: ?COMP_SPEC_TYPE, 
-	  protocol :: ?COMP_SPEC_TYPE 
+	  authorize :: ?COMP_SPEC_TYPE,
+	  data_link :: ?COMP_SPEC_TYPE,
+	  protocol :: ?COMP_SPEC_TYPE,
+	  rvi_common :: ?COMP_SPEC_TYPE,
+	  values = [] :: [{any(), any()}]
 	 }).
 
 -define(COMP_SPEC_SERVICE_EDGE_DEFAULT,      [ { service_edge_rpc, gen_server, [] } ]).
@@ -27,3 +29,4 @@
 -define(COMP_SPEC_AUTHORIZE_DEFAULT,         [ { authorize_rpc, gen_server, [] }]).
 -define(COMP_SPEC_DATA_LINK_DEFAULT,         [ { dlink_tcp_rpc, gen_server, [] } ]).
 -define(COMP_SPEC_PROTOCOL_DEFAULT,          [ { protocol, gen_server, [] } ]).
+-define(COMP_SPEC_RVI_COMMON_DEFAULT,        [ { rvi_log, gen_server, [] } ]).

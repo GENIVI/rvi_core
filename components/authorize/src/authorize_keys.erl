@@ -8,7 +8,7 @@
 	 provisioning_key/0,
 	 signed_public_key/2,
 	 save_keys/2,
-	 save_cert/3]).
+	 save_cert/4]).
 -export([get_certificates/0,
 	 get_certificates/1]).
 -export([validate_message/2]).
@@ -18,6 +18,10 @@
 	 json_to_public_key/1]).
 
 -export([self_signed_public_key/0]).  % just temporary
+-export([pp_key/1,
+	 abbrev_bin/1,
+	 abbrev_payload/1,
+	 abbrev_jwt/1]).
 
 -export([start_link/0,
 	 init/1,
@@ -120,8 +124,8 @@ provisioning_key() ->
 save_keys(Keys, Conn) ->
     gen_server:call(?MODULE, {save_keys, Keys, Conn}).
 
-save_cert(Cert, JWT, Conn) ->
-    gen_server:call(?MODULE, {save_cert, Cert, JWT, Conn}).
+save_cert(Cert, JWT, Conn, LogId) ->
+    gen_server:call(?MODULE, {save_cert, Cert, JWT, Conn, LogId}).
 
 %% Gen_server functions
 
@@ -138,7 +142,7 @@ start_link() ->
 
 init([]) ->
     ProvisioningKey = get_pub_key(get_env(provisioning_key)),
-    ?debug("ProvisioningKey = ~p~n", [ProvisioningKey]),
+    ?debug("ProvisioningKey = ~s~n", [pp_key(ProvisioningKey)]),
     CertDir = setup:verify_dir(get_env(cert_dir)),
     {ok, AuthJwt0} = file:read_file(get_env(authorize_jwt)),
     AuthJwt = strip_nl(AuthJwt0),
@@ -167,17 +171,19 @@ handle_call_({get_certificates, Conn}, _, S) ->
     Certs = certs_by_conn(Conn),
     {reply, Certs, S};
 handle_call_({save_keys, Keys, Conn}, _, S) ->
-    ?debug("save_keys: Keys=~p, Conn=~p~n", [Keys, Conn]),
+    ?debug("save_keys: Keys=~p, Conn=~p~n", [abbrev_k(Keys), Conn]),
     save_keys_(Keys, Conn),
     {reply, ok, S};
 handle_call_({validate_message, JWT, Conn}, _, S) ->
     {reply, validate_message_(JWT, Conn), S};
-handle_call_({save_cert, Cert, JWT, Conn}, _, S) ->
+handle_call_({save_cert, Cert, JWT, {IP, Port} = Conn, LogId}, _, S) ->
     case process_cert_struct(Cert, JWT) of
 	invalid ->
+	    log(LogId, "cert INVALID Conn=~s:~w", [IP, Port]),
 	    {reply, {error, invalid}, S};
 	#cert{} = C ->
 	    ets:insert(?CERTS, {{Conn, C#cert.id}, C}),
+	    log(LogId, "cert stored ~s Conn=~s:~w", [abbrev_bin(C#cert.id), IP, Port]),
 	    {reply, ok, S}
     end;
 handle_call_({filter_by_service, Services, Conn} =R, _From, State) ->
@@ -188,7 +194,7 @@ handle_call_({filter_by_service, Services, Conn} =R, _From, State) ->
 handle_call_({find_cert_by_service, Service} = R, _From, State) ->
     ?debug("authorize_keys:handle_call(~p,...)~n", [R]),
     Res = find_cert_by_service_(Service),
-    ?debug("Res = ~p~n", [Res]),
+    ?debug("Res = ~p~n", [case Res of {ok,{A,B}} -> {ok,{A,abbrev_bin(B)}}; _ -> Res end]),
     {reply, Res, State};
 handle_call_(_, _, S) ->
     {reply, error, S}.
@@ -214,7 +220,7 @@ certs_by_conn(Conn) ->
 						     validity = '$2',
 						     _='_'}},
 				  [], [{{'$1', '$2'}}] }]),
-    ?debug("rough selection: ~p~n", [Certs]),
+    ?debug("rough selection: ~p~n", [[{abbrev_bin(C),I} || {C,I} <- Certs]]),
     [C || {C,V} <- Certs, check_validity(V, UTC)].
 
 filter_by_service_(Services, Conn) ->
@@ -258,8 +264,8 @@ find_cert_by_service_(Service) ->
 	   end, {0, none}, LocalCerts) of
 	{0, none} ->
 	    {error, not_found};
-	{_, Found} ->
-	    {ok, Found#cert.jwt}
+	{_, #cert{id = Id, jwt = JWT}} ->
+	    {ok, {Id, JWT}}
     end.
 
 match_length(Invoke, Svc) ->
@@ -394,7 +400,7 @@ process_cert(F, Key, UTC, Acc) ->
 	{ok, Bin} ->
 	    try authorize_sig:decode_jwt(strip_nl(Bin), Key) of
 		{_, Cert} ->
-		    ?info("Unpacked Cert ~p:~n~p~n", [F, Cert]),
+		    ?info("Unpacked Cert ~p:~n~p~n", [F, abbrev_payload(Cert)]),
 		    case process_cert_struct(Cert, Bin, UTC) of
 			invalid ->
 			    Acc;
@@ -492,7 +498,7 @@ save_key(K, Conn) ->
 		{ok, ID} -> {Conn, ID};
 		_        -> {Conn, make_ref()}
 	    end,
-	    ?debug("Saving key ~p, PubKey = ~p~n", [KeyID, PubKey]),
+	    ?debug("Saving key ~p, PubKey = ~p~n", [KeyID, pp_key(PubKey)]),
 	    ets:insert(?KEYS, #key{id = KeyID, key = PubKey})
     end.
 
@@ -517,3 +523,66 @@ validate_message_1([{_,K}|T], JWT) ->
     end;
 validate_message_1([], _) ->
     error(invalid).
+
+
+pp_key(#'RSAPrivateKey'{modulus = Mod, publicExponent = Pub}) ->
+    P = integer_to_binary(Pub),
+    M = integer_to_binary(Mod),
+    <<"#{'RSAPrivateKey'{modulus = ", (abbrev_bin(M))/binary,
+      ", publicExponent = ", P/binary, ", _ = ...}">>;
+pp_key(#'RSAPublicKey'{modulus = Mod, publicExponent = Pub}) ->
+    P = integer_to_binary(Pub),
+    M = integer_to_binary(Mod),
+    <<"#{'RSAPublicKey'{modulus = ", (abbrev_bin(M))/binary,
+      ", publicExponent = ", P/binary, ", _ = ...}">>.
+
+abbrev_bin(B) ->
+    abbrev_bin(B, 20, 6).
+
+abbrev_bin(B, Len, Part) ->
+    try case byte_size(B) of
+	    Sz when Sz > Len ->
+		Part1 = erlang:binary_part(B, {0,Part}),
+		Part2 = erlang:binary_part(B, {Sz,-Part}),
+		<<Part1/binary, "...", Part2/binary>>;
+	    _ ->
+		B
+	end
+    catch error:_ -> B end.
+
+abbrev_payload(Payload) ->
+    try lists:map(fun abbrev_pl/1, Payload)
+    catch error:_ -> Payload end.
+
+abbrev_jwt({Hdr, Body} = X) ->
+    try {Hdr, abbrev_payload(Body)}
+    catch error:_ -> X end.
+
+abbrev_pl({<<"keys">> = K, Ks}) ->
+    {K, [abbrev_k(Ky) || Ky <- Ks]};
+abbrev_pl({<<"certs">> = C, Cs}) ->
+    {C, [abbrev_bin(Cert) || Cert <- Cs]};
+abbrev_pl({<<"certificate">> = K, C}) ->
+    {K, abbrev_bin(C)};
+abbrev_pl({<<"sign">> = K, S}) when is_binary(S) ->
+    {K, abbrev_bin(S)};
+abbrev_pl(B) when is_binary(B) ->
+    abbrev_bin(B, 40, 10);
+abbrev_pl(L) when is_list(L) ->
+    abbrev_payload(L);
+abbrev_pl(X) ->
+    X.
+
+abbrev_k(K) ->
+    try lists:map(fun abbrev_elem/1, K)
+    catch error:_ -> K end.
+
+abbrev_elem({<<"n">>, Bin}) ->
+    {<<"n">>, authorize_keys:abbrev_bin(Bin)};
+abbrev_elem(X) ->
+    X.
+
+log([ID], Fmt, Args) ->
+    rvi_log:log(ID, <<"authorize">>, rvi_log:format(Fmt, Args));
+log(_, _, _) ->
+    ok.

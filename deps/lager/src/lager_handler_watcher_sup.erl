@@ -1,4 +1,4 @@
-%% Copyright (c) 2011 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2011-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -35,5 +35,5 @@ init([]) ->
     {ok, {{simple_one_for_one, 10, 60},
             [
                 {lager_handler_watcher, {lager_handler_watcher, start_link, []},
-                        transient, 5000, worker, [lager_handler_watcher]}
+                        temporary, 5000, worker, [lager_handler_watcher]}
                 ]}}.

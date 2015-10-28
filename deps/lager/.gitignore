@@ -1,0 +1,12 @@
+.eunit
+*.beam
+ebin
+doc
+*.swp
+erl_crash.dump
+.project
+log
+deps
+.local_dialyzer_plt
+dialyzer_unhandled_warnings
+dialyzer_warnings

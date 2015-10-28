@@ -2,7 +2,7 @@
 %% Copyright (C) 2015, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 -module(rvi_routing).
@@ -28,7 +28,7 @@
 	  service_prefix = ""::string(),
 	  proto_link_pairs = []:: list(tuple())
 	 }).
-			     
+
 -record(st, {
 	  routes= []:: list(#route{})
 	 }).
@@ -173,7 +173,7 @@ prefix_match_(_Service, [], Len) ->
 prefix_match_([], _Prefix, _Len ) ->
     -1;
 
-%% 
+%%
 prefix_match_([ ServiceH | ServiceT], [ PrefixH | PrefixT ], Len)
   when ServiceH =:= PrefixH ->
 
@@ -181,7 +181,7 @@ prefix_match_([ ServiceH | ServiceT], [ PrefixH | PrefixT ], Len)
 
 %% Mismatch between the the service and candidate. No match
 prefix_match_(_Service, _Prefix, _Len) ->
-    -1. 
+    -1.
 
 find_routes_([], _Service, CurRoutes, CurMatchLen ) ->
     { CurRoutes, CurMatchLen };
@@ -191,7 +191,7 @@ find_routes_([ { ServicePrefix, Routes } | T], Service, CurRoutes, CurMatchLen )
 
     %% Do we have a better match than previosly recorded?
     case MatchLen >= CurMatchLen of
-	true -> 
+	true ->
 	    %% Continue with the new routes and matching len installed
 	    find_routes_(T, Service, Routes, MatchLen);
 
@@ -203,9 +203,10 @@ find_routes_([ { ServicePrefix, Routes } | T], Service, CurRoutes, CurMatchLen )
 find_routes_(Rt, _Svc, CurRoutes, CurMatchLen) ->
     ?warning("rvi_routing(): Incorrect route entry: ~p", [Rt]),
     { CurRoutes, CurMatchLen }.
-    
+
 
 find_routes(Routes, Service) ->
+    ?debug("find_routes(~p, ~p)", [Routes, Service]),
     case find_routes_(Routes, Service, undefined, 0) of
 	{ undefined, 0 } ->
 	    ?debug("rvi_routing(): ~p -> unknown", [ Service]),
@@ -213,7 +214,7 @@ find_routes(Routes, Service) ->
 
 	{ MatchRoutes, _MatchLen } ->
 	    ?debug("rvi_routing(): ~p -> ~p", [ Service, MatchRoutes ]),
-	    normalize_routes_(MatchRoutes, [])	    
+	    normalize_routes_(MatchRoutes, [])
     end.
 
 
@@ -225,13 +226,13 @@ normalize_routes_([], Acc) ->
      lists:reverse(Acc);
 
 normalize_routes_([ {{ Pr, PrOp }, { DL, DLOp }} | Rem ], Acc) ->
-    normalize_routes_( Rem, [ {{Pr, PrOp}, { DL, DLOp } } | Acc]);  
+    normalize_routes_( Rem, [ {{Pr, PrOp}, { DL, DLOp } } | Acc]);
 
 normalize_routes_([ { Pr, { DL, DLOp }} | Rem ], Acc) ->
-    normalize_routes_(Rem, [ { {Pr, []}, { DL, DLOp } } | Acc]);  
+    normalize_routes_(Rem, [ { {Pr, []}, { DL, DLOp } } | Acc]);
 
 normalize_routes_([ {{ Pr, PrOp}, DL } | Rem ], Acc) ->
-    normalize_routes_(Rem, [ { {Pr, PrOp}, { DL, [] } } | Acc]);  
+    normalize_routes_(Rem, [ { {Pr, PrOp}, { DL, [] } } | Acc]);
 
 normalize_routes_([ {Pr, DL} | Rem ], Acc) ->
     normalize_routes_(Rem, [ { {Pr, []}, { DL, [] } } | Acc]).
@@ -242,11 +243,11 @@ find_protocols_(_DataLink, [], Acc ) ->
 
 
 %% Matching data link. This is an allowed protocol
-find_protocols_(DataLink, [ {{ Pr, PrOp }, { DL, DLOp }}  | T], 
+find_protocols_(DataLink, [ {{ Pr, PrOp }, { DL, DLOp }}  | T],
 		Acc) when DataLink =:= DL ->
 
     find_protocols_(DataLink, T, [ { Pr, PrOp, DLOp } | Acc ]);
-    
+
 
 %% No match
 find_protocols_(DataLink, [ {{ _Pr, _PrOp }, { _DL, _DLOp }}  | T], Acc) ->
@@ -258,4 +259,3 @@ find_protocols(AllRoutes, Service, DataLink) ->
     Res = find_protocols_(DataLink, SvcRoutes, []),
     ?debug("find_protocols(~p:~p): -> ~p", [ DataLink, Service, Res]),
     Res.
-    

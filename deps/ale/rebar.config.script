@@ -1,0 +1,7 @@
+%% -*- erlang -*-
+case os:getenv("REBAR_DEPS") of
+    false ->
+	CONFIG;
+    Dir ->
+	lists:keystore(deps_dir, 1, CONFIG, {deps_dir, Dir})
+end.

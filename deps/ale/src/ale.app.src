@@ -1,0 +1,18 @@
+%% -*- erlang -*-
+%%
+%% Application source file for ale
+%%
+{application, ale,
+ [
+  {description, "ALE - a lager extension"},
+  {vsn, git},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+		  sasl,
+		  lager
+                 ]},
+  {mod, { ale, []}},
+  {env, []}
+ ]}.

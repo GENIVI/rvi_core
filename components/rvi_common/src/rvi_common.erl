@@ -34,15 +34,25 @@
 	 get_component_modules/1,
 	 get_component_modules/2,
 	 get_module_specification/3,
+	 get_module_config/3,
 	 get_module_config/4,
 	 get_module_config/5,
 	 get_module_json_rpc_address/3,
 	 get_module_json_rpc_url/3,
-	 get_module_genserver_pid/3
+	 get_module_genserver_pid/3,
+	 get_value/3
 	]).
--export([utc_timestamp/0]).
+-export([set_value/3]).
+-export([get_log_id/1,            %% (CompSpec)
+	 get_json_log_id/1,       %% (JSONArgs)
+	 log_id_json_tail/1,      %% (CompSpec)
+	 pick_up_json_log_id/2,   %% (JSONArgs, CompSpec)
+	 pass_log_id/2]).         %% (PropList, CompSpec)
+-export([utc_timestamp/0,
+	 utc_timestamp/1]).
 -export([bin/1]).
--export([start_json_rpc_server/3]).
+-export([start_json_rpc_server/3,
+	 start_json_rpc_server/4]).
 -export([extract_json/2,
 	 normalize_json/1,
 	 term_to_json/1]).
@@ -87,6 +97,7 @@ status_values() ->
      {7, unauthorized}].
 
 get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
+    ?debug("JSONBody = ~p", [JSONBody]),
     case get_json_element(["result", "status"], JSONBody) of
 	{ok, Value} ->
 	    { json_rpc_status(Value), JSONBody };
@@ -110,7 +121,7 @@ get_request_result(Other)->
 
 
 json_argument([], [], Acc) ->
-    Acc;
+    lists:reverse(Acc);
 
 json_argument([Arg | AT], [Spec | ST], Acc) when is_atom(Arg)->
     json_argument(AT, ST, [ { Spec, atom_to_list(Arg) } | Acc]);
@@ -121,24 +132,26 @@ json_argument([Arg | AT], [Spec | ST], Acc) ->
 %% Convert a list of unnamed arguments to a proplist
 %% understood by json encode
 json_argument(ArgList, SpecList) ->
-    { struct, json_argument(ArgList, SpecList, []) }.
+    json_argument(ArgList, SpecList, []).
 
 request(Component,
 	Module,
 	Function,
-	InArgPropList,
+	InArgPropList0,
 	OutArgSpec,
 	CompSpec) ->
 
     %% Split [ { network_address, "127.0.0.1:888" } , { timeout, 34 } ] to
     %% [ "127.0.0.1:888", 34] [ network_address, timeout ]
+    InArgPropList = pass_log_id(InArgPropList0, CompSpec),
     InArg = [ Val || { _Key, Val } <- InArgPropList ],
     InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
     %% Figure out how we are to invoke this MFA.
     case get_module_type(Component, Module, CompSpec) of
 	%% We have a gen_server
 	{ ok, gen_server } ->
-	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),
+	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function,
+					      authorize_keys:abbrev_payload(InArg)]),
 	    gen_server:call(Module, { rvi, Function, InArg});
 
 	%% We have a JSON-RPC server
@@ -161,15 +174,15 @@ request(Component,
 	Err1 -> Err1
     end.
 
-
 notification(Component,
 	     Module,
 	     Function,
-	     InArgPropList,
+	     InArgPropList0,
 	     CompSpec) ->
 
     %% Split [ { network_address, "127.0.0.1:888" } , { timeout, 34 } ] to
     %% [ "127.0.0.1:888", 34] [ network_address, timeout ]
+    InArgPropList = pass_log_id(InArgPropList0, CompSpec),
     InArg = [ Val || { _Key, Val } <- InArgPropList ],
     InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
     %% Figure out how we are to invoke this MFA.
@@ -200,6 +213,14 @@ notification(Component,
 		     [Component, Module, CompSpec, Error]),
 	    %% ignore
 	    ok
+    end.
+
+pass_log_id(PList, CompSpec) ->
+    case get_value(rvi_log_id, undefined, CompSpec) of
+	undefined ->
+	    PList;
+	ID ->
+	    lists:keystore(rvi_log_id, 1, PList, {rvi_log_id, ID})
     end.
 
 send_json_request(Url,Method, Args) ->
@@ -318,7 +339,7 @@ get_json_element_([Elem | T], JSON) ->
 	{'OR', Alts} ->
 	    get_json_element_(T, get_json_element_alt(Alts, JSON));
 	_ ->
-	    get_json_element_(T, get_value(Elem, JSON, undefined))
+	    get_json_element_(T, get_json_value(Elem, JSON, undefined))
     end;
 
 get_json_element_(Path,JSON) ->
@@ -342,12 +363,14 @@ member(K, [H|T]) ->
 member(_, []) ->
     false.
 
-get_value(K, [{K1,V}|T], Def) ->
+get_json_value(K, [{K1,V}|T], Def) ->
     case comp(K, K1) of
 	true -> V;
-	false -> get_value(K, T, Def)
+	false -> get_json_value(K, T, Def)
     end;
-get_value(_, [], Def) ->
+get_json_value(K, [_|T], Def) ->
+    get_json_value(K, T, Def);
+get_json_value(_, [], Def) ->
     Def.
 
 comp(A, A) -> true;
@@ -497,7 +520,8 @@ get_component_specification_() ->
 	       service_discovery = ?COMP_SPEC_SERVICE_DISCOVERY_DEFAULT,
 	       authorize = ?COMP_SPEC_AUTHORIZE_DEFAULT,
 	       data_link = ?COMP_SPEC_DATA_LINK_DEFAULT,
-	       protocol = ?COMP_SPEC_PROTOCOL_DEFAULT
+	       protocol = ?COMP_SPEC_PROTOCOL_DEFAULT,
+	       rvi_common = ?COMP_SPEC_RVI_COMMON_DEFAULT
 	      };
 
 	CompList ->
@@ -545,9 +569,11 @@ get_component_modules(data_link, CompSpec) ->
 get_component_modules(protocol, CompSpec) ->
     CompSpec#component_spec.protocol;
 
+get_component_modules(rvi_common, CompSpec) ->
+    CompSpec#component_spec.rvi_common;
+
 get_component_modules(_, _) ->
     undefined.
-
 
 %% Get the spec for a specific module (protocol_bert_rpc) within
 %% a component (protocol).
@@ -576,6 +602,9 @@ get_module_specification(Component, Module, CompSpec) ->
 		    {error, {illegal_format,{ Module, IllegalFormat } } }
 	    end
     end.
+
+get_module_config(Component, Module, Key) ->
+    get_module_config(Component, Module, Key, get_component_specification()).
 
 %% Get a specific option (bert_rpc_port) for a specific module
 %% (protocol_bert_rpc) within a component (protocol).
@@ -613,6 +642,43 @@ get_module_config(Component, Module, Key, Default, CompSpec) ->
 	_ -> {ok, Default }
     end.
 
+set_value(Key, Value, #component_spec{values = Keys} = CompSpec) ->
+    CompSpec#component_spec{values = lists:keystore(Key, 1, Keys, {Key, Value})}.
+
+get_value(Key, Default, #component_spec{values = Values}) ->
+    case lists:keyfind(Key, 1, Values) of
+	{_, Value} ->
+	    Value;
+	false ->
+	    Default
+    end.
+
+get_log_id(CS) ->
+    get_value(rvi_log_id, <<"null">>, CS).
+
+log_id_json_tail(CS) ->
+    case get_value(rvi_log_id, undefined, CS) of
+	undefined ->
+	    [];
+	Id ->
+	    [{<<"rvi_log_id">>, Id}]
+    end.
+
+get_json_log_id(Args) ->
+    case get_json_element([<<"rvi_log_id">>], Args) of
+	{ok, ID} ->
+	    ID;
+	{error, _} ->
+	    <<"null">>
+    end.
+
+pick_up_json_log_id(Args, CS) ->
+    case get_json_element([<<"rvi_log_id">>], Args) of
+	{ok, ID} ->
+	    set_value(rvi_log_id, ID, CS);
+	{error, _} ->
+	    CS
+    end.
 
 get_module_type(Component, Module, CompSpec) ->
     case get_module_specification(Component, Module, CompSpec) of
@@ -683,13 +749,16 @@ get_module_genserver_pid(Component, Module, CompSpec) ->
 
 
 start_json_rpc_server(Component, Module, Supervisor) ->
+    start_json_rpc_server(Component, Module, Supervisor, []).
+
+start_json_rpc_server(Component, Module, Supervisor, XOpts) ->
     Addr = get_module_json_rpc_address(Component,
 				       Module,
 				       get_component_specification()),
 
     case Addr of
 	{ ok, IP, Port } ->
-	    ExoHttpOpts = [ { ip, IP }, { port, Port } ],
+	    ExoHttpOpts = [ { ip, IP }, { port, Port } | XOpts ],
 
 	    exoport_exo_http:instance(Supervisor,
 				      Module,
@@ -701,11 +770,13 @@ start_json_rpc_server(Component, Module, Supervisor) ->
 	    Err
     end.
 
-
-
 utc_timestamp() ->
     calendar:datetime_to_gregorian_seconds(
       calendar:universal_time()) - seconds_jan_1970().
+
+utc_timestamp({_,_,_} = TS) ->
+    calendar:datetime_to_gregorian_seconds(
+      calendar:now_to_universal_time(TS)) - seconds_jan_1970().
 
 seconds_jan_1970() ->
     %% calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}).

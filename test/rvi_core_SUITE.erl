@@ -5,6 +5,7 @@
    [
     all/0, groups/0, suite/0,
     init_per_suite/1, end_per_suite/1,
+    init_per_group/2, end_per_group/2,
     init_per_testcase/2, end_per_testcase/2
    ]).
 
@@ -19,10 +20,17 @@
     t_install_sms_sample_node/1,
     t_install_tls_backend_node/1,
     t_install_tls_sample_node/1,
+    t_install_bt_backend_node/1,
+    t_install_bt_sample_node/1,
     t_start_basic_backend/1,
     t_start_basic_sample/1,
+    t_start_bt_backend/1,
+    t_start_bt_sample/1,
+    t_start_tls_backend/1,
+    t_start_tls_sample/1,
     t_register_lock_service/1,
-    t_call_lock_service/1
+    t_call_lock_service/1,
+    t_no_errors/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -32,7 +40,9 @@
 all() ->
     [
      {group, test_install},
-     {group, test_run}
+     {group, test_run},
+     {group, test_run_bt},
+     {group, test_run_tls}
     ].
 
 groups() ->
@@ -48,14 +58,33 @@ groups() ->
        t_install_sms_backend_node,
        t_install_sms_sample_node,
        t_install_tls_backend_node,
-       t_install_tls_sample_node
+       t_install_tls_sample_node,
+       t_install_bt_backend_node,
+       t_install_bt_sample_node
       ]},
      {test_run, [],
       [
        t_start_basic_backend,
        t_start_basic_sample,
        t_register_lock_service,
-       t_call_lock_service
+       t_call_lock_service,
+       t_no_errors
+      ]},
+     {test_run_bt, [],
+      [
+       t_start_bt_backend,
+       t_start_bt_sample,
+       t_register_lock_service,
+       t_call_lock_service,
+       t_no_errors
+      ]},
+     {test_run_tls, [],
+      [
+       t_start_tls_backend,
+       t_start_tls_sample,
+       t_register_lock_service,
+       t_call_lock_service,
+       t_no_errors
       ]}
     ].
 
@@ -73,10 +102,26 @@ init_per_suite(Config) ->
     Config.
 
 end_per_suite(_Config) ->
-    stop_nodes(),
     application:stop(exec),
     application:stop(gproc),
     exit(whereis(?DATA), kill),
+    ok.
+
+init_per_group(Grp, Config) ->
+    {ok, CWD} = file:get_cwd(),
+    TestNodes = case Grp of
+		    test_run -> ["basic_backend", "basic_sample"];
+		    test_run_bt -> ["bt_backend", "bt_sample"];
+		    test_run_tls -> ["tls_backend", "tls_sample"];
+		    _ -> []
+		end,
+    [{test_dir, CWD}, {test_nodes, TestNodes} | Config].
+
+
+end_per_group(test_install, _) ->
+    ok;
+end_per_group(_, _) ->
+    stop_nodes(),
     ok.
 
 init_per_testcase(Case, Config) ->
@@ -109,40 +154,61 @@ t_install_backend_node(Config) ->
 		     [root(), "/test/config/backend.config"]).
 
 
-t_install_sample_node(Config) ->
-    Env = [env(),
-	   " RVI_BACKEND=127.0.0.1 RVI_PORT=8900"
-	   " RVI_MY_NODE_ADDR=127.0.0.1:8900"],
-    install_rvi_node("basic_sample", Env,
-		     [root(), "/test/config/sample.config"]).
+t_install_sample_node(_Config) ->
+    install_sample_node("basic_sample", "sample.config").
 
-t_install_sms_backend_node(Config) ->
+t_install_sms_backend_node(_Config) ->
     install_rvi_node("sms_backend", env(),
 		     [root(), "/test/config/sms_backend.config"]).
 
-t_install_sms_sample_node(Config) ->
-    install_rvi_node("sms_sample", env(),
-		     [root(), "/test/config/sms_sample.config"]).
+t_install_sms_sample_node(_Config) ->
+    install_sample_node("sms_sample", "sms_sample.config").
 
-t_install_tls_backend_node(Config) ->
+t_install_tls_backend_node(_Config) ->
     install_rvi_node("tls_backend", env(),
 		     [root(), "/test/config/tls_backend.config"]).
 
-t_install_tls_sample_node(Config) ->
-    install_rvi_node("tls_sample", env(),
-		     [root(), "/test/config/tls_sample.config"]).
+t_install_tls_sample_node(_Config) ->
+    install_sample_node("tls_sample", "tls_sample.config").
 
-t_start_basic_backend(Config) ->
+t_install_bt_backend_node(_Config) ->
+    install_rvi_node("bt_backend", env(),
+		     [root(), "/test/config/bt_backend.config"]).
+
+t_install_bt_sample_node(_Config) ->
+    install_sample_node("bt_sample", "bt_sample.config").
+
+t_start_basic_backend(_Config) ->
     cmd([scripts(), "/rvi_node.sh -d -n basic_backend"]),
     await_started("basic_backend"),
     ok.
 
-t_start_basic_sample(Config) ->
+t_start_basic_sample(_Config) ->
     cmd([scripts(), "/rvi_node.sh -d -n basic_sample"]),
     await_started("basic_sample"),
     ok.
 
-t_register_lock_service(Config) ->
+t_start_bt_backend(_Config) ->
+    cmd([scripts(), "/rvi_node.sh -d -n bt_backend"]),
+    await_started("bt_backend"),
+    ok.
+
+t_start_bt_sample(_Config) ->
+    cmd([scripts(), "/rvi_node.sh -d -n bt_sample"]),
+    await_started("bt_sample"),
+    ok.
+
+t_start_tls_backend(_Config) ->
+    cmd([scripts(), "/rvi_node.sh -d -n tls_backend"]),
+    await_started("tls_backend"),
+    ok.
+
+t_start_tls_sample(_Config) ->
+    cmd([scripts(), "/rvi_node.sh -d -n tls_sample"]),
+    await_started("tls_sample"),
+    ok.
+
+t_register_lock_service(_Config) ->
     Pid =
 	spawn_cmd(
 	  [python(),
@@ -150,7 +216,7 @@ t_register_lock_service(Config) ->
     save({service, lock}, Pid),
     timer:sleep(2000).
 
-t_call_lock_service(Config) ->
+t_call_lock_service(_Config) ->
     CallPid = spawn_cmd(
 		[python(),
 		 "/rvi_call.py -n ", service_edge("sample"),
@@ -289,7 +355,7 @@ root_keys() ->
     "root_keys".
 
 service_edge("backend") -> "http://localhost:8801";
-service_edge("sample" ) -> "http://localhost:8901".
+service_edge("sample" ) -> "http://localhost:9001".
 
 install_rvi_node(Name, Env, ConfigF) ->
     Root = code:lib_dir(rvi_core),
@@ -303,6 +369,13 @@ install_rvi_node(Name, Env, ConfigF) ->
     ct:log("install_rvi_node/1 -> ~p", [Res]),
     Res.
 
+install_sample_node(Name, ConfigF) ->
+    Env = [env(),
+	   " RVI_BACKEND=127.0.0.1 RVI_PORT=9000"
+	   " RVI_MY_NODE_ADDR=127.0.0.1:9000"],
+    install_rvi_node(Name, Env,
+		     [root(), "/test/config/", ConfigF]).
+
 in_priv_dir(F, Cfg) ->
     %% PrivDir = ?config(priv_dir, Cfg),
     %% in_dir(PrivDir, F, Cfg).
@@ -311,7 +384,10 @@ in_priv_dir(F, Cfg) ->
 cmd(C) ->
     cmd(C, []).
 
-cmd(C0, Opts) ->
+cmd(C, Opts) ->
+    {ok, Res} = cmd_(C, Opts).
+
+cmd_(C0, Opts) ->
     C = binary_to_list(iolist_to_binary(C0)),
     CmdRes = exec:run(C, [sync, stdout, stderr] ++ Opts),
     {Fmt, Args} =
@@ -322,7 +398,7 @@ cmd(C0, Opts) ->
 		{"> ~s~n~s~nERR: ~s~nRest = ~p", [C, Out, Err, Rest]}
 	end,
     ct:log(Fmt, Args),
-    {ok, Res} = CmdRes.
+    CmdRes.
 
 cmd_res({_, L}) ->
     {Err,L1} = take(stderr, L, ""),
@@ -335,6 +411,20 @@ take(K, L, Def) ->
 	    {Def, L};
 	{value, {_, V}, Rest} ->
 	    {V, Rest}
+    end.
+
+verify_killed({ok, []}) ->
+    ok;
+verify_killed(CmdRes) ->
+    case cmd_res(CmdRes) of
+	{_, [], _} -> ok;
+	{_, Err, _} ->
+	    case re:run(Err, "No such process", []) of
+		{match, _} ->
+		    ok;
+		nomatch ->
+		    error({failed_kill, Err})
+	    end
     end.
 
 %%% ============================================================
@@ -359,14 +449,18 @@ stop_nodes() ->
     Nodes = ets:select(?DATA, [{ {{'$1',pid},'$2'}, [], [{{'$1','$2'}}] }]),
     ct:log("Stopping, Nodes = ~p~n", [Nodes]),
     rpc:multicall([N || {N,_} <- Nodes], init, stop, []),
-    [cmd(["kill -9 ", P]) || {_,P} <- Nodes],
-    [ets:delete(?DATA, K) || K <- Nodes].
+    [verify_killed(cmd_(["kill -9 ", P], [])) || {_,P} <- Nodes],
+    [delete_node(N) || {N,_} <- Nodes].
+
+delete_node(N) ->
+    ct:log("delete_node(~p)", [N]),
+    ets:delete(?DATA, {N, pid}).
 
 lookup(Key) ->
-    ets:lookup(rvi_core_data, Key).
+    ets:lookup(?DATA, Key).
 
 save(Key, Data) ->
-    ets:insert(rvi_core_data, {Key, Data}).
+    ets:insert(?DATA, {Key, Data}).
 
 node_name(Name) ->
     [_, Host] = re:split(atom_to_list(node()), "@", [{return, list}]),
@@ -405,3 +499,31 @@ json_rpc(URL, Method, Args) ->
 					{"params", Args}]}))),
     Hdrs = [{'Content-Type', "application/json"}],
     exo_http:wpost(URL, {1,1}, Hdrs, Req, 1000).
+
+t_no_errors(Config) ->
+    no_errors(?config(test_nodes, Config), ?config(test_dir, Config)).
+
+no_errors(Dirs, PDir) ->
+    ct:log("Will check errors in ~p", [Dirs]),
+    true = lists:all(
+	     fun(D) ->
+		     no_errors_(filename:join([PDir, D, "log", "lager"]), D)
+	     end, Dirs),
+    ok.
+
+no_errors_(Dir, Name) ->
+    lists:all(fun(F) ->
+		      log_is_empty(filename:join(Dir, F), F, Name)
+	      end, ["error.log", "crash.log"]).
+
+log_is_empty(Log, F, Name) ->
+    case file:read_file(Log) of
+	{ok, <<>>} ->
+	    true;
+	{ok, Content} ->
+	    ct:log("~s: ~s is not empty:~n~s", [Name, F, Content]),
+	    false;
+	{error, Reason} ->
+	    ct:log("~s: Cannot read log ~s (~p)", [Name, F, Reason]),
+	    false
+    end.

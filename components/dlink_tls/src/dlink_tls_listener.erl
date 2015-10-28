@@ -64,18 +64,20 @@ terminate(_Reason, _State) ->
     ok.
 
 sock_opts() ->
-    [list, {active, once}, {packet, 0}].
+    [{mode, binary}, {active, once}, {packet, 0}].
 
 new_connection(IP, Port, Sock, State) ->
-    ?debug("~p:new_connection(): Peer IP:    ~p (ignored)", [?MODULE,IP]),
-    ?debug("~p:new_connection(): Peer Port:  ~p (ignored)", [?MODULE,Port]),
-    ?debug("~p:new_connection(): Sock:       ~p", [?MODULE,Sock]),
+    ?debug("new_connection(): Peer IP:    ~p (ignored)", [IP]),
+    ?debug("new_connection(): Peer Port:  ~p (ignored)", [Port]),
+    ?debug("new_connection(): Sock:       ~p", [Sock]),
 
     %% IP and Port are garbage. We'll grab peername when we get our
     %% first data.
     %% Provide component spec as extra arg.
-    {ok, _P} = dlink_tls_conn:setup(
-		 undefined, 0, Sock,
-		 dlink_tls_rpc,
-		 handle_socket, [gen_nb_server:get_cb_state(State)]),
+    CompSpec = gen_nb_server:get_cb_state(State),
+    {ok, P} = dlink_tls_conn:setup(
+                undefined, 0, Sock,
+                dlink_tls_rpc,
+                handle_socket, [CompSpec]),
+    dlink_tls_conn:upgrade(P, server, CompSpec),
     {ok, State}.

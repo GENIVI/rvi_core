@@ -1,4 +1,4 @@
-%% Copyright (c) 2011 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2011-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -13,21 +13,29 @@
 %% KIND, either express or implied.  See the License for the
 %% specific language governing permissions and limitations
 %% under the License.
--ifndef(__LAGER_HRL__).
--define(__LAGER_HRL__, true).
+
+
+-define(DEFAULT_TRUNCATION, 4096).
+-define(DEFAULT_TRACER, lager_default_tracer).
+-define(DEFAULT_SINK, lager_event).
 
 -define(LEVELS,
     [debug, info, notice, warning, error, critical, alert, emergency, none]).
 
--define(DEBUG, 7).
--define(INFO, 6).
--define(NOTICE, 5).
--define(WARNING, 4).
--define(ERROR, 3).
--define(CRITICAL, 2).
--define(ALERT, 1).
--define(EMERGENCY, 0).
--define(LOG_NONE, -1).
+%% Use of these "functions" means that the argument list will not be
+%% truncated for safety
+-define(LEVELS_UNSAFE,
+    [{debug_unsafe, debug}, {info_unsafe, info}, {notice_unsafe, notice}, {warning_unsafe, warning}, {error_unsafe, error}, {critical_unsafe, critical}, {alert_unsafe, alert}, {emergency_unsafe, emergency}]).
+
+-define(DEBUG, 128).
+-define(INFO, 64).
+-define(NOTICE, 32).
+-define(WARNING, 16).
+-define(ERROR, 8).
+-define(CRITICAL, 4).
+-define(ALERT, 2).
+-define(EMERGENCY, 1).
+-define(LOG_NONE, 0).
 
 -define(LEVEL2NUM(Level),
     case Level of
@@ -53,14 +61,15 @@
         ?EMERGENCY -> emergency
     end).
 
-
 -define(SHOULD_LOG(Level),
-    lager_util:level_to_num(Level) =< element(1, lager_mochiglobal:get(loglevel, {?LOG_NONE, []}))).
+    (lager_util:level_to_num(Level) band element(1, lager_config:get(loglevel, {?LOG_NONE, []}))) /= 0).
 
 -define(NOTIFY(Level, Pid, Format, Args),
-    gen_event:notify(lager_event, {log, lager_util:level_to_num(Level),
-            lager_util:format_time(), [io_lib:format("[~p] ", [Level]),
-                io_lib:format("~p ", [Pid]), io_lib:format(Format, Args)]})).
+    gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+            Level,
+            [{pid,Pid},{line,?LINE},{file,?FILE},{module,?MODULE}],
+            [])}
+        )).
 
 %% FOR INTERNAL USE ONLY
 %% internal non-blocking logging call
@@ -81,7 +90,7 @@
     %% from a gen_event handler
     spawn(fun() ->
             case catch(gen_event:which_handlers(lager_event)) of
-                X when X == []; X == {'EXIT', noproc} ->
+                X when X == []; X == {'EXIT', noproc}; X == [lager_backend_throttle] ->
                     %% there's no handlers yet or lager isn't running, try again
                     %% in half a second.
                     timer:sleep(500),
@@ -97,4 +106,15 @@
     end)).
 -endif.
 
--endif.
+-record(lager_shaper, {
+                  %% how many messages per second we try to deliver
+                  hwm = undefined :: 'undefined' | pos_integer(),
+                  %% how many messages we've received this second
+                  mps = 0 :: non_neg_integer(),
+                  %% the current second
+                  lasttime = os:timestamp() :: erlang:timestamp(),
+                  %% count of dropped messages this second
+                  dropped = 0 :: non_neg_integer()
+                 }).
+
+-type lager_shaper() :: #lager_shaper{}.

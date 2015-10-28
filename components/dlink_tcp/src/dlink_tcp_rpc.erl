@@ -92,32 +92,14 @@ start_json_server() ->
 
 
 start_connection_manager() ->
-    CompSpec = rvi_common:get_component_specification(),
-    {ok, BertOpts } = rvi_common:get_module_config(data_link,
-						   ?MODULE,
-						   ?SERVER_OPTS,
-						   [],
-						   CompSpec),
-    IP = proplists:get_value(ip, BertOpts, ?DEFAULT_TCP_ADDRESS),
-    Port = proplists:get_value(port, BertOpts, ?DEFAULT_TCP_PORT),
-
-    ?info("dlink_tcp:init_rvi_component(~p): Starting listener.", [self()]),
-
     %% Fire up listener
+    CompSpec = rvi_common:get_component_specification(),
     connection_manager:start_link(),
+    ?info("dlink_tcp:init_rvi_component(~p): Starting listener.", [self()]),
     {ok,Pid} = listener:start_link(),
-    ?info("dlink_tcp:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
+    %%
+    setup_initial_listeners(Pid, CompSpec),
 
-    %% Add listener port.
-    case listener:add_listener(Pid, IP, Port, CompSpec) of
-	ok ->
-	    ?notice("---- RVI Node External Address: ~s",
-		    [ application:get_env(rvi_core, node_address, undefined)]);
-
-	Err ->
-	    ?error("dlink_tcp:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
-	    ok
-    end,
     ?info("dlink_tcp:init_rvi_component(): Setting up persistent connections."),
 
     {ok, PersistentConnections } = rvi_common:get_module_config(data_link,
@@ -126,13 +108,37 @@ start_connection_manager() ->
 								[],
 								CompSpec),
 
-
     setup_persistent_connections_(PersistentConnections, CompSpec),
     ok.
 
+
+setup_initial_listeners(Pid, CompSpec) ->
+    case rvi_common:get_module_config(data_link,
+				      ?MODULE,
+				      ?SERVER_OPTS,
+				      CompSpec) of
+	{ok, ServerOpts} ->
+	    IP = proplists:get_value(ip, ServerOpts, ?DEFAULT_TCP_ADDRESS),
+	    Port = proplists:get_value(port, ServerOpts, ?DEFAULT_TCP_PORT),
+	    ?info("dlink_tcp:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
+	    %%
+	    %% Add listener port.
+	    case listener:add_listener(Pid, IP, Port, CompSpec) of
+		ok ->
+		    ?notice("---- RVI Node External Address: ~s",
+			    [ application:get_env(rvi_core, node_address, undefined)]);
+		Err ->
+		    ?warning(
+		       "dlink_tcp:init_rvi_component(): Failed to launch listener (~p,~p): ~p",
+		       [ IP, Port, Err ]),
+		    ok
+	    end;
+	{error, _} ->
+	    ?info("dlink_tcp: no initial listeners", [])
+    end.
+
 setup_persistent_connections_([ ], _CompSpec) ->
      ok;
-
 
 setup_persistent_connections_([ NetworkAddress | T], CompSpec) ->
     ?debug("~p: Will persistently connect connect : ~p", [self(), NetworkAddress]),
@@ -188,13 +194,14 @@ connect_remote(IP, Port, CompSpec) ->
     ?info("connect_remote(~p, ~p)~n", [IP, Port]),
     case connection_manager:find_connection_by_address(IP, Port) of
 	{ ok, _Pid } ->
+	    log("already connected", [], CompSpec),
 	    already_connected;
 
 	not_found ->
 	    %% Setup a new outbound connection
 	    ?info("dlink_tcp:connect_remote(): Connecting ~p:~p",
 		  [IP, Port]),
-
+	    log("new connection", [], CompSpec),
 	    case gen_tcp:connect(IP, Port, listener:sock_opts()) of
 		{ ok, Sock } ->
 		    ?info("dlink_tcp:connect_remote(): Connected ~p:~p",
@@ -217,12 +224,14 @@ connect_remote(IP, Port, CompSpec) ->
 			  { ?DLINK_ARG_CERTIFICATES,
 			    get_certificates(CompSpec) },
 			  { ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) }
+			  | rvi_common:log_id_json_tail(CompSpec)
 			])),
 		    ok;
 
 		{error, Err } ->
 		    ?info("dlink_tcp:connect_remote(): Failed ~p:~p: ~p",
 			   [IP, Port, Err]),
+		    log("connect FAILED: ~w", [Err], CompSpec),
 		    not_available
 	    end
     end.
@@ -231,8 +240,11 @@ connect_and_retry_remote( IP, Port, CompSpec) ->
     ?info("dlink_tcp:connect_and_retry_remote(): ~p:~p",
 	  [ IP, Port]),
 
-    case connect_remote(IP, list_to_integer(Port), CompSpec) of
-	ok  -> ok;
+    CS = start_log(<<"conn">>, "connect ~s:~s", [IP, Port], CompSpec),
+    case connect_remote(IP, list_to_integer(Port), CS) of
+	ok  ->
+	    log("connected", [], CS),
+	    ok;
 
 	Err -> %% Failed to connect. Sleep and try again
 	    ?notice("dlink_tcp:connect_and_retry_remote(~p:~p): Failed: ~p",
@@ -240,8 +252,8 @@ connect_and_retry_remote( IP, Port, CompSpec) ->
 
 	    ?notice("dlink_tcp:connect_and_retry_remote(~p:~p): Will try again in ~p sec",
 			   [IP, Port, ?DEFAULT_RECONNECT_INTERVAL]),
-
-	    setup_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, IP, Port, CompSpec),
+	    log("start reconnect timer", [], CS),
+	    setup_reconnect_timer(?DEFAULT_RECONNECT_INTERVAL, IP, Port, CS),
 
 	    not_available
     end.
@@ -262,6 +274,7 @@ announce_local_service_(CompSpec,
 	      [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
 		{ ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
 		{ ?DLINK_ARG_SIGNATURE, JWT }
+		| rvi_common:log_id_json_tail(CompSpec)
 	      ])),
 
     ?debug("dlink_tcp:announce_local_service(~p: ~p) -> ~p  Res: ~p",
@@ -332,14 +345,18 @@ handle_socket_(FromPid, SetupIP, SetupPort, closed, [CompSpec]) ->
 
 handle_socket_(_FromPid, SetupIP, SetupPort, error, _ExtraArgs) ->
     ?info("dlink_tcp:socket_error(): SetupAddress:  {~p, ~p}", [ SetupIP, SetupPort ]),
+    log_orphan(<<"sock">>, "socket ERROR ~s:~w", [SetupIP, SetupPort]),
     ok.
 
 handle_socket_(FromPid, PeerIP, PeerPort, data, Elems, [CompSpec]) ->
 
-    ?debug("dlink_tcp:data(): Elems ~p", [Elems]),
+    ?debug("data(): Elems ~p", [authorize_keys:abbrev_payload(Elems)]),
+
+    CS = rvi_common:pick_up_json_log_id(Elems, CompSpec),
 
     case opt(?DLINK_ARG_CMD, Elems, undefined) of
         ?DLINK_CMD_AUTHORIZE ->
+	    ?debug("got authorize ~s:~w", [PeerIP, PeerPort]),
             [ TransactionID,
               RemoteAddress,
               RemotePort,
@@ -362,9 +379,10 @@ handle_socket_(FromPid, PeerIP, PeerPort, data, Elems, [CompSpec]) ->
 		end,
             process_authorize(FromPid, PeerIP, PeerPort,
                               TransactionID, RemoteAddress, RemotePort,
-                              ProtoVersion, Signature, Certificates, CompSpec);
+                              ProtoVersion, Signature, Certificates, CS);
 
         ?DLINK_CMD_SERVICE_ANNOUNCE ->
+	    ?debug("got service_announce ~s:~w", [PeerIP, PeerPort]),
             [ TransactionID,
               ProtoVersion,
               Signature ] =
@@ -374,12 +392,14 @@ handle_socket_(FromPid, PeerIP, PeerPort, data, Elems, [CompSpec]) ->
                      Elems, undefined),
 
 	    Conn = {PeerIP, PeerPort},
+	    log("sa from ~s:~w", [PeerIP, PeerPort], CS),
             case authorize_rpc:validate_message(CompSpec, Signature, Conn) of
                 [ok, Msg] ->
 		    ?debug("Service Announce~nMsg = ~p~n", [Msg]),
                     process_announce(Msg, FromPid, PeerIP, PeerPort,
                                      TransactionID, ProtoVersion, CompSpec);
                 _ ->
+		    log("sa INVALID", [], CS),
                     ?debug("Couldn't validate availability msg from ~p", [Conn])
             end;
 
@@ -684,10 +704,10 @@ process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
     ?info("dlink_tcp:authorize(): Remote Address: ~p~p", [ RemoteAddress, RemotePort ]),
     ?info("dlink_tcp:authorize(): Protocol Ver:   ~p", [ ProtoVersion ]),
     ?debug("dlink_tcp:authorize(): TransactionID:  ~p", [ TransactionID ]),
-    ?debug("dlink_tcp:authorize(): Certificates:   ~p", [ Certificates ]),
-    ?debug("dlink_tcp:authorize(): Signature:      ~p", [ Signature ]),
+    ?debug("dlink_tcp:authorize(): Certificates:   ~p", [ [authorize_keys:abbrev_bin(C) || C <- Certificates] ]),
+    ?debug("dlink_tcp:authorize(): Signature:      ~p", [ authorize_keys:abbrev_bin(Signature) ]),
 
-    { _NRemoteAddress, _NRemotePort} = Conn =
+    {NRemoteAddress, NRemotePort} = Conn =
         case { RemoteAddress, RemotePort } of
             { "0.0.0.0", 0 } ->
 
@@ -697,6 +717,7 @@ process_authorize(FromPid, PeerIP, PeerPort, TransactionID, RemoteAddress,
             _ -> { RemoteAddress, RemotePort}
         end,
 
+    log("auth ~s:~w", [NRemoteAddress, NRemotePort], CompSpec),
     case validate_auth_jwt(Signature, Certificates, {PeerIP, PeerPort}, CompSpec) of
         true ->
             connection_authorized(FromPid, Conn, CompSpec);
@@ -715,13 +736,15 @@ send_authorize(Pid, CompSpec) ->
 			{ ?DLINK_ARG_PORT,  integer_to_list(LocalPort) },
 			{ ?DLINK_ARG_VERSION, ?DLINK_TCP_VERSION },
 			{ ?DLINK_ARG_CERTIFICATES, get_certificates(CompSpec) },
-			{ ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) } ])).
+			{ ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) }
+			| rvi_common:log_id_json_tail(CompSpec) ])).
 
 connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
     %% If FromPid (the genserver managing the socket) is not yet registered
     %% with the conneciton manager, this is an incoming connection
     %% from the client. We should respond with our own authorize followed by
     %% a service announce
+    log("authorized: ~s:~p", [RemoteIP, RemotePort], CompSpec),
     case connection_manager:find_connection_by_pid(FromPid) of
 	not_found ->
 	    ?info("dlink_tcp:authorize(): New connection!"),
@@ -746,11 +769,13 @@ connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
 
     [ ok, JWT ] = authorize_rpc:sign_message(
                     CompSpec, availability_msg(available, FilteredServices)),
+    log("sending sa: ~s:~w", [RemoteIP, RemotePort], CompSpec),
     connection:send(FromPid,
 		    rvi_common:term_to_json(
 		      [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
 			{ ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
-			{ ?DLINK_ARG_SIGNATURE, JWT } ])),
+			{ ?DLINK_ARG_SIGNATURE, JWT }
+			| rvi_common:log_id_json_tail(CompSpec)])),
 
     %% Setup ping interval
     gen_server:cast(?SERVER, { setup_initial_ping, RemoteIP, RemotePort, FromPid }),
@@ -850,3 +875,15 @@ opt(K, L, Def) ->
 
 opts(Keys, Elems, Def) ->
     [ opt(K, Elems, Def) || K <- Keys].
+
+
+log_orphan(Pfx, Fmt, Args) ->
+    start_log(Pfx, Fmt, Args, #component_spec{}).
+
+start_log(Pfx, Fmt, Args, CS) ->
+    LogId = rvi_log:new_id(Pfx),
+    rvi_log:log(LogId, <<"dlink_tcp">>, rvi_log:format(Fmt, Args)),
+    rvi_common:set_value(rvi_log_id, LogId, CS).
+
+log(Fmt, Args, CS) ->
+    rvi_log:flog(Fmt, Args, <<"dlink_tcp">>, CS).

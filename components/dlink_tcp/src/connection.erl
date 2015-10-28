@@ -196,7 +196,7 @@ handle_cast({activate_socket, Sock}, State) ->
 
 
 handle_cast(_Msg, State) ->
-    ?warning("~p:handle_cast(): Unknown call: ~p", [ ?MODULE, _Msg]),
+    ?warning("handle_cast(): Unknown call: ~p", [_Msg]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -225,17 +225,17 @@ handle_info({tcp, Sock, Data},
 		  func = Fun,
 		  args = Arg,
 		  pst = PST} = State) ->
-    ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
-    ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
+    ?debug("handle_info(data): From: ~p:~p ", [IP, Port]),
 
     case jsx_decode_stream(Data, PST) of
 	{ [], NPST } ->
-	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
+	    ?debug("handle_info(data incomplete)", []),
 	    inet:setopts(Sock, [{active, once}]),
 	    {noreply, State#st { pst = NPST} };
 
 	{ JSONElements, NPST } ->
-	    ?debug("~p:handle_info(data complete): Processed: ~p", [ ?MODULE, JSONElements]),
+	    ?debug("data complete: Processed: ~p",
+		   [[authorize_keys:abbrev_payload(E) || E <- JSONElements]]),
 	    FromPid = self(),
 	    [Mod:Fun(FromPid, IP, Port, data, SingleElem, Arg)
 	     || SingleElem <- JSONElements],
@@ -251,7 +251,7 @@ handle_info({tcp_closed, Sock},
 		  mod = Mod,
 		  func = Fun,
 		  args = Arg } = State) ->
-    ?debug("~p:handle_info(tcp_closed): Address: ~p:~p ", [ ?MODULE, IP, Port]),
+    ?debug("handle_info(tcp_closed): Address: ~p:~p ", [IP, Port]),
     Mod:Fun(self(), IP, Port,closed, Arg),
     gen_tcp:close(Sock),
     connection_manager:delete_connection_by_pid(self()),
@@ -265,14 +265,14 @@ handle_info({tcp_error, _Sock},
 		  func = Fun,
 		  args = Arg} = State) ->
 
-    ?debug("~p:handle_info(tcp_error): Address: ~p:~p ", [ ?MODULE, IP, Port]),
+    ?debug("handle_info(tcp_error): Address: ~p:~p ", [IP, Port]),
     Mod:Fun(self(), IP, Port, error, Arg),
     connection_manager:delete_connection_by_pid(self()),
     {stop, normal, State};
 
 
 handle_info(_Info, State) ->
-    ?warning("~p:handle_cast(): Unknown info: ~p", [ ?MODULE, _Info]),
+    ?warning("handle_cast(): Unknown info: ~p", [_Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -287,7 +287,7 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    ?debug("~p:terminate(): Reason: ~p ", [ ?MODULE, _Reason]),
+    ?debug("terminate(): Reason: ~p ", [_Reason]),
     ok.
 
 %%--------------------------------------------------------------------

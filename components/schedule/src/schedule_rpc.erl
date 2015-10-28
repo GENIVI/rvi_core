@@ -153,7 +153,7 @@ service_unavailable(CompSpec, SvcName, DataLinkModule) ->
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
-handle_rpc("schedule_message", Args) ->
+handle_rpc(<<"schedule_message">>, Args) ->
 
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),

@@ -28,7 +28,7 @@
 	 terminate/2, code_change/3]).
 
 -export([setup/6]).
--export([upgrade/2]).
+-export([upgrade/3]).
 -export([send/2]).
 -export([send/3]).
 -export([is_connection_up/1]).
@@ -49,7 +49,8 @@
           packet_st = [],
 	  mod = undefined,
 	  func = undefined,
-	  args = undefined
+          cs,
+          role = server :: client | server
 	 }).
 
 %%%===================================================================
@@ -57,11 +58,10 @@
 %%%===================================================================
 %% MFA is to deliver data received on the socket.
 
-setup(IP, Port, Sock, Mod, Fun, Arg) ->
-    setup(IP, Port, Sock, Mod, Fun, Arg, []).
-
-setup(IP, Port, Sock, Mod, Fun, Arg, Opts) ->
-    Params = {IP, Port, Sock, Mod, Fun, Arg, Opts},
+setup(IP, Port, Sock, Mod, Fun, CompSpec) ->
+    Params = {IP, Port, Sock, Mod, Fun, CompSpec},
+    ?debug("setup() IP = ~p; Port = ~p; Mod = ~p; Fun = ~p", [IP, Port, Mod, Fun]),
+    ?debug("CompSpec = ~p", [CompSpec]),
     case gen_server:start_link(?MODULE, Params ,[]) of
 	{ ok, GenSrvPid } = Res ->
 	    gen_tcp:controlling_process(Sock, GenSrvPid),
@@ -72,8 +72,8 @@ setup(IP, Port, Sock, Mod, Fun, Arg, Opts) ->
 	    Err
     end.
 
-upgrade(Pid, Role) ->
-    gen_server:call(Pid, {upgrade, Role}).
+upgrade(Pid, Role, CompSpec) when Role==client; Role==server ->
+    gen_server:call(Pid, {upgrade, Role, CompSpec}).
 
 send(Pid, Data) when is_pid(Pid) ->
     gen_server:cast(Pid, {send, Data}).
@@ -132,7 +132,7 @@ is_connection_up(IP, Port) ->
 %% MFA used to handle socket closed, socket error and received data
 %% When data is received, a separate process is spawned to handle
 %% the MFA invocation.
-init({IP, Port, Sock, Mod, Fun, Arg, Opts}) ->
+init({IP, Port, Sock, Mod, Fun, CompSpec}) ->
     case IP of
 	undefined -> ok;
 	_ -> dlink_tls_connmgr:add_connection(IP, Port, self())
@@ -143,10 +143,10 @@ init({IP, Port, Sock, Mod, Fun, Arg, Opts}) ->
     ?debug("connection:init(): Sock:     ~p", [Sock]),
     ?debug("connection:init(): Module:   ~p", [Mod]),
     ?debug("connection:init(): Function: ~p", [Fun]),
-    ?debug("connection:init(): Arg:      ~p", [Arg]),
     %% Grab socket control
-    PktMod = opt(packet_mod, Opts, ?PACKET_MOD),
-    PktSt = PktMod:init(Opts),
+    {ok, PktMod} = rvi_common:get_module_config(dlink_tls, dlink_tls_rpc,
+                                                packet_mod, ?PACKET_MOD, CompSpec),
+    PktSt = PktMod:init(CompSpec),
     {ok, #st{
 	    ip = IP,
 	    port = Port,
@@ -155,7 +155,7 @@ init({IP, Port, Sock, Mod, Fun, Arg, Opts}) ->
             packet_mod = PktMod,
             packet_st = PktSt,
 	    func = Fun,
-	    args = Arg
+            cs = CompSpec
 	   }}.
 
 
@@ -181,16 +181,20 @@ handle_call(terminate_connection, _From,  St) ->
 
     {stop, Reason, NSt} = handle_info({tcp_closed, St#st.sock}, St),
     {stop, Reason, ok, NSt};
-handle_call({upgrade, Role} = Req, _From, #st{sock = S} = St) ->
+handle_call({upgrade, Role, CompSpec} = Req, _From, #st{sock = S} = St) ->
     ?debug("~p:handle_call(~p)~n", [?MODULE, Req]),
 
     {ok, [{active, Last}]} = inet:getopts(S, [active]),
     inet:setopts(S, [{active, false}]),
-    case do_upgrade(S, Role) of
+    case do_upgrade(S, Role, CompSpec) of
 	{ok, NewS} ->
 	    ?debug("upgrade to TLS succcessful~n", []),
-	    ssl:setopts(NewS, [{active, Last}]),
-	    {reply, ok, St#st{sock = NewS, mode = tls}};
+            ssl:setopts(NewS, [{active, Last}]),
+            {ok, {IP, Port}} = ssl:peername(NewS),
+            NewCS = rvi_common:set_value(dlink_tls_role, client, CompSpec),
+	    {reply, ok, St#st{sock = NewS, mode = tls, role = Role,
+                              ip = inet_parse:ntoa(IP), port = Port,
+                              cs = NewCS}};
 	Error ->
 	    ?error("Cannot upgrade to TLS: ~p~n", [Error]),
 	    {stop, Error, Error, St}
@@ -251,17 +255,14 @@ handle_info({tcp, Sock, Data},
 
 handle_info({ssl, Sock, Data},
 	    #st{ip = IP, port = Port,
-		mod = Mod, func = Fun, args = Arg,
+		mod = Mod, func = Fun, cs = CS,
                 packet_mod = PMod, packet_st = PSt} = State) ->
     ?debug("handle_info(data): ~p", [Data]),
     case PMod:decode(Data, PSt) of
         {ok, Elements, PSt1} ->
 	    ?debug("~p:handle_info(data complete): Processed: ~p",
                    [?MODULE, Elements]),
-            FromPid = self(),
-            spawn(fun() -> [Mod:Fun(FromPid, IP, Port,
-                                    data, Elem, Arg) || Elem <- Elements]
-                  end),
+            Mod:Fun(self(), IP, Port, data, Elements, CS),
             ssl:setopts(Sock, [{active, once}]),
             {noreply, State#st{packet_st = PSt1}};
         {error, Reason} ->
@@ -276,7 +277,7 @@ handle_info({tcp, Sock, Data},
 		  port = Port,
 		  mod = Mod,
 		  func = Fun,
-		  args = Arg,
+                  cs = CS,
                   packet_mod = PMod,
                   packet_st = PSt} = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
@@ -286,10 +287,7 @@ handle_info({tcp, Sock, Data},
         {ok, Elements, PSt1} ->
 	    ?debug("~p:handle_info(data complete): Processed: ~p",
                    [?MODULE, Elements]),
-            FromPid = self(),
-            spawn(fun() -> [Mod:Fun(FromPid, IP, Port,
-                                    data, Elem, Arg) || Elem <- Elements]
-                  end),
+            Mod:Fun(self(), IP, Port, data, Elements, CS),
             inet:setopts(Sock, [{active, once}]),
             {noreply, State#st{packet_st = PSt1}};
         {error, Reason} ->
@@ -305,9 +303,9 @@ handle_info({tcp_closed, Sock},
 		  port = Port,
 		  mod = Mod,
 		  func = Fun,
-		  args = Arg } = State) ->
+                  cs = CS} = State) ->
     ?debug("~p:handle_info(tcp_closed): Address: ~p:~p ", [ ?MODULE, IP, Port]),
-    Mod:Fun(self(), IP, Port,closed, Arg),
+    Mod:Fun(self(), IP, Port,closed, CS),
     gen_tcp:close(Sock),
     dlink_tls_connmgr:delete_connection_by_pid(self()),
     {stop, normal, State};
@@ -317,10 +315,10 @@ handle_info({tcp_error, _Sock},
 		  port = Port,
 		  mod = Mod,
 		  func = Fun,
-		  args = Arg} = State) ->
+                  cs = CS} = State) ->
 
     ?debug("~p:handle_info(tcp_error): Address: ~p:~p ", [ ?MODULE, IP, Port]),
-    Mod:Fun(self(), IP, Port, error, Arg),
+    Mod:Fun(self(), IP, Port, error, CS),
     dlink_tls_connmgr:delete_connection_by_pid(self()),
     {stop, normal, State};
 
@@ -359,27 +357,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+do_upgrade(Sock, client, CompSpec) ->
+    ssl:connect(Sock, tls_opts(client, CompSpec));
+do_upgrade(Sock, server, CompSpec) ->
+    ssl:ssl_accept(Sock, tls_opts(server, CompSpec)).
+
 %% FIXME: For now, use the example certs delivered with the OTP SSL appl.
-tls_opts(Role) ->
+tls_opts(Role, CompSpec) ->
     Dir = tls_dir(Role),
-    [{certfile, filename:join(Dir, "cert.pem")},
-     {keyfile, filename:join(Dir, "key.pem")}].
+    {ok, CertFile} = get_config(certfile, filename:join(Dir, "cert.pem"), CompSpec),
+    {ok, KeyFile}  = get_config(keyfile, filename:join(Dir, "key.pem"), CompSpec),
+    [{certfile, CertFile},
+     {keyfile, KeyFile}].
 
 tls_dir(Role) when Role==client;
-		   Role==server ->
+                   Role==server ->
     filename:join([code:lib_dir(ssl), "examples", "certs", "etc",
-		   atom_to_list(Role)]).
+                   atom_to_list(Role)]).
 
-do_upgrade(Sock, client) ->
-    ssl:connect(Sock, tls_opts(client));
-do_upgrade(Sock, server) ->
-    ssl:ssl_accept(Sock, tls_opts(server)).
-
-
-opt(K, Opts, Def) ->
-    case lists:keyfind(K, 1, Opts) of
-        {_, V} ->
-            V;
-        false ->
-            Def
-    end.
+get_config(Key, Default, CompSpec) ->
+    rvi_common:get_module_config(
+      dlink_tls, dlink_tls_rpc, Key, Default, CompSpec).

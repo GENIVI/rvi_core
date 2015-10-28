@@ -30,6 +30,10 @@
 -export([start_json_server/0,
 	 start_websocket/0]).
 
+%% exo_socket authentication callbacks
+-export([authenticate/3,
+         incoming/2]).
+
 %% Invoked by service discovery
 %% FIXME: Should be rvi_service_discovery behavior
 -export([service_available/3,
@@ -84,10 +88,22 @@ init([]) ->
 
 
 start_json_server() ->
+    Allowed = get_allowed(),
     ?debug("service_edge_rpc:start_json_server()"),
+    Opts = [{exo_socket,
+	     [{auth,
+	       [{role, server},
+		{server,
+		 [{mod, ?MODULE},
+		  {allowed, Allowed}
+		 ]}
+	       ]}
+	     ]}
+	   ],
     case rvi_common:start_json_rpc_server(service_edge,
 					  ?MODULE,
-					  service_edge_sup) of
+					  service_edge_sup,
+					  Opts) of
 	ok ->
 	    ok;
 
@@ -97,6 +113,38 @@ start_json_server() ->
 	    Err
     end.
 
+get_allowed() ->
+    Allowed = case rvi_common:get_module_config(
+                     service_edge, service_edge_rpc, allowed) of
+                  {ok, L}    -> L;
+                  {error, _} -> [{127,0,0,1}]
+        end,
+    ?debug("get_allowed(); Allowed = ~p", [Allowed]),
+    lists:flatmap(
+      fun(Addr) ->
+              case inet:ip(Addr) of
+                  {ok, IP}   -> [IP];
+                  {error, _} -> []
+              end
+      end, Allowed).
+
+authenticate(X, Role, Opts) ->
+    {ok, {PeerIP,_}} = exo_socket:peername(X),
+    ?debug("authenticate(~p, ~p, ~p)~nPeer = ~p~n", [X, Role, Opts, PeerIP]),
+    case lists:keyfind(allowed, 1, Opts) of
+        {_, Allowed} ->
+            case lists:member(PeerIP, Allowed) of
+                true ->
+                    {ok, Opts};
+                false ->
+                    error
+            end;
+        false ->
+            {ok, Opts}
+    end.
+
+incoming(Data, _) ->
+    Data.
 
 start_websocket() ->
     %%
@@ -356,6 +404,7 @@ handle_call({ rvi, register_local_service, [SvcName, URL] }, _From, St) ->
     ?debug("service_edge_rpc:register_local_service(): address:   ~p ",   [URL]),
 
     FullSvcName = rvi_common:local_service_to_string(SvcName),
+    CS = start_log(<<"svc">>, "reg local service: ~s", [FullSvcName], St#st.cs),
     ?debug("service_edge_rpc:register_local_service(): full name: ~p ", [FullSvcName]),
 
     ets:insert(?SERVICE_TABLE, #service_entry {
@@ -364,7 +413,7 @@ handle_call({ rvi, register_local_service, [SvcName, URL] }, _From, St) ->
 
     %% Register with service discovery, will trigger callback to service_available()
     %% that forwards the registration to other connected services.
-    service_discovery_rpc:register_services(St#st.cs, [FullSvcName], local),
+    service_discovery_rpc:register_services(CS, [FullSvcName], local),
 
 
     %% Return ok.
@@ -378,7 +427,8 @@ handle_call({ rvi, unregister_local_service, [SvcName] }, _From, St) ->
 
     %% Register with service discovery, will trigger callback to service_available()
     %% that forwards the registration to other connected services.
-    service_discovery_rpc:unregister_services(St#st.cs, [SvcName], local),
+    CS = start_log(<<"svc">>, "unreg local service: ~s", [SvcName], St#st.cs),
+    service_discovery_rpc:unregister_services(CS, [SvcName], local),
 
     %% Return ok.
     { reply, [ ok ], St };
@@ -401,18 +451,20 @@ handle_call({ rvi, handle_local_message,
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [SvcName]),
     ?debug("service_edge_rpc:local_msg: timeout:         ~p", [TimeoutArg]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
+    CS = start_log(<<"recv">>, "local_message: ~s", [SvcName], St#st.cs),
     %%
     %% Authorize local message and retrieve a certificate / signature
     %% that will be accepted by the receiving node that will deliver
     %% the messaage to its locally connected service_name service.
     %%
+    ?debug("CS = ~p", [lager:pr(CS, rvi_common)]),
     [ok, Signature ] =
 	authorize_rpc:authorize_local_message(
-	  St#st.cs, SvcName, [{service_name, SvcName},
-			      {timeout, TimeoutArg},
-			      %% {parameters, Parameters},
-			      {parameters,  Parameters}
-			      ]),
+	  CS, SvcName, [{service_name, SvcName},
+			{timeout, TimeoutArg},
+			%% {parameters, Parameters},
+			{parameters,  Parameters}
+		       ]),
 
     %%
     %% Slick but ugly.
@@ -456,16 +508,18 @@ handle_call({ rvi, handle_local_message,
     case LookupRes of
 	[ #service_entry { url = URL } ]  -> %% SvcName is local. Forward message
 	    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
+	    log("dispatch to ~s", [URL], CS),
 	    Res = forward_message_to_local_service(URL,
 						   SvcName,
 						   Parameters,
-						   St#st.cs),
+						   CS),
 	    { reply, Res , St};
 
 	_ -> %% SvcName is remote
 	    %% Ask Schedule the request to resolve the network address
 	    ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
-	    [ _, TID ] = schedule_rpc:schedule_message(St#st.cs,
+	    log("schedule message (~s)", [SvcName], CS),
+	    [ _, TID ] = schedule_rpc:schedule_message(CS,
 						       SvcName,
 						       Timeout,
 						       Parameters,
@@ -481,13 +535,15 @@ handle_call(Other, _From, St) ->
 
 
 handle_cast({rvi, service_available, [SvcName, _DataLinkModule] }, St) ->
-    ?debug("service_edge_rpc: Service available: ~p:", [ SvcName]),
+    ?debug("service_edge_rpc: Service available: ~p", [ SvcName]),
+    start_log(<<"svc">>, "service_available: ~s", [SvcName], St#st.cs),
     announce_service_availability(available, SvcName),
     { noreply, St };
 
 
 handle_cast({rvi, service_unavailable, [SvcName, _DataLinkModule] }, St) ->
     ?debug("service_edge_rpc: Service unavailable: ~p:", [ SvcName]),
+    start_log(<<"rsvc">>, "service_unavailable: ~s", [SvcName], St#st.cs),
     announce_service_availability(unavailable, SvcName),
     { noreply, St };
 
@@ -627,7 +683,7 @@ dispatch_to_local_service(URL, Command, Args) ->
 %% Forward a message to a specific locally connected service.
 %% Called by forward_message_to_local_service/2.
 %%
-forward_message_to_local_service(URL,SvcName, Parameters, _CompSpec) ->
+forward_message_to_local_service(URL,SvcName, Parameters, CompSpec) ->
     ?debug("service_edge:forward_to_local(): URL:         ~p", [URL]),
     ?debug("service_edge:forward_to_local(): Parameters:  ~p", [Parameters]),
 
@@ -644,13 +700,21 @@ forward_message_to_local_service(URL,SvcName, Parameters, _CompSpec) ->
     %% Deliver the message to the local service, which can
     %% be either a wse websocket, or a regular HTTP JSON-RPC call
     spawn(fun() ->
-		  rvi_common:get_request_result(
-		    dispatch_to_local_service(URL,
-					      message,
-					      [{<<"service_name">>, LocalSvcName },
-					       {<<"parameters">>, Parameters }]))
+		  log_outcome(
+		    rvi_common:get_request_result(
+		      dispatch_to_local_service(URL,
+						message,
+						[{<<"service_name">>, LocalSvcName },
+						 {<<"parameters">>, Parameters }])),
+		    SvcName, CompSpec)
 	  end),
     [ ok, -1 ].
+
+log_outcome({Status, _}, _SvcName, CS) ->
+    log("result: ~w", [Status], CS);
+log_outcome(Other, _SvcName, CS) ->
+    log("unexpected: ~w", [Other], CS).
+
 
 
 announce_service_availability(Available, SvcName) ->
@@ -697,3 +761,12 @@ announce_service_availability(Available, SvcName) ->
 		      Acc
 	      end
       end, BlockURLs, ?SERVICE_TABLE).
+
+
+start_log(Pfx, Fmt, Args, CS) ->
+    LogTID = rvi_log:new_id(Pfx),
+    rvi_log:log(LogTID, <<"svc_edge">>, rvi_log:format(Fmt, Args)),
+    rvi_common:set_value(rvi_log_id, LogTID, CS).
+
+log(Fmt, Args, CS) ->
+    rvi_log:flog(Fmt, Args, <<"svc_edge">>, CS).
