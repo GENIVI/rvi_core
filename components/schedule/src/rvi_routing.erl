@@ -235,7 +235,14 @@ normalize_routes_([ {{ Pr, PrOp}, DL } | Rem ], Acc) ->
     normalize_routes_(Rem, [ { {Pr, PrOp}, { DL, [] } } | Acc]);
 
 normalize_routes_([ {Pr, DL} | Rem ], Acc) ->
-    normalize_routes_(Rem, [ { {Pr, []}, { DL, [] } } | Acc]).
+    normalize_routes_(Rem, [ { {Pr, []}, { DL, [] } } | Acc]);
+normalize_routes_([H|T], Acc) ->
+    ?error("Unrecognized routing rule: ~p", [H]),
+    normalize_routes_(T, Acc);
+normalize_routes_(Other, Acc) ->
+    ?error("Unrecognized routing entry (expected list): ~p", [Other]),
+    lists:reverse(Acc).
+
 
 
 find_protocols_(_DataLink, [], Acc ) ->

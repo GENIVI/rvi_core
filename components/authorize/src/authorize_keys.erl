@@ -11,7 +11,8 @@
 	 save_cert/4]).
 -export([get_certificates/0,
 	 get_certificates/1]).
--export([validate_message/2]).
+-export([validate_message/2,
+	 validate_service_call/2]).
 -export([filter_by_service/2,
 	 find_cert_by_service/1]).
 -export([public_key_to_json/1,
@@ -106,6 +107,9 @@ authorize_jwt() ->
 validate_message(JWT, Conn) ->
     gen_server:call(?MODULE, {validate_message, JWT, Conn}).
 
+validate_service_call(Service, Conn) ->
+    gen_server:call(?MODULE, {validate_service_call, Service, Conn}).
+
 get_certificates() ->
     get_certificates(local).
 
@@ -176,6 +180,8 @@ handle_call_({save_keys, Keys, Conn}, _, S) ->
     {reply, ok, S};
 handle_call_({validate_message, JWT, Conn}, _, S) ->
     {reply, validate_message_(JWT, Conn), S};
+handle_call_({validate_service_call, Svc, Conn}, _, S) ->
+    {reply, validate_service_call_(Svc, Conn), S};
 handle_call_({save_cert, Cert, JWT, {IP, Port} = Conn, LogId}, _, S) ->
     case process_cert_struct(Cert, JWT) of
 	invalid ->
@@ -222,6 +228,14 @@ certs_by_conn(Conn) ->
 				  [], [{{'$1', '$2'}}] }]),
     ?debug("rough selection: ~p~n", [[{abbrev_bin(C),I} || {C,I} <- Certs]]),
     [C || {C,V} <- Certs, check_validity(V, UTC)].
+
+cert_recs_by_conn(Conn) ->
+    ?debug("cert_recs_by_conn(~p)~n", [Conn]),
+    UTC = rvi_common:utc_timestamp(),
+    Certs = ets:select(?CERTS, [{ {{Conn,'_'}, '$1'},
+				  [], ['$1'] }]),
+    ?debug("rough selection: ~p~n", [[abbrev_bin(C#cert.id) || C <- Certs]]),
+    [C || C <- Certs, check_validity(C#cert.validity, UTC)].
 
 filter_by_service_(Services, Conn) ->
     ?debug("Filter: certs = ~p", [ets:tab2list(?CERTS)]),
@@ -524,6 +538,16 @@ validate_message_1([{_,K}|T], JWT) ->
 validate_message_1([], _) ->
     error(invalid).
 
+validate_service_call_(Svc, Conn) ->
+    case lists:filter(fun(C) -> can_invoke(Svc, C) end, cert_recs_by_conn(Conn)) of
+	[] ->
+	    invalid;
+	[#cert{id = ID}|_] ->
+	    {ok, ID}
+    end.
+
+can_invoke(Svc, #cert{invoke = In}) ->
+    lists:any(fun(I) -> match_svc(I, Svc) end, In).
 
 pp_key(#'RSAPrivateKey'{modulus = Mod, publicExponent = Pub}) ->
     P = integer_to_binary(Pub),

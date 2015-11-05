@@ -38,6 +38,7 @@
 
 -define(PERSISTENT_CONNECTIONS, persistent_connections).
 -define(DEFAULT_BT_CHANNEL, 1).
+-define(DEFAULT_TCP_PORT, 8807).
 -define(DEFAULT_RECONNECT_INTERVAL, 1000).
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
 -define(SERVER, ?MODULE).
@@ -111,13 +112,13 @@ start_connection_manager() ->
 						   [],
 						   CompSpec),
     %% Retrieve the channel we should use
-    Channel = proplists:get_value(channel, BertOpts, ?DEFAULT_BT_CHANNEL),
+    Mode = get_mode(BertOpts),
+    Channel = get_channel(Mode, BertOpts),
 
     ?info("dlink_bt:init_rvi_component(~p): Starting listener.", [self()]),
 
     %% Fire up listener
 
-    Mode = get_mode(BertOpts),
     case Mode of
 	bt ->
 	    bt:start(),
@@ -126,7 +127,7 @@ start_connection_manager() ->
 	    ok
     end,
     bt_listener:start_link(Mode),
-    bt_connection_manager:start_link(Mode),
+    bt_connection_manager:start_link(),
     ?info("dlink_bt:start_connection_manager(): Adding listener on bluetooth channel ~p", [Channel ]),
 
     %% Add listener channel.
@@ -149,13 +150,13 @@ start_connection_manager() ->
     ok.
 
 
-get_mode(BertOpts) ->
-    case proplists:get_value(test_mode, BertOpts) of
-	TM when TM==undefined; TM==bt ->
-	    bt;
-	tcp ->
-	    tcp
-    end.
+get_mode(Opts) ->
+    proplists:get_value(test_mode, Opts, bt).
+
+get_channel(tcp, Opts) ->
+    proplists:get_value(port, Opts, ?DEFAULT_TCP_PORT);
+get_channel(bt, Opts) ->
+    proplists:get_value(channel, Opts, ?DEFAULT_BT_CHANNEL).
 
 
 setup_persistent_connections_([ ], _CompSpec) ->

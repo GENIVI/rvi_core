@@ -162,6 +162,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-define(if_verbose(Expr),
+        case get(verbose) of
+            true -> Expr;
+            _    -> ok
+        end).
+
 %% @spec start(Type, Args) -> {ok, pid()}
 %% @doc Application start function.
 %% @end
@@ -1400,9 +1406,11 @@ expand_config_script([{include, F}|T], Name, Acc, Opts) ->
     Incl = read_config_script(F, Name, Opts),
     expand_config_script(T, Name, [Incl|Acc], Opts);
 expand_config_script([{include_lib, LibF}|T], Name, Acc, Opts) ->
+    ?if_verbose(io:fwrite("include_lib: ~s~n", [LibF])),
     case filename:split(LibF) of
         [App|Tail] ->
-            try code:lib_dir(to_atom(App)) of
+            ?if_verbose(io:fwrite("lib: ~s~n", [App])),
+            try code:lib_dir(App) of
                 {error, bad_name} ->
                     setup_lib:abort(
                       "Error including conf (~s): no such lib (~s)~n",
@@ -1425,12 +1433,6 @@ expand_config_script([H|T], Name, Acc, Opts) ->
     expand_config_script(T, Name, [H|Acc], Opts);
 expand_config_script([], _, Acc, _) ->
     lists:flatten(lists:reverse(Acc)).
-
-to_atom(B) when is_binary(B) ->
-    binary_to_existing_atom(B, latin1);
-to_atom(L) when is_list(L) ->
-    list_to_existing_atom(L).
-
 
 
 script_vars(Vs) ->

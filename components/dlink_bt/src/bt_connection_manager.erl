@@ -2,10 +2,10 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
-%% 
+%%
 %%%-------------------------------------------------------------------
 %%% @author magnus <magnus@t520.home>
 %%% @copyright (C) 2014, magnus
@@ -32,7 +32,7 @@
 -export([find_connection_by_pid/1]).
 -export([find_connection_by_address/2]).
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 
 -record(st, {
 	  conn_by_pid = undefined,
@@ -104,11 +104,11 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({add_connection, BTAddr, Channel, Pid}, _From, 
-	    #st { conn_by_pid = ConPid, 
+handle_call({add_connection, BTAddr, Channel, Pid}, _From,
+	    #st { conn_by_pid = ConPid,
 		  conn_by_addr = ConBTAddr} = St) ->
 
-    ?debug("~p:handle_call(add): Adding Pid: ~p, BTAddress: ~p", 
+    ?debug("~p:handle_call(add): Adding Pid: ~p, BTAddress: ~p",
 	     [ ?MODULE, Pid, { BTAddr, Channel }]),
     %% Store so that we can find connection both by pid and by address
     NConPid = dict:store(Pid, { BTAddr, Channel }, ConPid),
@@ -119,19 +119,19 @@ handle_call({add_connection, BTAddr, Channel, Pid}, _From,
     {reply, ok, NSt};
 
 %% Delete connection by pid
-handle_call({delete_connection_by_pid, Pid}, _From, 
-	    #st { conn_by_pid = ConPid, 
+handle_call({delete_connection_by_pid, Pid}, _From,
+	    #st { conn_by_pid = ConPid,
 		  conn_by_addr = ConBTAddr} = St) when is_pid(Pid)->
 
     %% Find address associated with Pid
     case dict:find(Pid, ConPid) of
-	error -> 
-	    ?debug("~p:handle_call(del_by_pid): not found: ~p", 
+	error ->
+	    ?debug("~p:handle_call(del_by_pid): not found: ~p",
 		   [ ?MODULE, Pid]),
 	    { reply, not_found, St};
-	
+
 	{ok, BTAddr } ->
-	    ?debug("~p:handle_call(del_by_pid): deleted Pid: ~p, BTAddress: ~p", 
+	    ?debug("~p:handle_call(del_by_pid): deleted Pid: ~p, BTAddress: ~p",
 		   [ ?MODULE, Pid, BTAddr]),
 
 	    NConPid = dict:erase(Pid, ConPid),
@@ -145,19 +145,19 @@ handle_call({delete_connection_by_pid, Pid}, _From,
 
 
 %% Delete connection by address
-handle_call({ delete_connection_by_address, BTAddr, Channel}, _From, 
-	    #st { conn_by_pid = ConPid, 
+handle_call({ delete_connection_by_address, BTAddr, Channel}, _From,
+	    #st { conn_by_pid = ConPid,
 		  conn_by_addr = ConBTAddr} = St) ->
 
     %% Find Pid associated with BTAddress
     case dict:find({BTAddr, Channel}, ConBTAddr) of
-	error -> 
-	    ?debug("~p:handle_call(del_by_addr): not found: ~p", 
+	error ->
+	    ?debug("~p:handle_call(del_by_addr): not found: ~p",
 		   [ ?MODULE, {BTAddr, Channel}]),
 	    { reply, not_found, St};
-	
+
 	{ok, Pid } ->
-	    ?debug("~p:handle_call(del_by_addr): deleted Pid: ~p, BTAddress: ~p", 
+	    ?debug("~p:handle_call(del_by_addr): deleted Pid: ~p, BTAddress: ~p",
 		   [ ?MODULE, Pid, {BTAddr, Channel}]),
 	    NConPid = dict:erase(Pid, ConPid),
 	    NConBTAddr = dict:erase({ BTAddr, Channel }, ConBTAddr),
@@ -168,36 +168,36 @@ handle_call({ delete_connection_by_address, BTAddr, Channel}, _From,
 
 
 %% Find connection by pid
-handle_call({ find_connection_by_pid, Pid}, _From, 
+handle_call({ find_connection_by_pid, Pid}, _From,
 	    #st { conn_by_pid = ConPid} = St) when is_pid(Pid)->
 
     %% Find address associated with Pid
     case dict:find(Pid, ConPid) of
-	error -> 
-	    ?debug("~p:handle_call(find_by_pid): not found: ~p", 
+	error ->
+	    ?debug("~p:handle_call(find_by_pid): not found: ~p",
 		   [ ?MODULE, Pid]),
 	    { reply, not_found, St};
-	
+
 	{ok, {BTAddr, Channel} } ->
-	    ?debug("~p:handle_call(find_by_addr): Pid: ~p ->: ~p", 
+	    ?debug("~p:handle_call(find_by_addr): Pid: ~p ->: ~p",
 		   [ ?MODULE, Pid, {BTAddr, Channel}]),
 	    {reply, {ok, BTAddr, Channel}, St}
     end;
 
 %% Find connection by address
-handle_call({find_connection_by_address, BTAddr, Channel}, _From, 
+handle_call({find_connection_by_address, BTAddr, Channel}, _From,
 	    #st { conn_by_addr = ConBTAddr} = St) ->
 
     %% Find address associated with Pid
     case dict:find({BTAddr, Channel}, ConBTAddr) of
-	error -> 
-	    ?debug("~p:handle_call(find_by_addr): not found: ~p", 
+	error ->
+	    ?debug("~p:handle_call(find_by_addr): not found: ~p",
 		   [ ?MODULE, {BTAddr, Channel}]),
 
 	    { reply, not_found, St};
-	
+
 	{ok, Pid } ->
-	    ?debug("~p:handle_call(find_by_addr): BTAddr: ~p ->: ~p", 
+	    ?debug("~p:handle_call(find_by_addr): BTAddr: ~p ->: ~p",
 		   [ ?MODULE, {BTAddr, Channel}, Pid]),
 	    {reply, {ok, Pid}, St}
     end;

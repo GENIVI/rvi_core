@@ -1,4 +1,3 @@
-%% -*- erlang-indent-level: 4;indent-tabs-mode: nil -*-
 %%
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
@@ -9,7 +8,7 @@
 
 
 %% -*- erlang -*-
-{application, dlink_bt,
+{application, proto_msgpack,
  [
   {description, ""},
   {vsn, "0.1"},
@@ -17,12 +16,11 @@
   {applications, [
                   kernel,
                   stdlib,
-		  rvi_common,
-		  bt
+                  rvi_common
                  ]},
-  {mod, { dlink_bt_app, []}},
-  {start_phases, [{json_rpc, []}, {connection_manager, []}, {announce, []}]},
+  {mod, { proto_msgpack_app, []}},
+  {start_phases, [{json_rpc, []}, {announce, []}]},
   {env, [
-	 {rvi_core_await, [{n,l,dlink_bt}]}
-	]}
+         {rvi_core_await, [{n, l, proto_msgpack}]}
+        ]}
  ]}.

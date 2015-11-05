@@ -749,8 +749,7 @@ process_data(_FromPid, RemoteIP, RemotePort, ProtocolMod, Data, CompSpec) ->
     ?debug("dlink_tls:receive_data(): RemoteAddr: {~p, ~p}", [ RemoteIP, RemotePort ]),
     ?debug("dlink_tls:receive_data(): ~p:receive_message(~p)", [ ProtocolMod, Data ]),
     Proto = list_to_existing_atom(ProtocolMod),
-    Proto:receive_message(CompSpec, {RemoteIP, RemotePort},
-			  base64:decode_to_string(Data)).
+    Proto:receive_message(CompSpec, {RemoteIP, RemotePort}, Data).
 
 process_announce(Avail, Svcs, FromPid, IP, Port, CompSpec) ->
     ?debug("dlink_tls:service_announce(~p): Address:       ~p:~p", [Avail,IP,Port]),

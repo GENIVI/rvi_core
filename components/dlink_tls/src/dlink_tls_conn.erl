@@ -39,6 +39,7 @@
 
 -define(SERVER, ?MODULE).
 -define(PACKET_MOD, dlink_data_msgpack).
+-define(MAX_MSG_SIZE, infinity).
 
 -record(st, {
 	  ip = {0,0,0,0},
@@ -50,7 +51,8 @@
 	  mod = undefined,
 	  func = undefined,
           cs,
-          role = server :: client | server
+          role = server :: client | server,
+          msg_size = ?MAX_MSG_SIZE :: infinity | pos_integer()
 	 }).
 
 %%%===================================================================
@@ -144,8 +146,7 @@ init({IP, Port, Sock, Mod, Fun, CompSpec}) ->
     ?debug("connection:init(): Module:   ~p", [Mod]),
     ?debug("connection:init(): Function: ~p", [Fun]),
     %% Grab socket control
-    {ok, PktMod} = rvi_common:get_module_config(dlink_tls, dlink_tls_rpc,
-                                                packet_mod, ?PACKET_MOD, CompSpec),
+    {ok, PktMod} = get_module_config(packet_mod, ?PACKET_MOD, CompSpec),
     PktSt = PktMod:init(CompSpec),
     {ok, #st{
 	    ip = IP,
@@ -158,6 +159,8 @@ init({IP, Port, Sock, Mod, Fun, CompSpec}) ->
             cs = CompSpec
 	   }}.
 
+get_module_config(Key, Default, CS) ->
+    rvi_common:get_module_config(dlink_tls, dlink_tls_rpc, Key, Default, CS).
 
 %%--------------------------------------------------------------------
 %% @private

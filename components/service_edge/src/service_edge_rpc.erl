@@ -24,7 +24,7 @@
 	 terminate/2,
 	 code_change/3]).
 
--export([handle_remote_message/6,
+-export([handle_remote_message/5,
 	 handle_local_timeout/3]).
 
 -export([start_json_server/0,
@@ -191,7 +191,7 @@ service_unavailable(CompSpec, SvcName, DataLinkModule) ->
 			    [{ service, SvcName },
 			     { data_link_module, DataLinkModule }], CompSpec).
 
-handle_remote_message(CompSpec, Conn, SvcName, Timeout, Params, Signature) ->
+handle_remote_message(CompSpec, Conn, SvcName, Timeout, Params) ->
     {IP, Port} = Conn,
     rvi_common:notification(service_edge, ?MODULE,
 			    handle_remote_message,
@@ -199,8 +199,7 @@ handle_remote_message(CompSpec, Conn, SvcName, Timeout, Params, Signature) ->
 			     { port, Port },
 			     { service, SvcName },
 			     { timeout, Timeout },
-			     { parameters, Params },
-			     { signature, Signature }], CompSpec).
+			     { parameters, Params }], CompSpec).
 
 
 %% Invoked by schedule_rpc.
@@ -359,15 +358,13 @@ handle_notification(<<"handle_remote_message">>, Args) ->
     { ok, SvcName } = rvi_common:get_json_element(["service"], Args),
     { ok, Timeout } = rvi_common:get_json_element(["timeout"], Args),
     { ok, Parameters } = rvi_common:get_json_element(["parameters"], Args),
-    { ok, Signature } = rvi_common:get_json_element(["signature"], Args),
     gen_server:cast(?SERVER, { rvi, handle_remote_message,
 			       [
 				 IP,
 				 Port,
 				 SvcName,
 				 Timeout,
-				 Parameters,
-				 Signature
+				 Parameters
 			       ]}),
 
     ok;
@@ -458,7 +455,7 @@ handle_call({ rvi, handle_local_message,
     %% the messaage to its locally connected service_name service.
     %%
     ?debug("CS = ~p", [lager:pr(CS, rvi_common)]),
-    [ok, Signature ] =
+    [ok] =
 	authorize_rpc:authorize_local_message(
 	  CS, SvcName, [{service_name, SvcName},
 			{timeout, TimeoutArg},
@@ -522,8 +519,7 @@ handle_call({ rvi, handle_local_message,
 	    [ _, TID ] = schedule_rpc:schedule_message(CS,
 						       SvcName,
 						       Timeout,
-						       Parameters,
-						       Signature),
+						       Parameters),
 	    { reply, [ok, TID ], St}
     end;
 
@@ -555,8 +551,7 @@ handle_cast({rvi, handle_remote_message,
 	      Port,
 	      SvcName,
 	      Timeout,
-	      Parameters,
-	      Signature
+	      Parameters
 	     ] }, St) ->
 
     ?debug("service_edge:remote_msg(): remote_ip:       ~p", [IP]),
@@ -564,7 +559,6 @@ handle_cast({rvi, handle_remote_message,
     ?debug("service_edge:remote_msg(): service_name:    ~p", [SvcName]),
     ?debug("service_edge:remote_msg(): timeout:         ~p", [Timeout]),
     ?debug("service_edge:remote_msg(): parameters:      ~p", [Parameters]),
-    ?debug("service_edge:remote_msg(): signature:       ~p", [Signature]),
 
     %% Check if this is a local message.
     case ets:lookup(?SERVICE_TABLE, SvcName) of
@@ -577,16 +571,15 @@ handle_cast({rvi, handle_remote_message,
 		    {remote_port, Port},
 		    {service_name, SvcName},
 		    {timeout, Timeout},
-		    {parameters, Parameters1},
-		    {signature, Signature}]) of
+		    {parameters, Parameters1}]) of
 		[ ok ] ->
 		    forward_message_to_local_service(URL, SvcName,
 						     Parameters, St#st.cs),
 		    { noreply, St};
 
-		[ _ ] ->
-		    ?warning("service_entry:remote_msg(): Failed to authenticate ~p",
-			     [SvcName]),
+		[ _Other ] ->
+		    ?warning("service_entry:remote_msg(): Failed to authenticate ~p (~p)",
+			     [SvcName, _Other]),
 		    { noreply, St}
 		end;
 	[] ->
@@ -700,6 +693,7 @@ forward_message_to_local_service(URL,SvcName, Parameters, CompSpec) ->
     %% Deliver the message to the local service, which can
     %% be either a wse websocket, or a regular HTTP JSON-RPC call
     spawn(fun() ->
+		  try
 		  log_outcome(
 		    rvi_common:get_request_result(
 		      dispatch_to_local_service(URL,
@@ -707,7 +701,12 @@ forward_message_to_local_service(URL,SvcName, Parameters, CompSpec) ->
 						[{<<"service_name">>, LocalSvcName },
 						 {<<"parameters">>, Parameters }])),
 		    SvcName, CompSpec)
+		  catch
+		     Tag:Err ->
+			  ?debug("Caught ~p:~p", [Tag,Err])
+		  end
 	  end),
+    timer:sleep(500),
     [ ok, -1 ].
 
 log_outcome({Status, _}, _SvcName, CS) ->

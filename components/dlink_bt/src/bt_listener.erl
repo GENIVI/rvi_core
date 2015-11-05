@@ -115,4 +115,4 @@ terminate(_Reason, _State) ->
 listen(bt, Channel) ->
     rfcomm:listen(Channel);
 listen(tcp, Port) ->
-    gen_tcp:listen(Port).
+    exo_socket:listen(Port).

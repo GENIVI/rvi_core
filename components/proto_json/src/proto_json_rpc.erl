@@ -22,7 +22,7 @@
 
 -define(SERVER, ?MODULE).
 -export([start_json_server/0]).
--export([send_message/9,
+-export([send_message/8,
 	 receive_message/3]).
 
 -record(st, {
@@ -50,8 +50,7 @@ send_message(CompSpec,
 	     ProtoOpts,
 	     DataLinkMod,
 	     DataLinkOpts,
-	     Parameters,
-	     Signature) ->
+	     Parameters) ->
     rvi_common:request(protocol, ?MODULE, send_message,
 		       [{ transaction_id, TID },
 			{ service, ServiceName },
@@ -59,9 +58,8 @@ send_message(CompSpec,
 			{ protocol_opts, ProtoOpts },
 			{ data_link_mod, DataLinkMod },
 			{ data_link_opts, DataLinkOpts },
-			{ parameters, Parameters },
-			{ signature, Signature }],
-		       [ status ], CompSpec).
+			{ parameters, Parameters }],
+			[ status ], CompSpec).
 
 receive_message(CompSpec, {IP, Port}, Data) ->
     rvi_common:notification(protocol, ?MODULE, receive_message,
@@ -74,6 +72,7 @@ receive_message(CompSpec, {IP, Port}, Data) ->
 
 %% CAlled by local exo http server
 handle_rpc("send_message", Args) ->
+    LogId = rvi_common:get_json_log_id(Args),
     {ok, TID} = rvi_common:get_json_element(["transaction_id"], Args),
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
@@ -81,7 +80,6 @@ handle_rpc("send_message", Args) ->
     {ok, DataLinkMod} = rvi_common:get_json_element(["data_link_mod"], Args),
     {ok, DataLinkOpts} = rvi_common:get_json_element(["data_link_opts"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
-    {ok, Signature} = rvi_common:get_json_element(["signature"], Args),
     [ ok ] = gen_server:call(?SERVER, { rvi, send_message,
 					[TID,
 					 ServiceName,
@@ -90,7 +88,7 @@ handle_rpc("send_message", Args) ->
 					 DataLinkMod,
 					 DataLinkOpts,
 					 Parameters,
-					 Signature]}),
+					 LogId]}),
     {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
 
 
@@ -101,10 +99,14 @@ handle_rpc(Other, _Args) ->
 
 
 handle_notification("receive_message", Args) ->
+    LogId = rvi_common:get_json_log_id(Args),
     {ok, Data} = rvi_common:get_json_element(["data"], Args),
     {ok, RemoteIP} = rvi_common:get_json_element(["remote_ip"], Args),
     {ok, RemotePort} = rvi_common:get_json_element(["remote_port"], Args),
-    gen_server:cast(?SERVER, { rvi, receive_message, [Data, RemoteIP, RemotePort]}),
+    gen_server:cast(?SERVER, { rvi, receive_message, [Data,
+						      RemoteIP,
+						      RemotePort,
+						      LogId]}),
     ok;
 
 handle_notification(Other, _Args) ->
@@ -119,8 +121,7 @@ handle_call({rvi, send_message,
 	      ProtoOpts,
 	      DataLinkMod,
 	      DataLinkOpts,
-	      Parameters,
-	      Signature]}, _From, St) ->
+	      Parameters | _LogId]}, _From, St) ->
     ?debug("    protocol:send(): transaction id:  ~p~n", [TID]),
     ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
@@ -128,13 +129,11 @@ handle_call({rvi, send_message,
     ?debug("    protocol:send(): data_link_mod:   ~p~n", [DataLinkMod]),
     ?debug("    protocol:send(): data_link_opts:  ~p~n", [DataLinkOpts]),
     ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
-    ?debug("    protocol:send(): signature:       ~p~n", [Signature]),
     Data = jsx:encode([
-		       { "tid", TID },
-		       { "service", ServiceName },
-		       { "timeout", Timeout },
-		       { "parameters", Parameters },
-		       { "signature", Signature }
+		       { <<"tid">>, TID },
+		       { <<"service">>, ServiceName },
+		       { <<"timeout">>, Timeout },
+		       { <<"parameters">>, Parameters }
 		      ]),
 
     case use_frag(Parameters, DataLinkOpts) of
@@ -154,30 +153,28 @@ handle_call(Other, _From, St) ->
     { reply, [ invalid_command ], St}.
 
 %% Convert list-based data to binary.
-handle_cast({rvi, receive_message, [Payload, IP, Port]} = Msg, St) ->
+handle_cast({rvi, receive_message, [Payload, IP, Port | _LogId]} = Msg, St) ->
     ?debug("~p:handle_cast(~p)", [?MODULE, Msg]),
-    Elems = jsx:decode(Payload),
+    Elems = jsx:decode(iolist_to_binary(Payload)),
 
     case Elems of
 	[{<<"frg">>, _}|_] ->
 	    St1 = handle_frag(Elems, IP, Port, St),
 	    {noreply, St1};
 	_ ->
-	    [ ServiceName, Timeout, Parameters, Signature ] =
-		opts([<<"service">>, <<"timeout">>, <<"parameters">>, <<"signature">>],
+	    [ ServiceName, Timeout, Parameters ] =
+		opts([<<"service">>, <<"timeout">>, <<"parameters">>],
 		     Elems, undefined),
 
 	    ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
 	    ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
-	    ?debug("    protocol:rcv(): signature:       ~p~n", [Signature]),
 	    ?debug("    protocol:rcv(): remote IP/Port:  ~p~n", [{IP, Port}]),
 
 	    service_edge_rpc:handle_remote_message(St#st.cs,
 						   {IP, Port},
 						   ServiceName,
 						   Timeout,
-						   Parameters,
-						   Signature),
+						   Parameters),
 	    {noreply, St}
     end;
 

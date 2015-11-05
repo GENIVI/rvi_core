@@ -30,6 +30,7 @@
     t_start_tls_sample/1,
     t_register_lock_service/1,
     t_call_lock_service/1,
+    t_remote_call_lock_service/1,
     t_no_errors/1
    ]).
 
@@ -68,6 +69,7 @@ groups() ->
        t_start_basic_sample,
        t_register_lock_service,
        t_call_lock_service,
+       t_remote_call_lock_service,
        t_no_errors
       ]},
      {test_run_bt, [],
@@ -76,6 +78,7 @@ groups() ->
        t_start_bt_sample,
        t_register_lock_service,
        t_call_lock_service,
+       t_remote_call_lock_service,
        t_no_errors
       ]},
      {test_run_tls, [],
@@ -84,6 +87,7 @@ groups() ->
        t_start_tls_sample,
        t_register_lock_service,
        t_call_lock_service,
+       t_remote_call_lock_service,
        t_no_errors
       ]}
     ].
@@ -126,6 +130,7 @@ end_per_group(_, _) ->
 
 init_per_testcase(Case, Config) ->
     ct:log("DATA bef. ~p: ~p~n", [Case, ets:tab2list(?DATA)]),
+    save(group_leader, group_leader()),
     Config.
 
 end_per_testcase(Case, _Config) ->
@@ -151,11 +156,11 @@ t_sample_keys_and_cert(Config) ->
 
 t_install_backend_node(Config) ->
     install_rvi_node("basic_backend", env(),
-		     [root(), "/test/config/backend.config"]).
+		     [root(), "/test/config/basic_backend.config"]).
 
 
 t_install_sample_node(_Config) ->
-    install_sample_node("basic_sample", "sample.config").
+    install_sample_node("basic_sample", "basic_sample.config").
 
 t_install_sms_backend_node(_Config) ->
     install_rvi_node("sms_backend", env(),
@@ -230,6 +235,21 @@ t_call_lock_service(_Config) ->
     verify_call_res(join_stdout_msgs(CallRes)),
     ct:log("CallRes = ~p~n", [CallRes]).
 
+t_remote_call_lock_service(Config) ->
+    CallPid = spawn_cmd(
+                [python(),
+                 "/rvi_call.py -n ", service_edge("backend"),
+                 " jlr.com/vin/abc/lock arg1='val2'"]),
+    timer:sleep(2000),
+    [{_, Svc}] = lookup({service, lock}),
+    ok = fetch(
+           Svc,
+           {match, <<"Service invoked![\\s]*args: {u'arg1': u'val1'}">>}),
+    ct:log("Verified service invoked~n", []),
+    CallRes = fetch(CallPid),
+    verify_call_res(join_stdout_msgs(CallRes)),
+    ct:log("CallRes = ~p~n", [CallRes]).
+
 verify_service_res(Bin) ->
     {match,_} =
 	re:run(Bin, <<"Service:[\\h]*jlr.com/vin/abc/lock">>, []),
@@ -250,6 +270,14 @@ join_stdout_msgs(L) ->
 	      Acc
       end, <<>>, L).
 
+join_stdout_msgs_rev(L) ->
+    lists:foldr(
+      fun({stdout,_,Bin}, Acc) ->
+              <<Acc/binary, Bin/binary>>;
+         (_, Acc) ->
+              Acc
+      end, <<>>, L).
+
 spawn_cmd(Cmd0) ->
     Cmd = binary_to_list(iolist_to_binary(Cmd0)),
     Me = self(),
@@ -264,27 +292,64 @@ spawn_cmd(Cmd0) ->
 	    Pid
     end.
 
+%% Ensure that we have the right group leader
+log(Fmt, Args) ->
+    [{_, GL}] = lookup(group_leader),
+    group_leader(GL, self()),
+    ct:log(Fmt, Args).
+
 fetch(Pid) ->
+    fetch(Pid, fetch).
+
+fetch(Pid, Op) ->
     ct:log("fetch(~p)", [Pid]),
-    Pid ! {self(), fetch},
+    Pid ! {self(), Op},
+    Fetched = receive
+		  {Pid, Res} ->
+		      Res
+	      after 3000 ->
+		      error(timeout)
+	      end,
+    ct:log("Fetch result = ~p", [Fetched]),
+    Fetched.
+
+cmd_loop() -> cmd_loop([], []).
+
+cmd_loop(Acc, Pats) ->
     receive
-	{Pid, Res} ->
-	    Res
-    after 3000 ->
-	    error(timeout)
+        {From, fetch} ->
+            log("~p <- fetch; Acc = ~p~n", [self(), Acc]),
+            From ! {self(), lists:reverse(Acc)},
+            cmd_loop(Acc, Pats);
+        {From, {match, Pat}} ->
+            log("~p <- match ~p; Acc = ~p~n", [self(), Pat, Acc]),
+            case try_match(Pat, join_stdout_msgs_rev(Acc)) of
+                true ->
+                    From ! {self(), ok},
+                    cmd_loop(Acc, Pats);
+                false ->
+                    cmd_loop(Acc, [{From, Pat}|Pats])
+            end;
+        Msg ->
+            log("~p <- ~p~n", [self(), Msg]),
+            Acc1 = [Msg|Acc],
+            Bin = join_stdout_msgs_rev(Acc1),
+            Pats1 = lists:foldr(
+                      fun({P, Pat}, Ps) ->
+                              case re:run(Bin, Pat) of
+                                  {match,_} -> P ! {self(), ok},
+                                               Ps;
+                                  nomatch   -> [{P, Pat}|Ps]
+                              end
+                      end, [], Pats),
+            cmd_loop(Acc1, Pats1)
     end.
 
-cmd_loop() -> cmd_loop([]).
-
-cmd_loop(Acc) ->
-    receive
-	{From, fetch} ->
-	    From ! {self(), lists:reverse(Acc)},
-	    cmd_loop([]);
-	Msg ->
-	    io:fwrite(user, "~p <- ~p", [self(), Msg]),
-	    cmd_loop([Msg|Acc])
-    end.
+try_match(Pat, Data) ->
+    Match = re:run(Data, Pat),
+    Res = (Match =/= nomatch),
+    ct:log("try_match(S, ~p) -> ~p~nS=~s~n", [Pat, Res, Data]),
+    Res.
 
 generate_device_keys(Dir, Config) ->
     ensure_dir(Dir),

@@ -112,7 +112,7 @@ authorize_local_message(CompSpec, Service, Params) ->
     rvi_common:request(authorize, ?MODULE, authorize_local_message,
 		       [{service, Service},
 			{parameters, Params}],
-		       [status, signature], CompSpec).
+		       [status], CompSpec).
 
 authorize_remote_message(CompSpec, Service, Params) ->
     ?debug("authorize_rpc:authorize_remote_msg(): service: ~p ~n", [Service]),
@@ -301,17 +301,16 @@ handle_call({rvi, validate_authorization, [JWT, Certs, Conn | [_] = LogId] }, _F
 handle_call({store_certs, [Certs, Conn | LogId]}, _From, State) ->
     do_store_certs(Certs, Conn, LogId),
     {reply, [ok], State};
-handle_call({rvi, authorize_local_message, [Service, Params | LogId] } = R, _From,
-	    #st{private_key = Key} = State) ->
+handle_call({rvi, authorize_local_message, [Service, _Params | LogId] } = R, _From, State) ->
     ?debug("authorize_rpc:handle_call(~p)~n", [R]),
     case authorize_keys:find_cert_by_service(Service) of
-	{ok, {ID, Cert}} ->
-	    Msg = Params ++ [{<<"certificate">>, Cert}],
-	    ?debug("authorize_rpc:authorize_local_message~nMsg = ~p~n",
-		   [authorize_keys:abbrev_payload(Msg)]),
-	    Sig = authorize_sig:encode_jwt(Msg, Key),
+	{ok, {ID, _Cert}} ->
+	    %% Msg = Params ++ [{<<"certificate">>, Cert}],
+	    %% ?debug("authorize_rpc:authorize_local_message~nMsg = ~p~n",
+	    %% 	   [authorize_keys:abbrev_payload(Msg)]),
+	    %% Sig = authorize_sig:encode_jwt(Msg, Key),
 	    log(LogId, "auth msg: Cert=~s", [authorize_keys:abbrev_bin(ID)]),
-	    {reply, [ok, Sig], State};
+	    {reply, [ok], State};
 	_ ->
 	    log(LogId, "NO CERTS for ~s", [Service]),
 	    {reply, [ not_found ], State}
@@ -324,29 +323,19 @@ handle_call({rvi, authorize_remote_message, [_Service, Params | LogId]},
     Timeout = proplists:get_value(timeout, Params),
     SvcName = proplists:get_value(service_name, Params),
     Parameters = proplists:get_value(parameters, Params),
-    Signature = proplists:get_value(signature, Params),
     ?debug("authorize_rpc:authorize_remote_message(): remote_ip:     ~p~n", [IP]),
     ?debug("authorize_rpc:authorize_remote_message(): remote_port:   ~p~n", [Port]),
     ?debug("authorize_rpc:authorize_remote_message(): timeout:       ~p~n", [Timeout]),
     ?debug("authorize_rpc:authorize_remote_message(): service_name:  ~p~n", [SvcName]),
     ?debug("authorize_rpc:authorize_remote_message(): parameters:    ~p~n", [Parameters]),
-    ?debug("authorize_rpc:authorize_remote_message(): signature:     ~40s~n", [Signature]),
-    case authorize_keys:validate_message(
-	   iolist_to_binary(Signature), {IP, Port}) of
+    case authorize_keys:validate_service_call(SvcName, {IP, Port}) of
 	invalid ->
-	    log(LogId, "signature INVALID", []),
+	    log(LogId, "remote msg REJECTED", []),
 	    {reply, [ not_found ], State};
-	Msg ->
-	    case check_msg([{"timeout", Timeout},
-			    {"service_name", SvcName},
-			    {"parameters", Parameters}], Msg) of
-		ok ->
-		    log(LogId, "params verified", []),
-		    {reply, [ok], State};
-		{error, {mismatch, Bad}} ->
-		    log(LogId, "params MISMATCH: ~p", [Bad]),
-		    {reply, [not_found], State}
-	    end
+	{ok, CertID} ->
+	    ?debug("validated Cert ID=~p", [CertID]),
+	    log(LogId, "remote msg allowed: Cert=~s", [CertID]),
+	    {reply, [ok], State}
     end;
 
 handle_call({rvi, filter_by_service, [Services, Conn | _LogId]}, _From, State) ->
@@ -417,8 +406,8 @@ log([ID], Fmt, Args) ->
 log(_, _, _) ->
     ok.
 
-check_msg(Checks, Params) ->
-    check_msg(Checks, Params, []).
+%% check_msg(Checks, Params) ->
+%%     check_msg(Checks, Params, []).
 
     %% 	    {ok, Timeout1} = rvi_common:get_json_element(["timeout"], Msg),
     %% 	    {ok, SvcName1} = rvi_common:get_json_element(["service_name"], Msg),
@@ -438,14 +427,14 @@ check_msg(Checks, Params) ->
     %% 	    end
     %% end;
 
-check_msg([], _, []) ->
-    ok;
-check_msg([{Key, Expect}|T], Msg, Acc) ->
-    case rvi_common:get_json_element([Key], Msg) of
-	{ok, Expect} ->
-	    check_msg(T, Msg, Acc);
-	_ ->
-	    check_msg(T, Msg, [Key|Acc])
-    end;
-check_msg([], _, [_|_] = Acc) ->
-    {error, {mismatch, lists:reverse(Acc)}}.
+%% check_msg([], _, []) ->
+%%     ok;
+%% check_msg([{Key, Expect}|T], Msg, Acc) ->
+%%     case rvi_common:get_json_element([Key], Msg) of
+%% 	{ok, Expect} ->
+%% 	    check_msg(T, Msg, Acc);
+%% 	_ ->
+%% 	    check_msg(T, Msg, [Key|Acc])
+%%     end;
+%% check_msg([], _, [_|_] = Acc) ->
+%%     {error, {mismatch, lists:reverse(Acc)}}.
