@@ -1,0 +1,24 @@
+#
+#
+# Sequence diagram description
+#
+# The sequence diagram description below is translated to
+# a PNG image by mscgen (http://www.mcternan.me.uk/mscgen/)
+# 
+# Recompile updated diagrams to a png image with:
+#  
+#   mscgen -T png swm.msc
+#
+
+msc {
+  width="1024";
+  "Client",  "Server";
+  "Client" -> "Server" [ label = "connect" ];  
+  "Server" -> "Client" [ textcolor="gray", linecolor="gray",  label = "connect" ];  
+  "Client" -> "Server" [ label = "authenticate( JWT ( client_pub_key, root_sign ) )" ];
+  "Client" <- "Server" [ textcolor="gray", linecolor="gray",label = "authenticate( JWT ( server_pub_key, root_sign ) )" ];
+  "Client" <- "Server" [ label = "authenticate( JWT ( server_pub_key, root_sign ) )" ];
+  "Client" -> "Server" [ textcolor="gray", linecolor="gray", label = "authenticate( JWT ( client_pub_key, root_sign ) )" ];
+  "Client" abox "Server" [ label = "Race Condition" ] ;
+}
+
