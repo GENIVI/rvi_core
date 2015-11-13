@@ -1,0 +1,10 @@
+msc {
+  width="400";
+  "Client",  "Server";
+  "Server" -> "Client" [ label = "Connect" ];  
+  "Server" <-> "Client" [ label = "TLS Upgrade" ];  
+  "Client" <- "Server" [ label = "authorize(...)" ];
+  "Client" -> "Server" [ label = "authorize(...)" ];
+  "Client" abox "Server" [ label = "Race Condition" ] ;
+}
+

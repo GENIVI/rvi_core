@@ -3,6 +3,8 @@ Copyright (C) 2015 Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
+# NEEDS TO BE UPDATED! TEMPORARILY SUPERSEEDED BY RVI_PROTOCOL.MD
+
 ## OPEN ISSUES
 
 ### [1] Public device key exchange as a part of handshake demasks sender

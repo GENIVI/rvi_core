@@ -1,0 +1,32 @@
+#
+#
+# Sequence diagram description
+#
+# The sequence diagram description below is translated to
+# a PNG image by mscgen (http://www.mcternan.me.uk/mscgen/)
+# 
+# Recompile updated diagrams to a png image with:
+#  
+#   mscgen -T png swm.msc
+#
+
+msc {
+  width="1024";
+  "Client",  "Server";
+  "Client" -> "Server" [ label = "connect" ];  
+  "Client" -> "Server" [ label = "TLS Upgrade using X.509 certificates" ];  
+  "Client" -> "Server" [ label = "authorize( [JWT (credential, root_sign), ...]  )" ];
+  "Server" abox "Server" [ label = "Validate each credential using root public key" ] ;
+  "Client" <- "Server" [ label = "authorize( [JWT (credential, root_sign), ...] ) )" ];
+  "Client" abox "Client" [ label = "Validate each crential using root public key" ] ;
+
+  "Client" abox "Client" [ label = "Create list of services matching server credentials" ] ;
+  "Client" -> "Server" [ label = "service_announce( [service_name, ... ])" ];
+  "Server" abox "Server" [ label = "Create list of services matching client credentials" ] ;
+  "Client" <- "Server" [ label = "service_announce( [service_name, ... ])" ];
+
+  "Client" -> "Server" [ label = "message( service_name, arguments)" ];
+
+  "Server" -> "Client" [ label = "message( service_name, arguments)" ];
+}
+
