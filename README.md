@@ -26,11 +26,11 @@ For configuration and launch instructions, please check the configuration docume
 [Markdown](CONFIGURE.md) | 
 [PDF](https://wiki.automotivelinux.org/_media/eg-rvi/rvi-configure.pdf)
 
-The RVI mailing list is available at:  
-[AGL](http://lists.linuxfoundation.org/mailman/listinfo/automotive-eg-rvi)
+Technical RVI disussions are held at the GENIVI project mailing list:
+[GENIVI](https://lists.genivi.org/mailman/listinfo/genivi-projects)
 
-The RVI wiki is available at:  
-[AGL](https://wiki2.automotivelinux.org/eg-rvi/)
+GENIVI RIV Expert Group (RVI-EG) discussions are held at the members only list:
+[GENIVI](https://mail.genivi.org/wws/info/eg-rvi)
 
 
 # PROJECT MISSION STATEMENT #
@@ -87,7 +87,7 @@ The only fixed parts of the entire RVI project are the JSON-RPC
 protocol specifications used between the components themselves and
 their connected services. 
 
-AGL provides an RVI implementation as a starting point and a
+GENIVI provides an RVI implementation as a starting point and a
 reference. The adopting organization is free to use, rewrite, or
 replace each component as they see fit. A typical example would be the
 Service Discovery component, which must often be extended to interact
