@@ -108,7 +108,10 @@ else
     cp $NODE_NAME/sys.config rel/files/sys.config
     ./rebar generate 
     # Rename the release after the node name
-    mv rel/rvi rel/$NODE_NAME
+    if [ ${NODE_NAME} != "rvi" ]
+    then
+	mv rel/rvi rel/$NODE_NAME
+    fi
     echo "Stand alone release for $NODE_NAME created under project "
     echo "root directory's ./rel/$NODE_NAME."
     echo
