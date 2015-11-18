@@ -49,3 +49,17 @@ rpm_tarball: rpmclean clean
 
 rpm:	rpm_tarball
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
+
+install: # deps compile
+	@echo "Creating release in /opt/rvi"
+	@rm -rf rvi rel/rvi
+	@./scripts/setup_rvi_node.sh -c rvi_sample.config  -n rvi > /dev/null
+	@mkdir -p /etc/opt/rvi/
+	@mv ./rvi/sys.config /etc/opt/rvi
+	@cp -r rel/rvi /opt
+	@ln -s /etc/opt/rvi/sys.config /opt/rvi/sys.config
+	@cp ./scripts/setup_gen /opt/rvi
+	@cp ./scripts/start_rvi.sh /opt/rvi/
+	@mkdir -p /opt/rvi/setup/ebin
+	@cp deps/setup/ebin/* /opt/rvi/setup/ebin
+	@echo "Done"
