@@ -54,12 +54,11 @@ install: # deps compile
 	@echo "Creating release in /opt/rvi"
 	@rm -rf rvi rel/rvi
 	@./scripts/setup_rvi_node.sh -c rvi_sample.config  -n rvi > /dev/null
-	@mkdir -p /etc/opt/rvi/
-	@mv ./rvi/sys.config /etc/opt/rvi
-	@cp -r rel/rvi /opt
+	@install --mode=0755 -d /etc/opt/rvi/
+	@install --mode=0644 ./rvi/sys.config /etc/opt/rvi
+	@cp -ar rel/rvi /opt
 	@ln -s /etc/opt/rvi/sys.config /opt/rvi/sys.config
-	@cp ./scripts/setup_gen /opt/rvi
-	@cp ./scripts/start_rvi.sh /opt/rvi/
-	@mkdir -p /opt/rvi/setup/ebin
-	@cp deps/setup/ebin/* /opt/rvi/setup/ebin
-	@echo "Done"
+	@install --mode=0755 ./scripts/setup_gen /opt/rvi
+	@install --mode=0755 ./scripts/rvi.sh /opt/rvi/
+	@install --mode=0755 -d  /opt/rvi/setup/ebin
+	@install --mode=0644 deps/setup/ebin/* /opt/rvi/setup/ebin
