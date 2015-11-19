@@ -18,19 +18,18 @@ RVI_DIR=/opt/rvi
 
 usage() {
     echo "Usage: $0 [-c config_file] start|stop|console"
-    echo "  -c config_file  Configuration file. "
-    echo "                  Not used with start and console."
+    echo "  -c config_file  Configuration file to launch rvi node with. "
+    echo "                  If omitted, previously used config file is used."
     echo
-    echo "  start           Start an rvi node with the given"
-    echo "                  configuration file."
+    echo "  start           Start an rvi node with the given configuration file."
     echo
-    echo "  stop            Stop an rvi node previously started"
-    echo "                  with start."
+    echo "  stop            Stop an rvi node previously started with start."
     echo
     echo "  console         Start an rvi in foreground mode."
     exit 1
 }
 
+CONFIG_FILE=""
 while getopts "c:" o; do
     case "${o}" in
         c)
@@ -56,25 +55,6 @@ then
     exit $?
 fi
 
-# Check if we need to prepend current dir
-# to relative config file path
-#
-
-if [ $(echo ${CONFIG_FILE} | cut -c 1,1) != "/" ]
-then
-    CONFIG_FILE=${PWD}/${CONFIG_FILE}
-fi
-
-if [ -z "${CONFIG_FILE}" ] ; then
-    echo "Missing -c flag"
-    usage
-fi
-
-if [ ! -f "${CONFIG_FILE}" ] ; then
-    echo "Config file cannot be read"
-    usage
-fi
-
 # Check if we have a uuid file.
 if [ ! -f ${CONFIG_DIR}/device_id ]
 then
@@ -82,23 +62,42 @@ then
     cat /proc/sys/kernel/random/uuid > ${CONFIG_DIR}/device_id
 fi
 
-# 
-# Generate a config file that will end up as
-# /tmp/rvi/sys.config
-#
-(
-    cd /tmp/
-    rm -rf rvi
-    export ERL_LIBS=${RVI_DIR}/setup:${RVI_DIR}/lib/
-    ${RVI_DIR}/setup_gen rvi ${CONFIG_FILE} rvi
-)
-
-# Did we succeed with config generation?
-if [ "$?" != "0" ]
+if [ -n "${CONFIG_FILE}" ]
 then
-    # Nope
-    exit "$?"
-fi   
+    #
+    # Check if we need to prepend current dir
+    # to relative config file path
+    #
+    if [ $(echo ${CONFIG_FILE} | cut -c 1,1) != "/" ]
+    then
+	CONFIG_FILE=${PWD}/${CONFIG_FILE}
+    fi
+
+    # Check that config file can be read.
+    if [ ! -r "${CONFIG_FILE}" ] ; then
+	echo "${CONFIG_FILE} cannot be opened for reading."
+	usage
+    fi
+
+    # 
+    # Generate a config file that will end up as
+    # /tmp/rvi/sys.config
+    #
+    (
+	cd /tmp/
+	rm -rf rvi
+	export ERL_LIBS=${RVI_DIR}/setup:${RVI_DIR}/lib/
+	${RVI_DIR}/setup_gen rvi ${CONFIG_FILE} rvi
+    )
+
+    # Did we succeed with config generation?
+    if [ "$?" != "0" ]
+    then
+	# Nope
+	echo "Failed to process configuration file."
+	exit "$?"
+    fi
+fi
 
 # Copy created config file to /etc/opt/rvi/sys.config,
 # which is symlinked to by /opt/rvi/sys.config
