@@ -12,7 +12,6 @@
 
 .PHONY:	all deps compile clean rpm rpmclean
 
-
 VERSION=0.4.0
 
 all: deps compile
@@ -51,14 +50,15 @@ rpm:	rpm_tarball
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
 install: # deps compile
-	@echo "Creating release in /opt/rvi"
+	@echo "Creating release in $(DESTDIR)/opt/rvi"
 	@rm -rf rvi rel/rvi
 	@./scripts/setup_rvi_node.sh -c rvi_sample.config  -n rvi > /dev/null
-	@install --mode=0755 -d /etc/opt/rvi/
-	@install --mode=0644 ./rvi/sys.config /etc/opt/rvi
-	@cp -ar rel/rvi /opt
-	@ln -s /etc/opt/rvi/sys.config /opt/rvi/sys.config
-	@install --mode=0755 ./scripts/setup_gen /opt/rvi
-	@install --mode=0755 ./scripts/rvi.sh /opt/rvi/
-	@install --mode=0755 -d  /opt/rvi/setup/ebin
-	@install --mode=0644 deps/setup/ebin/* /opt/rvi/setup/ebin
+	@install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
+	@install --mode=0644 ./rvi/sys.config $(DESTDIR)/etc/opt/rvi
+	@install -d --mode=0755 $(DESTDIR)/opt/rvi
+	@cp -ar rel/rvi $(DESTDIR)/opt/rvi
+	@ln -s $(DESTDIR)/etc/opt/rvi/sys.config $(DESTDIR)/opt/rvi/sys.config
+	@install --mode=0755 ./scripts/setup_gen $(DESTDIR)/opt/rvi
+	@install --mode=0755 ./scripts/rvi.sh $(DESTDIR)/opt/rvi/
+	@install --mode=0755 -d  $(DESTDIR)/opt/rvi/setup/ebin
+	@install --mode=0644 deps/setup/ebin/* $(DESTDIR)/opt/rvi/setup/
