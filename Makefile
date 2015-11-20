@@ -57,7 +57,7 @@ install: # deps compile
 	@install --mode=0644 ./rvi/sys.config $(DESTDIR)/etc/opt/rvi
 	@install -d --mode=0755 $(DESTDIR)/opt/rvi
 	@cp -ar rel/rvi $(DESTDIR)/opt/rvi
-	@ln -s $(DESTDIR)/etc/opt/rvi/sys.config $(DESTDIR)/opt/rvi/sys.config
+	@ln -s /etc/opt/rvi/sys.config $(DESTDIR)/opt/rvi/sys.config
 	@install --mode=0755 ./scripts/setup_gen $(DESTDIR)/opt/rvi
 	@install --mode=0755 ./scripts/rvi.sh $(DESTDIR)/opt/rvi/
 	@install --mode=0755 -d  $(DESTDIR)/opt/rvi/setup/ebin
