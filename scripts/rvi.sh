@@ -97,10 +97,10 @@ then
 	echo "Failed to process configuration file."
 	exit "$?"
     fi
-fi
 
-# Copy created config file to /etc/opt/rvi/sys.config,
-# which is symlinked to by /opt/rvi/sys.config
-cp /tmp/rvi/sys.config /etc/opt/rvi/sys.config
+    # Copy created config file to /etc/opt/rvi/sys.config,
+    # which is symlinked to by /opt/rvi/sys.config
+    cp /tmp/rvi/sys.config /etc/opt/rvi/sys.config
+fi
 
 exec /opt/rvi/bin/rvi ${CMD}
