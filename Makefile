@@ -40,9 +40,9 @@ rpm_tarball: rpmclean clean
 	tar czf /tmp/rvi-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
 		LICENSE Makefile README.md rebar rebar.config rel \
 		RELEASE.md rpm scripts/setup_gen scripts/rvi \
-		scripts/rvi.service scripts/rvi_node.sh  components \
-		rvi_sample.config scripts/setup_rvi_node.sh src \
-		tizen.config TODO 
+		scripts/rvi.service scripts/rvi_node.sh scripts/rvi.sh \
+		components rvi_sample.config scripts/setup_rvi_node.sh src \
+		TODO 
 	mv /tmp/rvi-$(VERSION).tgz ./rpm/SOURCES/
 
 
@@ -56,9 +56,9 @@ install: # deps compile
 	@install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
 	@install --mode=0644 ./rvi/sys.config $(DESTDIR)/etc/opt/rvi
 	@install -d --mode=0755 $(DESTDIR)/opt/rvi
-	@cp -ar rel/rvi $(DESTDIR)/opt/rvi
-	@ln -s $(DESTDIR)/etc/opt/rvi/sys.config $(DESTDIR)/opt/rvi/sys.config
+	@cp -ar rel/rvi $(DESTDIR)/opt
+	@ln -s /etc/opt/rvi/sys.config $(DESTDIR)/opt/rvi/sys.config
 	@install --mode=0755 ./scripts/setup_gen $(DESTDIR)/opt/rvi
 	@install --mode=0755 ./scripts/rvi.sh $(DESTDIR)/opt/rvi/
 	@install --mode=0755 -d  $(DESTDIR)/opt/rvi/setup/ebin
-	@install --mode=0644 deps/setup/ebin/* $(DESTDIR)/opt/rvi/setup/
+	@install --mode=0644 deps/setup/ebin/* $(DESTDIR)/opt/rvi/setup/ebin
