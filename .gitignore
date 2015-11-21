@@ -1,4 +1,5 @@
 ebin
+logs
 .eunit
 *.o
 *.beam
@@ -9,4 +10,6 @@ erl_crash.dump
 rel/example_project
 .concrete/DEV_MODE
 .rebar
-scrits/setup_gen
+scripts/setup_gen
+scripts/author
+components/authorize/author

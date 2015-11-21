@@ -481,21 +481,6 @@ handle_call({ rvi, handle_local_message,
 	    false -> %% Absolute timoeut. Convert to unix time msec
 		TimeoutArg * 1000
 	end,
-
-
-    %%
-    %% Authorize local message and retrieve a certificate / signature
-    %% that will be accepted by the receiving node that will deliver
-    %% the messaage to its locally connected service_name service.
-    %%
-    [ok, Signature ] =
-	authorize_rpc:authorize_local_message(
-	  St#st.cs, SvcName, [{service_name, SvcName},
-			      {timeout, Timeout},
-			      %% {parameters, Parameters},
-			      {parameters,  {struct, Parameters}}
-			      ]),
-
     %%
     %% Check if this is a local service by trying to resolve its service name.
     %% If successful, just forward it to its service_name.
