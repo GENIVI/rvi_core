@@ -55,7 +55,7 @@ xref: compile
 ci: xref test
 
 test: compile escript
-	rebar ct skip_deps=true
+	./rebar ct skip_deps=true
 
 # Create a SOURCES tarball for RPM
 rpm_tarball: rpmclean clean
