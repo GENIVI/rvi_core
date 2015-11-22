@@ -17,15 +17,31 @@ SELF_DIR=$(dirname $(readlink -f "$0"))
 ERL=${ERL:=erl}
 
 usage() {
-    echo "Usage: $0 -D config_dir -c config_file start|stop|console"
+    echo "Usage: $0 -d config_dir -c config_file -l log_dir \\" 
+    echo "       start|stop|console|attach|ping"
+    echo
     echo "  -c config_file  Configuration file to launch rvi node with. "
-    echo "                  If omitted, previously used config file is used."
+    echo "                  If omitted the rvi.config in the configuration "
+    echo "                  directory will be used."
+    echo
+    echo "  -d config_dir   Directory to put generated uuid 'device_id' file and"
+    echo "                  processed config files."
+    echo "                  Defauts to the 'config' directory under the directory"
+    echo "                  that rvi.sh resides in."
+    echo
+    echo "  -l log_dir      The directory to store log files in."
+    echo "                  Defaults to '/tmp/rvi/[config]/log' where [config]"
+    echo "                  is the base name of the configuration file."
     echo
     echo "  start           Start an rvi node with the given configuration file."
     echo
-    echo "  stop            Stop an rvi node previously started with start."
+    echo "  stop            Stop an rvi node previously started with 'start'."
     echo
     echo "  console         Start an rvi in foreground mode."
+    echo 
+    echo "  attach          Attach to an rvi node previously started with 'start'."
+    echo
+    echo "  ping            Ping to check if an rvi node is up. Returns 0 if up."
     exit 1
 }
 
@@ -82,8 +98,13 @@ fi
 
 
 
-if [ -s "${CONFIG_FILE}" ]
+#
+# See if we need to process a config file
+#
+if [ ${CMD} = "start" -o ${CMD} = "console" ]
 then
+    # Default to rvi.config
+    CONFIG_FILE=${CONFIG_FILE:=${CONFIG_DIR}/rvi.config}
     #
     # Check if we need to prepend current dir
     # to relative config file path
@@ -115,10 +136,6 @@ then
 	echo "Failed to process configuration file."
 	exit "$?"
     fi
-elif [ ${CMD} = "start" -o ${CMD} = "console" ]
-then
-    echo "Missing -c config_file necessary for 'start' and 'console'"
-    usage
 fi
    
 
