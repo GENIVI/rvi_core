@@ -13,11 +13,11 @@
 #
 
 SELF_DIR=$(dirname $(readlink -f "$0"))
-CONFIG_DIR=/etc/opt/rvi
-RVI_DIR=/opt/rvi
+
+ERL=${ERL:=erl}
 
 usage() {
-    echo "Usage: $0 [-c config_file] start|stop|console"
+    echo "Usage: $0 -D config_dir -c config_file start|stop|console"
     echo "  -c config_file  Configuration file to launch rvi node with. "
     echo "                  If omitted, previously used config file is used."
     echo
@@ -30,10 +30,21 @@ usage() {
 }
 
 CONFIG_FILE=""
-while getopts "c:" o; do
+
+SNAME=rvi
+COOKIE=rvi_cookie
+unset CONFIG_DIR
+unset LOG_DIR
+while getopts "c:d:" o; do
     case "${o}" in
         c)
             CONFIG_FILE=${OPTARG}
+            ;;
+        d)
+            CONFIG_DIR=${OPTARG}
+            ;;
+        l)
+            LOG_DIR=${OPTARG}
             ;;
         *)
             usage
@@ -41,18 +52,25 @@ while getopts "c:" o; do
     esac
 done
 
+CONFIG_DIR=${CONFIG_DIR:=${SELF_DIR}/config}
+
 shift $((${OPTIND}-1))
 CMD=$1
 
-if [ "$CMD" != "start" -a  "$CMD" != "stop" -a  "$CMD" != "console" ]
+if [ "${CMD}" != "start" -a "${CMD}" != "stop" -a  "${CMD}" != "console" -a  "${CMD}" != "ping" ]
 then
     usage
 fi
 
-if [ "$CMD" = "stop" ]
+export ERL_LIBS=${SELF_DIR}/rvi:${SELF_DIR}/rvi/deps:${SELF_DIR}/rvi/components
+TMP_DIR=/tmp/rvi/$(basename ${CONFIG_FILE} .config)
+LOG_DIR=${LOG_DIR:=${TMP_DIR}/log}
+
+
+# Check that we have a config dir
+if [ ! -d ${CONFIG_DIR} ]
 then
-    ${RVI_DIR}/bin/rvi stop
-    exit $?
+    install -d --mode=0755 ${CONFIG_DIR}
 fi
 
 # Check if we have a uuid file.
@@ -62,7 +80,9 @@ then
     cat /proc/sys/kernel/random/uuid > ${CONFIG_DIR}/device_id
 fi
 
-if [ -n "${CONFIG_FILE}" ]
+
+
+if [ -s "${CONFIG_FILE}" ]
 then
     #
     # Check if we need to prepend current dir
@@ -74,20 +94,18 @@ then
     fi
 
     # Check that config file can be read.
-    if [ ! -r "${CONFIG_FILE}" ] ; then
+    if [ ! -r "${CONFIG_FILE}" ]
+    then
 	echo "${CONFIG_FILE} cannot be opened for reading."
 	usage
     fi
-
     # 
     # Generate a config file that will end up as
     # /tmp/rvi/sys.config
     #
     (
-	cd /tmp/
-	rm -rf rvi
-	export ERL_LIBS=${RVI_DIR}/setup:${RVI_DIR}/lib/
-	${RVI_DIR}/setup_gen rvi ${CONFIG_FILE} rvi
+	cd ${CONFIG_DIR}
+	${SELF_DIR}/setup_gen rvi ${CONFIG_FILE} rvi
     )
 
     # Did we succeed with config generation?
@@ -97,10 +115,37 @@ then
 	echo "Failed to process configuration file."
 	exit "$?"
     fi
-
-    # Copy created config file to /etc/opt/rvi/sys.config,
-    # which is symlinked to by /opt/rvi/sys.config
-    cp /tmp/rvi/sys.config /etc/opt/rvi/sys.config
+elif [ ${CMD} = "start" -o ${CMD} = "console" ]
+then
+    echo "Missing -c config_file necessary for 'start' and 'console'"
+    usage
 fi
+   
 
-exec /opt/rvi/bin/rvi ${CMD}
+LAUNCH="${ERL} -boot ${CONFIG_DIR}/rvi/start -sname ${SNAME} -config ${CONFIG_DIR}/rvi/sys -setcookie ${COOKIE}"
+
+case "${CMD}" in
+   start)
+	 install -d --mode 0755  ${TMP_DIR}
+	 install -d --mode 0755  ${LOG_DIR}
+	 exec run_erl -daemon ${TMP_DIR}/ ${LOG_DIR} "exec ${LAUNCH}"
+	 ;;
+
+   console)
+       exec ${LAUNCH}
+       ;;
+
+   stop)
+       exec ${SELF_DIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} stop
+       ;;
+
+   ping)
+       exec ${SELF_DIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} ping
+       ;;
+
+   attach) 
+       exec to_erl ${TMP_DIR}
+       ;;
+
+esac 
+
