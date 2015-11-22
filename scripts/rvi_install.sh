@@ -28,7 +28,7 @@ SELF_DIR=$(dirname $(readlink -f "$0"))
 SETUP_GEN=$SELF_DIR/setup_gen  # Ulf's kitchen sink setup utility
 
 usage() {
-    echo "Usage: $0 target_dir"
+    echo "Usage: $0 binary_dir"
     echo 
     echo "RVI will be installed in 'target_dir'."
     echo 
@@ -64,12 +64,10 @@ install --mode=0755 scripts/setup_gen ${TARGET_DIR}
 install --mode=0755 rel/files/nodetool ${TARGET_DIR}
 
 echo "RVI installed under ${TARGET_DIR}"
-echo "Start:              ${TARGET_NAME}/rvi.sh start"
-echo "Attach started RVI: ${TARGET_NAME}/rvi.sh attach"
-echo "Stop:               ${TARGET_NAME}/rvi.sh stop"
-echo "Start console mode: ${TARGET_NAME}/rvi.sh console"
-
-
+echo "Start:              ${TARGET_DIR}/rvi.sh -c <config_file> start"
+echo "Attach started RVI: ${TARGET_DIR}/rvi.sh attach"
+echo "Stop:               ${TARGET_DIR}/rvi.sh stop"
+echo "Start console mode: ${TARGET_DIR}/rvi.sh -c <config_file> console"
 
 exit 0
 
