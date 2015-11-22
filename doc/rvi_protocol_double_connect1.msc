@@ -1,0 +1,23 @@
+#
+#
+# Sequence diagram description
+#
+# The sequence diagram description below is translated to
+# a PNG image by mscgen (http://www.mcternan.me.uk/mscgen/)
+# 
+# Recompile updated diagrams to a png image with:
+#  
+#   mscgen -T png rvi_core_double_connect.msc
+#
+
+msc {
+  width="400";
+  "Client",  "Server";
+  "Client" -> "Server" [ label = "Connect" ];  
+  "Client" <-> "Server" [ label = "TLS Upgrade" ];  
+  "Client" -> "Server" [ label = "authorize(...)" ];
+  "Client" <- "Server" [ label = "authorize(...)" ];
+  "Client" abox "Server" [ label = "Race Condition" ] ;
+}
+
+
