@@ -26,8 +26,7 @@ usage() {
     echo
     echo "  -d config_dir   Directory to put generated uuid 'device_id' file and"
     echo "                  processed config files."
-    echo "                  Defauts to the 'config' directory under the directory"
-    echo "                  that rvi.sh resides in."
+    echo "                  Defauts to the '/etc/opt/rvi'."
     echo
     echo "  -l log_dir      The directory to store log files in."
     echo "                  Defaults to '/tmp/rvi/[config]/log' where [config]"
@@ -68,7 +67,7 @@ while getopts "c:d:" o; do
     esac
 done
 
-CONFIG_DIR=${CONFIG_DIR:=${SELF_DIR}/config}
+CONFIG_DIR=${CONFIG_DIR:=/etc/opt/rvi}
 
 shift $((${OPTIND}-1))
 CMD=$1
