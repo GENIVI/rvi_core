@@ -52,4 +52,4 @@ rpm:	rpm_tarball
 install: # deps compile
 	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi
 	install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
-	install --mode=0644 rvi_yocto.config $(DESTDIR)/etc/opt/rvi/
+	install --mode=0644 rvi_yocto.config $(DESTDIR)/etc/opt/rvi/rvi.config
