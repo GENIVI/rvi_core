@@ -15,7 +15,7 @@
 SCRIPTS=scripts/setup_gen \
 	scripts/author
 
-VERSION=0.4.0
+VERSION=0.5.0
 
 all: deps compile escript
 
@@ -62,11 +62,16 @@ rpm_tarball: rpmclean clean
 	tar czf /tmp/rvi_core-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
 		LICENSE Makefile README.md rebar rebar.config rel \
 		RELEASE.md rpm scripts/setup_gen scripts/rvi \
-		scripts/rvi.service scripts/rvi_node.sh  components \
-		rvi_sample.config scripts/setup_rvi_node.sh src \
-		tizen.config TODO 
+		scripts/rvi.service scripts/rvi_node.sh scripts/rvi.sh \
+		components rvi_sample.config scripts/setup_rvi_node.sh src \
+		TODO 
 	mv /tmp/rvi-$(VERSION).tgz ./rpm/SOURCES/
 
 
 rpm:	rpm_tarball
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
+
+install: # deps compile
+	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi
+	install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
+	install --mode=0644 rvi_yocto.config $(DESTDIR)/etc/opt/rvi/rvi.config
