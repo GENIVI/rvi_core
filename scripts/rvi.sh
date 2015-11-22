@@ -78,8 +78,6 @@ then
 fi
 
 export ERL_LIBS=${SELF_DIR}/rvi:${SELF_DIR}/rvi/deps:${SELF_DIR}/rvi/components
-TMP_DIR=/tmp/rvi/$(basename ${CONFIG_FILE} .config)
-LOG_DIR=${LOG_DIR:=${TMP_DIR}/log}
 
 
 # Check that we have a config dir
@@ -137,6 +135,8 @@ then
     fi
 fi
    
+TMP_DIR=/tmp/rvi/$(basename ${CONFIG_FILE} .config)
+LOG_DIR=${LOG_DIR:=${TMP_DIR}/log}
 
 LAUNCH="${ERL} -boot ${CONFIG_DIR}/rvi/start -sname ${SNAME} -config ${CONFIG_DIR}/rvi/sys -setcookie ${COOKIE}"
 
