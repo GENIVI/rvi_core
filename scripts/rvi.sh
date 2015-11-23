@@ -157,6 +157,11 @@ fi
 TMP_DIR=/tmp/rvi/$(basename ${CONFIG_FILE} .config)
 LOG_DIR=${LOG_DIR:=${TMP_DIR}/rvi/log}
 
+if [ $(echo ${LOG_DIR} | cut -c 1,1) != "/" ]
+then
+    LOG_DIR=${PWD}/${LOG_DIR}
+fi
+
 LAUNCH="${ERL} -boot ${CONFIG_DIR}/rvi/start -sname ${SNAME} -config ${CONFIG_DIR}/rvi/sys -setcookie ${COOKIE}"
 
 case "${CMD}" in
