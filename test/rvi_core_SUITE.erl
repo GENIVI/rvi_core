@@ -156,7 +156,7 @@ t_sample_keys_and_cert(Config) ->
 
 t_install_backend_node(Config) ->
     install_rvi_node("basic_backend", env(),
-		     [root(), "/test/config/basic_backend.config"]).
+		     [root(), "/priv/test_config/basic_backend.config"]).
 
 
 t_install_sample_node(_Config) ->
@@ -164,54 +164,54 @@ t_install_sample_node(_Config) ->
 
 t_install_sms_backend_node(_Config) ->
     install_rvi_node("sms_backend", env(),
-		     [root(), "/test/config/sms_backend.config"]).
+		     [root(), "/priv/test_config/sms_backend.config"]).
 
 t_install_sms_sample_node(_Config) ->
     install_sample_node("sms_sample", "sms_sample.config").
 
 t_install_tls_backend_node(_Config) ->
     install_rvi_node("tls_backend", env(),
-		     [root(), "/test/config/tls_backend.config"]).
+		     [root(), "/priv/test_config/tls_backend.config"]).
 
 t_install_tls_sample_node(_Config) ->
     install_sample_node("tls_sample", "tls_sample.config").
 
 t_install_bt_backend_node(_Config) ->
     install_rvi_node("bt_backend", env(),
-		     [root(), "/test/config/bt_backend.config"]).
+		     [root(), "/priv/test_config/bt_backend.config"]).
 
 t_install_bt_sample_node(_Config) ->
     install_sample_node("bt_sample", "bt_sample.config").
 
 t_start_basic_backend(_Config) ->
-    cmd([scripts(), "/rvi_node.sh -d -n basic_backend"]),
+    cmd(["./basic_backend/rvi.sh -s basic_backend -l ./basic_backend/rvi/log -d ./basic_backend -c ./basic_backend/priv/test_config/basic_backend.config start"]),
     await_started("basic_backend"),
     ok.
 
 t_start_basic_sample(_Config) ->
-    cmd([scripts(), "/rvi_node.sh -d -n basic_sample"]),
+    cmd(["./basic_sample/rvi.sh -s basic_sample -l ./basic_sample/rvi/log -d ./basic_sample -c ./basic_sample/priv/test_config/basic_sample.config start"]),
     await_started("basic_sample"),
     ok.
 
 t_start_bt_backend(_Config) ->
-    cmd([scripts(), "/rvi_node.sh -d -n bt_backend"]),
+    cmd(["./bt_backend/rvi.sh -s bt_backend -l ./bt_backend/rvi/log -d ./bt_backend -c ./bt_backend/priv/test_config/bt_backend.config start"]),
     await_started("bt_backend"),
     ok.
 
 t_start_bt_sample(_Config) ->
-    cmd([scripts(), "/rvi_node.sh -d -n bt_sample"]),
+    cmd(["./bt_sample/rvi.sh -s bt_sample -l ./bt_sample/rvi/log -d ./bt_sample -c ./bt_sample/priv/test_config/bt_sample.config start"]),
     await_started("bt_sample"),
     ok.
 
 t_start_tls_backend(_Config) ->
-    cmd([scripts(), "/rvi_node.sh -d -n tls_backend"]),
+    cmd(["./tls_backend/rvi.sh -s tls_backend -l ./tls_backend/rvi/log -d ./tls_backend -c ./tls_backend/priv/test_config/tls_backend.config start"]),
     await_started("tls_backend"),
     ok.
 
 t_start_tls_sample(_Config) ->
-    cmd([scripts(), "/rvi_node.sh -d -n tls_sample"]),
+    cmd(["./tls_sample/rvi.sh -s tls_sample -l ./tls_sample/rvi/log -d ./tls_sample -c ./tls_sample/priv/test_config/tls_sample.config start"]),
     await_started("tls_sample"),
-    ok.
+    ok. 
 
 t_register_lock_service(_Config) ->
     Pid =
@@ -427,19 +427,27 @@ install_rvi_node(Name, Env, ConfigF) ->
     Scripts = filename:join(Root, "scripts"),
     ct:log("Root = ~p", [Root]),
     Cmd = lists:flatten(
-	    [Env, " ", Scripts, "/setup_rvi_node.sh -d -n ", Name,
-	     " -c ", ConfigF]),
+	    [Env, " ", Scripts, "/rvi_install.sh ./", Name]),
+
     ct:log("Cmd = `~s`", [Cmd]),
     Res = cmd(Cmd),
     ct:log("install_rvi_node/1 -> ~p", [Res]),
-    Res.
+
+    
+    Res1 = cmd(lists:flatten(["install -d --mode 0755 ./", Name])),
+    ct:log("install_rvi_node/2 -> ~p", [Res1]),
+
+    Res2 = cmd(lists:flatten(["cp -r ", Root, "/priv ", Name])),
+    ct:log("install_rvi_node/3 -> ~p", [Res2]),
+
+    Res2.
 
 install_sample_node(Name, ConfigF) ->
     Env = [env(),
 	   " RVI_BACKEND=127.0.0.1 RVI_PORT=9000"
 	   " RVI_MY_NODE_ADDR=127.0.0.1:9000"],
     install_rvi_node(Name, Env,
-		     [root(), "/test/config/", ConfigF]).
+		     [root(), "/priv/test_config/", ConfigF]).
 
 in_priv_dir(F, Cfg) ->
     %% PrivDir = ?config(priv_dir, Cfg),
@@ -572,7 +580,7 @@ no_errors(Dirs, PDir) ->
     ct:log("Will check errors in ~p", [Dirs]),
     true = lists:all(
 	     fun(D) ->
-		     no_errors_(filename:join([PDir, D, "log", "lager"]), D)
+		     no_errors_(filename:join([PDir, D, "rvi", "log", "lager"]), D)
 	     end, Dirs),
     ok.
 

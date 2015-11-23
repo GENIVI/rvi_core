@@ -21,7 +21,7 @@ usage() {
     echo "       start|stop|console|attach|ping"
     echo
     echo "  -c config_file  Configuration file to launch rvi node with. "
-    echo "                  If omitted the rvi.config in the configuration "
+    echo "                  If omitted the rvi_sample.config in the configuration "
     echo "                  directory will be used."
     echo
     echo "  -s short_name   Erlang node short name. Defaults to 'rvi_core'"
@@ -36,15 +36,15 @@ usage() {
     echo "                  Defaults to '/tmp/rvi/[config]/log' where [config]"
     echo "                  is the base name of the configuration file."
     echo
-    echo "  start           Start an rvi node with the given configuration file."
-    echo
-    echo "  stop            Stop an rvi node previously started with 'start'."
-    echo
-    echo "  console         Start an rvi in foreground mode."
+    echo "  console [defaut]  Start an rvi in foreground mode."
     echo 
-    echo "  attach          Attach to an rvi node previously started with 'start'."
+    echo "  start             Start an rvi node with the given configuration file."
     echo
-    echo "  ping            Ping to check if an rvi node is up. Returns 0 if up."
+    echo "  stop              Stop an rvi node previously started with 'start'."
+    echo
+    echo "  attach            Attach to an rvi node previously started with 'start'."
+    echo
+    echo "  ping              Ping to check if an rvi node is up. Returns 0 if up."
     exit 1
 }
 
@@ -80,15 +80,26 @@ done
 CONFIG_DIR=${CONFIG_DIR:=/etc/opt/rvi}
 
 shift $((${OPTIND}-1))
-CMD=$1
 
-if [ "${CMD}" != "start" -a "${CMD}" != "stop" -a  "${CMD}" != "console" -a  "${CMD}" != "ping" ]
+if [ "${#}" = "0" ]
+then
+    CMD="console"
+else
+    CMD=$1
+fi
+
+if [ "${CMD}" != "start" -a "${CMD}" != "attach" -a "${CMD}" != "stop" -a  "${CMD}" != "console" -a  "${CMD}" != "ping" ]
 then
     usage
 fi
 
 export ERL_LIBS=${SELF_DIR}/rvi_core:${SELF_DIR}/rvi_core/deps:${SELF_DIR}/rvi_core/components
 
+# Convert config dir to abs path
+if [ $(echo ${CONFIG_DIR} | cut -c 1,1) != "/" ]
+then
+    CONFIG_DIR=${PWD}/${CONFIG_DIR}
+fi
 
 # Check that we have a config dir
 if [ ! -d ${CONFIG_DIR} ]
@@ -109,7 +120,7 @@ fi
 if [ ${CMD} = "start" -o ${CMD} = "console" ]
 then
     # Default to rvi.config
-    CONFIG_FILE=${CONFIG_FILE:=${CONFIG_DIR}/rvi.config}
+    CONFIG_FILE=${CONFIG_FILE:=${CONFIG_DIR}/rvi_sample.config}
     #
     # Check if we need to prepend current dir
     # to relative config file path
@@ -152,10 +163,12 @@ case "${CMD}" in
    start)
 	 install -d --mode 0755  ${TMP_DIR}
 	 install -d --mode 0755  ${LOG_DIR}
+	 cd ${SELF_DIR}
 	 exec run_erl -daemon ${TMP_DIR}/ ${LOG_DIR} "exec ${LAUNCH}"
 	 ;;
 
    console)
+       cd ${SELF_DIR}
        exec ${LAUNCH}
        ;;
 

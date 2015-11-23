@@ -62,8 +62,8 @@ rpm_tarball: rpmclean clean
 	tar czf /tmp/rvi_core-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
 		LICENSE Makefile README.md rebar rebar.config rel \
 		RELEASE.md rpm scripts/setup_gen scripts/rvi \
-		scripts/rvi.service scripts/rvi_node.sh scripts/rvi.sh \
-		components rvi_sample.config scripts/setup_rvi_node.sh src \
+		scripts/rvi.service scripts/rvi.sh \
+		components priv/config/rvi_sample.config scripts/rvi_instball.sh src \
 		TODO 
 	mv /tmp/rvi-$(VERSION).tgz ./rpm/SOURCES/
 
@@ -74,4 +74,5 @@ rpm:	rpm_tarball
 install: # deps compile
 	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi
 	install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
-	install --mode=0644 rvi_yocto.config $(DESTDIR)/etc/opt/rvi/rvi.config
+	install --mode=0644 priv/config/rvi_sample.config $(DESTDIR)/etc/opt/rvi/rvi_sample.config
+	install --mode=0644 priv/config/rvi_common.config $(DESTDIR)/opt/rvi/rvi_core/rvi_common.config

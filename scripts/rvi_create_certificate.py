@@ -239,7 +239,7 @@ encoded = jwt.encode(cert, root_key.exportKey("PEM"), algorithm='RS256')
 
 # Validate
 try:
-    jwt.decode(encoded, root_key.publickey().exportKey("PEM"), algorithm='RS256')
+    jwt.decode(encoded, root_key.publickey().exportKey("PEM"))
 except:
     print "FAILED: Could not verify signed JSON Web Token using public part of"
     print "        root key {}".format(root_key_fname)

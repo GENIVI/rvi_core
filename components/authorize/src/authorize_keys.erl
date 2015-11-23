@@ -378,7 +378,7 @@ get_openssl_pub_key(File) ->
 				    publicExponent = E}
 	    end;
 	Error ->
-	    ?warning("Cannot read pub key ~p (~p)~n", [File, Error]),
+	    ?warning("Cannot read pub key ~p (~p). CWD: ~p~n", [File, Error, file:get_cwd()]),
 	    undefined
     end.
 

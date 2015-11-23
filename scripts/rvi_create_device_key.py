@@ -124,7 +124,7 @@ signature = jwt.encode(key_obj, priv_root_key.exportKey('PEM'), algorithm='RS256
 pub_root_key = priv_root_key.publickey().exportKey('PEM')
 
 try: 
-    jwt.decode(signature, pub_root_key, algorithm='RS256')
+    jwt.decode(signature, pub_root_key)
 except:
     print "FAILED VERIFICATION!"
     print "The public portion of the generated device key, signed by the provided private root key,"
