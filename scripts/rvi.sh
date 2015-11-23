@@ -24,6 +24,10 @@ usage() {
     echo "                  If omitted the rvi.config in the configuration "
     echo "                  directory will be used."
     echo
+    echo "  -s short_name   Erlang node short name. Defaults to 'rvi_core'"
+    echo
+    echo "  -C cookie       Erlang node cookie to use. Defaults to 'rvi_cookue'"
+    echo
     echo "  -d config_dir   Directory to put generated uuid 'device_id' file and"
     echo "                  processed config files."
     echo "                  Defauts to the '/etc/opt/rvi'."
@@ -46,14 +50,20 @@ usage() {
 
 CONFIG_FILE=""
 
-SNAME=rvi
+SNAME=rvi_core
 COOKIE=rvi_cookie
 unset CONFIG_DIR
 unset LOG_DIR
-while getopts "c:d:" o; do
+while getopts "c:d:l:s:C:" o; do
     case "${o}" in
+        s)
+            SNAME=${OPTARG}
+            ;;
         c)
             CONFIG_FILE=${OPTARG}
+            ;;
+        C)
+            COOKIE=${OPTARG}
             ;;
         d)
             CONFIG_DIR=${OPTARG}
@@ -77,7 +87,7 @@ then
     usage
 fi
 
-export ERL_LIBS=${SELF_DIR}/rvi:${SELF_DIR}/rvi/deps:${SELF_DIR}/rvi/components
+export ERL_LIBS=${SELF_DIR}/rvi_core:${SELF_DIR}/rvi_core/deps:${SELF_DIR}/rvi_core/components
 
 
 # Check that we have a config dir
@@ -92,8 +102,6 @@ then
     echo "Creating device ID in ${CONFIG_DIR}/device_id"
     cat /proc/sys/kernel/random/uuid > ${CONFIG_DIR}/device_id
 fi
-
-
 
 #
 # See if we need to process a config file
@@ -123,7 +131,7 @@ then
     #
     (
 	cd ${CONFIG_DIR}
-	${SELF_DIR}/setup_gen rvi ${CONFIG_FILE} rvi
+	${SELF_DIR}/scripts/setup_gen rvi ${CONFIG_FILE} rvi
     )
 
     # Did we succeed with config generation?
@@ -136,7 +144,7 @@ then
 fi
    
 TMP_DIR=/tmp/rvi/$(basename ${CONFIG_FILE} .config)
-LOG_DIR=${LOG_DIR:=${TMP_DIR}/log}
+LOG_DIR=${LOG_DIR:=${TMP_DIR}/rvi/log}
 
 LAUNCH="${ERL} -boot ${CONFIG_DIR}/rvi/start -sname ${SNAME} -config ${CONFIG_DIR}/rvi/sys -setcookie ${COOKIE}"
 
@@ -152,11 +160,11 @@ case "${CMD}" in
        ;;
 
    stop)
-       exec ${SELF_DIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} stop
+       exec ${SELF_DIR}/scripts/nodetool -sname ${SNAME} -setcookie ${COOKIE} stop
        ;;
 
    ping)
-       exec ${SELF_DIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} ping
+       exec ${SELF_DIR}/scripts/nodetool -sname ${SNAME} -setcookie ${COOKIE} ping
        ;;
 
    attach) 
