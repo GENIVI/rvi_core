@@ -37,31 +37,46 @@ usage() {
     exit 1
 }
 
-cd ${SELF_DIR}/..
+
 
 shift $((${OPTIND}-1))
 
 if [ "${#}" != "1" ]
 then
     echo "Target directory not specifiied."
-    usagee
+    usage
 fi
 
 TARGET_DIR=$1
 
+#
+# Prepend abs path if TARGET_DIR is relative
+#
+if [ $(echo ${TARGET_DIR} | cut -c 1,1) != "/" ]
+then
+    TARGET_DIR=${PWD}/${TARGET_DIR}
+fi
+
+
+cd ${SELF_DIR}/..;
+
 rm -rf ${TARGET_DIR} > /dev/null 2>&1 
 
-install --mode=0755 -d ${TARGET_DIR}/rvi
+install --mode=0755 -d ${TARGET_DIR}/rvi_core
+install --mode=0755 -d ${TARGET_DIR}/scripts
 
-FILE_SET=$(find ebin components deps -name ebin -o -name priv)
+FILE_SET=$(find priv ebin components deps -name ebin -o -name priv)
 
 echo "Installing rvi at ${TARGET_DIR}."
 
-tar cf - ${FILE_SET} | (cd ${TARGET_DIR}/rvi ; tar xf - )
-
+tar cf - ${FILE_SET} | (cd ${TARGET_DIR}/rvi_core ; tar xf - )
 install --mode=0755 scripts/rvi.sh ${TARGET_DIR}
-install --mode=0755 scripts/setup_gen ${TARGET_DIR}
-install --mode=0755 rel/files/nodetool ${TARGET_DIR}
+install --mode=0755 scripts/setup_gen ${TARGET_DIR}/scripts
+install --mode=0755 rel/files/nodetool ${TARGET_DIR}/scripts
+install --mode=0755 scripts/rvi_create_root_key.sh ${TARGET_DIR}/scripts
+install --mode=0755 scripts/rvi_create_device_key.sh ${TARGET_DIR}/scripts
+install --mode=0755 scripts/rvi_create_certificate_key.sh ${TARGET_DIR}/scripts
+
 
 echo "RVI installed under ${TARGET_DIR}"
 echo "Start:              ${TARGET_DIR}/rvi.sh -c <config_file> start"
