@@ -8,8 +8,8 @@ Environment="HOME=/opt/rvi"
 Type=forking
 StandardOutput=journal
 StandardError=journal
-ExecStart=/bin/sh /opt/rvi/rvi start
-ExecStop=/bin/sh /opt/rvi/rvi stop
+ExecStart=/bin/sh /opt/rvi/rvi.sh start
+ExecStop=/bin/sh /opt/rvi/rvi.sh stop
 GuessMainPID=yes
 
 [Install]
