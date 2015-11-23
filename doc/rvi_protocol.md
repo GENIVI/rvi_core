@@ -183,52 +183,32 @@ For all examples below the following certifcates are used:
 The self signed root certificate used in the examples throughout this
 document was generated using the following commands:
 
+```Shell
+# Create root key and cert signing request
+openssl req -new -newkey rsa:1024 -nodes -out root_cert.csr -keyout root_key.pem
 
-	# Create root key and cert signing request
-    openssl req -new -newkey rsa:1024 -nodes -out root.csr -keyout root.key
+# Create the CA-like root cert,
+openssl x509 -trustout -signkey root_key.pem -days 365 -req -in root_cert.csr -out root_cert.crt
+```
 
-	# Create the CA-like root cert,
-    openssl x509 -trustout -signkey root.key -days 365 -req -in root_cert.csr -out root_cert.pem
-FIXME: FILENAMES
+The ```root_cert.csr``` intermediate certificate signing request can
+be deleted once the two steps above have been executed.
 
 The content of the reference ```root_key.pem``` private key file is:
 
 ```
 -----BEGIN PRIVATE KEY-----
-MIICeAIBADANBgkqhkiG9w0BAQEFAASCAmIwggJeAgEAAoGBAKWVa8gzbvqtOBgK
-D7G78ssyGzxv3+NU5u+g7ylPrhTrTAne3+xwkUJDBphcLq1R1bMBQukShIJ6lyBU
-jA6L1J6eP2U6hDNgPIBoQ1Ew9DuurPmUV0Ww8oqiTo+M6XhsZgrXtuRVlOkLaYuL
-x1/3VxqbafUJlUvsX2KUT5QUzgmhAgMBAAECgYEAlDIiUADwf7zOan1+xGThjUjg
-JXw/VjgjpC5WPpQIysI4wNDPes7YwwQ3/97pC8glSduEJhOjsx/C6HWjEFXHyWoV
-If735X8zmPxmpUBH/8BAlLKWeLJPeJcOYhqe9Fmmq3ePFJVzm27G9rtBcAGf01F1
-MZvlGpSMnM54ysDvCAECQQDXJMptGlBNVJnW1MnTClVPMPStQtExawazoK0AE2u6
-ESp9dzCVTVKClSsQFvtgtOzq3jTaPvVOCB1lli3xD7VBAkEAxQdFBIL3wKA1X6OD
-78mThCG5/DZL04hA3pMHiy1nwCiAf5AeFebStwfPcyEnMnA1ottI6DA4l51GfLTh
-d/dcYQJBAL90hRN8VDPM8q4kZIqC6pHzffnluSXiGW+mr+2eWsKVXhuTAtAKpD+C
-oXTLDt7rgt4r6hrB5iiPviFV+QJJuUECQHs/xOjBlIGmtjyRaOMC0YiCIHmo7V3x
-icKxbrKdQJ1vuJITcP56Wa2s8RQv1Pk0QBkT21ODdqNA+urfq3sD/YECQQCsk8Zn
-uljcpN1aORD5NOgbf8gUc2XrKs0PUMdj69ABfL83RRGxuht5RadT3t0tMvWfEqGy
-kK8ylWnEL9PkGH4d
+TBD
 -----END PRIVATE KEY-----
 ```
 
 The root private key has no password protection.
 
-The content of the reference ```root_cert.pem``` file is:
+The content of the reference ```root_cert.crt``` file is:
 
 ```
 -----BEGIN TRUSTED CERTIFICATE-----
-MIIB+zCCAWQCCQCVOgc/WIzYGjANBgkqhkiG9w0BAQsFADBCMQswCQYDVQQGEwJV
-UzEPMA0GA1UECAwGT3JlZ29uMREwDwYDVQQHDAhQb3J0bGFuZDEPMA0GA1UECgwG
-R0VOSVZJMB4XDTE1MTExMzAwMzczNloXDTE2MTExMjAwMzczNlowQjELMAkGA1UE
-BhMCVVMxDzANBgNVBAgMBk9yZWdvbjERMA8GA1UEBwwIUG9ydGxhbmQxDzANBgNV
-BAoMBkdFTklWSTCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEApZVryDNu+q04
-GAoPsbvyyzIbPG/f41Tm76DvKU+uFOtMCd7f7HCRQkMGmFwurVHVswFC6RKEgnqX
-IFSMDovUnp4/ZTqEM2A8gGhDUTD0O66s+ZRXRbDyiqJOj4zpeGxmCte25FWU6Qtp
-i4vHX/dXGptp9QmVS+xfYpRPlBTOCaECAwEAATANBgkqhkiG9w0BAQsFAAOBgQBk
-b9xhPC0ylvYwhnn2F9rF7SvKCQ9mMyNjWy3aIkv0pXUsdgX4TQ1ocTlohQZyhSvl
-8wj0Sh/jsDWQsczXLpeGP+D1TV9mvYeFuey5cWGjtd8fUYY1bx81RNRowX+uphCZ
-5s0vtHXqNz9FQWl75qnIc7/UwlF73YO1UozX6jqpwg==
+TBD
 -----END TRUSTED CERTIFICATE-----
 ```
 
@@ -237,46 +217,53 @@ b9xhPC0ylvYwhnn2F9rF7SvKCQ9mMyNjWy3aIkv0pXUsdgX4TQ1ocTlohQZyhSvl
 The reference device x.509 certificate, signed by the root certificate above,
 was generated with the following command:
 
-    openssl genrsa -out device_key.pem 1024
-	openssl req -new -key device_key.pem -out device_cert.csr
-	openssl x509 -req -days 365 -in device_cert.csr -CA root_cert.pem -CAkey root_key.pem -set_serial 01 -out device_cert.crt
+```Shell
+# Create the device key. In production, increase the bit size to 4096+
+openssl genrsa -out device_key.pem 1024
 
-FIXME FILENAMES
+# Create a certificate signing requestsigning request
+openssl req -new -key device_key.pem -out device_cert.csr
 
-## RVI Credentials
+# Sign the signing request and creaqte the root_cert.crt file
+openssl x509 -req -days 365 -in device_cert.csr -CA root_cert.crt -CAkey root_key.pem -set_serial 01 -out device_cert.crt
+```
+
+
+The ```device_cert.csr``` intermediate certificate signing request can
+be deleted once the three steps above have been executed.
+
+
+## RVI credentials format
 
 A credential is a JWT-encoded JSON structure, signed by the root X.509
 certificate's private key, describing the rights that the sender
-has. The sender is linked to the remote node by comparing the device X.509
-certificate, sent during TLS upgrade, with the X.509 certificate
-embedded in the RVI credentials transmitted over the same TLS
-connection.
+has. A received RVI credential is validated as follows.
 
-The TLS upgrade process of the connection will have the local node
-receive and validate the remote party's X.509 device certificate. The
-received certificate is signed by the root X.509 certificate, which is pre-provisioned
-at the receiving local node.
+1. **Receive remote party's X.509 device certificate**<br>
+The TLS handshake process will exchange the X.509 certificates setup in
+the previous chapter.
 
-Thus, the local node can validate that the remote node is who it claims to be,
-and that it has been provisioned by the same entity that pre-provisioned the
-root certificate in the local node.
+2. **Validate remote party's X.509 device certificate**<br>
+The received device X.509 certificate has its signature validated by the
+root X.509 certificate that is pre-provisioned in all RVI nodes.<br>
+The receiver now knows that the remote RVI node has an identiy
+generated by a trusted provsioning server using the private root key.
 
-When the remote node sends one or more RVI credentials, each encoded as
-JWT and signed by the root certificate, the receiving local node can
-compare the device X.509 certificate embedded in the RVI credential with
-that received from the remote party during the TLS upgrade.
+3. **Receive one or more RVI credentials**<br>
+Each credential is encoded as JWT, signed by the root X.509 certificate.
 
-If the two device X.509 certificates match, the local party has validated that the
-remotenode has the rights claimed by the RVI credentials due to the following
-two facts:
+4. **Validate each RVI credential signature**<br>
+The root X.509 certificate is used to validate the signature of each
+received RVI credential. <br>
+A successful validation proves that the certificate was generated by a
+trusted provisioning server using the private root key.
 
-1. The root certificate signature of the credentials proves that it has
-been generated by the same entity that installed the root certificate
-in the local node.
-
-2. The matching device X.509 certificates proves that the RVI credential
-is owned by the remote node, whose identity was validated during the TLS upgrade
-procedure.
+5. **Validate the credential-embedded X.509 device certificate**<br>
+Each received RVI credential will have its embedded device X.509
+certificate compared with the device X.509 certificate received in
+step 1 above.<br>
+A match proves that the certificate was generated by a trusted provisioning
+server explictly for the RVI node at the remote end.
 
 An RVI credential has the following format in its native JSON state:
 
@@ -291,7 +278,7 @@ An RVI credential has the following format in its native JSON state:
     ],
     "id": "insecure_cert",
     "iss": "jaguarlandrover.com",
-    "x509_cert": "MIIDNDCCAhwCCQCCuRFrfxk3vjANBgkqhkiG9w0BAQsFADBcMQswCQYDVQQGEwJVUzEPMA0GA1UECAwGT3JlZ29uMREwDwYDVQQHDAhQb3J0bGFuZDEaMBgGA1UECgwRSmFndWFyIExhbmQgUm92ZXIxDTALBgNVBAsMBE9TVEMwHhcNMTUxMTEyMjI0OTE4WhcNMTYxMTExMjI0OTE4WjBcMQswCQYDVQQGEwJVUzEPMA0GA1UECAwGT3JlZ29uMREwDwYDVQQHDAhQb3J0bGFuZDEaMBgGA1UECgwRSmFndWFyIExhbmQgUm92ZXIxDTALBgNVBAsMBE9TVEMwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDOXh4q7f/kwUfpxs/vT1U0eSMEuJvDttQhIhLY+U4EEfayIlBq4PhFlzt4AIHi8WSAjuK2mCpbzEbkSpZbaMgKktaLONSFxdINrgXMVth/J5KVCibt8ode86tdTIgDMBFTNviG7SyQYbC7Dxpm/N1r9L7j3Ey9FethIqBfROmWFzTO8SGa6suUtSorP6XFxVgg4F0a/1D63d4ih2x0qOMnbWbp1cTI5HQMIXIsURcatJwONZlHCVN+ZndG7KzZHsKyCBfWluXCVHtuCYPREPEBZvcEotZT6S1F5F1y9wFGXzhGlxCmvg8u8Vz7Zs2Mxug6HU7qx0/qDRN4r9X1YX8lAgMBAAEwDQYJKoZIhvcNAQELBQADggEBADSerkw6kheJnvecrAMCIPq0ljCVgumg1Bh+5iQNc6BaTZoRgFMbtoxIXmW5iPOjhId+vnw4Pv8AShn6Yer5K0AFxkCVWzYSzeGUbCoHJphcZ/Y3+9BCl6o75Fzj0K/lMfwQY+Eqal53tCuHGH8qj4C2mkas8SGT7NB0nx4j+MRgq6YYpylfC6jvXttbUkhu+OfezfU1gxhiWi3VbOQ5mlxdt1nOxAkvWFQ4XF89Z8N/+m9YouNsWiu1NenoAJXRWABSqe0Qd2pzowDf8GQGZEePw5Egvy+0tD0qi0af7+NYftx1pno4YsUiluiVEmbCk+G6C9MLpQeRYnwDWv97yuk=",
+    "device_cert": "",
     "validity": {
         "start": 1420099200,
         "stop": 1925020799
@@ -300,20 +287,19 @@ An RVI credential has the following format in its native JSON state:
 ```
 
 
-This credential is then JWT-encoded with a root certificate signature:
+The members are as follows:
 
-The X.509 certificates are used by TLS, which is outside the scope of this specification.
+Member              | Description
+--------------------|---------------------
+create\_timestamp   | Unix timestamp of when the certificate was created
+right\_to\_invoke   | A list of service prefixes that the sender has the right to invoke on any node that has registered matching services that start with the given string(s).
+right\_to\_register | A list of services that the sender has the right to to register for other nodes to invoke.
+id                  | A system-wide unique identifier for the certificate.
+iss                 | The issuing organization.
+device_certificate  | The PEM-encoded device X.509 certificate to match against the sender's TLS certificate.
+validity            | The Unix timestamps within when the certificate is valid.
 
-However, the RVI protocol will extract the PEM (base64) encoded X.509 certificate from
-the TLS API (such as OpenSSL) and compare it with the PEM encoded X.509 certificate embedded
-inside the RVI credentials.
-
-As an example
-
-
-# END OF DRAFT. EVERYTHING BELOW IS RESIDUAL
-
-
+## Generating RVI credentials
 
 
 
