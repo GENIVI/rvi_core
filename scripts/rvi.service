@@ -4,15 +4,12 @@ Description=Remote Vehicle Interaction Service
 Wants=network-online.target
 
 [Service]
-Environment="HOME=/opt/rvi-0.4.0"
+Environment="HOME=/opt/rvi"
 Type=forking
 StandardOutput=journal
 StandardError=journal
-ExecStartPre=/usr/bin/chsmack --access User /home/app/content/Documents/vin
-ExecStartPre=/opt/rvi-0.4.0/erts-5.10.4/bin/epmd -daemon
-ExecStart=/bin/sh /opt/rvi-0.4.0/bin/rvi start
-ExecStop=/bin/sh /opt/rvi-0.4.0/bin/rvi stop
-ExecStopPost=/opt/rvi-0.4.0/erts-5.10.4/bin/epmd -kill
+ExecStart=/bin/sh /opt/rvi/rvi start
+ExecStop=/bin/sh /opt/rvi/rvi stop
 GuessMainPID=yes
 
 [Install]
