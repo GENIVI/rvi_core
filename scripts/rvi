@@ -10,41 +10,64 @@
 # Init.d script to start and stop an RVI system installed
 # through an RPM.
 #
+### BEGIN INIT INFO
+# Provides:          pixieserver
+# Default-Start:     3 5
+# Default-Stop:      0 1 2 6
+# Short-Description: Pixie Broadcast Server
+### END INIT INFO
+
+
 export PATH="/bin/:/usr/bin:/sbin:/usr/sbin"
 . /etc/init.d/functions
 
 set -e 
 
-RVI_DIR="/opt/rvi"
+DAEMON_PATH="/opt/rvi"
+DAEMON_NAME="rvi"
 
 case "$1" in
   start)
-        log_daemon_msg "Starting Remote Vehicle Interaction Node..." "rvi"
-        if $RVI_DIR/rvi.sh start; then
-            log_end_msg 0
+        echo -n "Starting $DAEMON_NAME: "
+        $DAEMON_PATH/rvi.sh start
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ] ; then
+            echo "OK"
         else
-            log_end_msg 1
+            echo "FAIL"
         fi
         ;;
+
   stop)
-        log_daemon_msg "Stopping Remote Vehicle Interaction Node..." "rvi"
-        if $RVI_DIR/rvi.sh stop; then
-            log_end_msg 0
+        echo -n "Stopping $DAEMON_NAME: "
+        $DAEMON_PATH/rvi.sh stop
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ] ; then
+            echo "OK"
         else
-            log_end_msg 1
+            echo "FAIL"
         fi
         ;;
+
   restart)
-        log_daemon_msg "Restarting Remote Vehicle Interaction Node..." "rvi"
-        if $RVI_DIR/rvi.sh restart; then
-            log_end_msg 0
+        echo -n "Restarting $DAEMON_NAME: " 
+        $DAEMON_PATH/rvi.sh restart
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ] ; then
+            echo "OK"
         else
-            log_end_msg 1
+            echo "FAIL"
         fi
         ;;
+
+    status)
+        status $DAEMON_NAME
+        RETVAL=$?
+        ;;
+
   *)
-	log_action_msg "Usage: /etc/init.d/rvi {start|stop|restart}"
-	exit 1
+	echo "usage: $0 { start | stop | status | restart | status }"
+	;;
 esac
 
-exit 0
+exit $RETVAL
