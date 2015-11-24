@@ -122,8 +122,9 @@ def usage():
     print "                            --start='2014-12-01 00:00:00' \\"
     print "                            --stop='2020-12-31 23:59:59' \\"
     print "                            --root_key=root_key.pem \\"
-    print "                            --register='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock' \\"
-    print "                            --invoke='jlr.com/backend/report jlr.com/backend/set_state' \\"
+    print "                            --issuer=GENIVI \\"
+    print "                            --register='genivi.org/vin/abc/unlock genivi.org/vin/abc/lock' \\"
+    print "                            --invoke='genivi.org/backend/report genivi.org/backend/set_state' \\"
     print "                            --jwt_out=lock_cert.jwt \\"
     print "                            --cred_out=lock_credential.json"
     sys.exit(255)
