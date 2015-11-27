@@ -7,6 +7,7 @@
 Copyright (c) 2014 Ulf Wiger
 
 __Authors:__ Ulf Wiger ([`ulf@wiger.net`](mailto:ulf@wiger.net)).
+
 <a name="index"></a>
 
 ## Function Index ##
@@ -25,13 +26,11 @@ __Authors:__ Ulf Wiger ([`ulf@wiger.net`](mailto:ulf@wiger.net)).
 
 `#element#(Tag, Data, Attrs, Parents, E) -> any()`
 
-
 <a name="%23root%23-4"></a>
 
 ### '#root#'/4 ###
 
 `#root#(Data, Attrs, X3, E) -> any()`
-
 
 <a name="%23text%23-1"></a>
 
@@ -39,11 +38,9 @@ __Authors:__ Ulf Wiger ([`ulf@wiger.net`](mailto:ulf@wiger.net)).
 
 `#text#(Text) -> any()`
 
-
 <a name="%23xml-inheritance%23-0"></a>
 
 ### '#xml-inheritance#'/0 ###
 
 `#xml-inheritance#() -> any()`
-
 
