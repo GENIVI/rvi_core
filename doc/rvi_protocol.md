@@ -185,36 +185,31 @@ document was generated using the following commands:
 
 ```Shell
 # Create root key and cert signing request
-openssl req -new -newkey rsa:1024 -nodes -out insecure_root_cert.csr -keyout insecure_root_key.pem
+openssl genrsa -out insecure_root_key.pem 1024
 
-# Create the CA-like root cert,
-openssl x509 -trustout -signkey insecure_root_key.pem -days 365 -req \
-             -in insecure_root_cert.csr -out insecure_root_cert.crt
+# Create a self-signed root CA certificate, signed by the root key created above
+openssl req -x509 -new -nodes -key insecure_root_key.pem -days 365 -out insecure_root_cert.crt
 ```
-
-The ```insecure_root_cert.csr``` intermediate certificate signing request can
-be deleted once the two steps above have been executed.
 
 The content of the sample ```insercure_root_key.pem``` private key
 file, which has no password protection, is:
 
 ```
------BEGIN PRIVATE KEY-----
-MIICdwIBADANBgkqhkiG9w0BAQEFAASCAmEwggJdAgEAAoGBAL3AquND4A5bM1GC
-DLl4GG0qZZZR7CuQ3GjxDRWWOYZ6k/0SBHaRa3ztr4NoXC3imlQ3eEeQXCUBko5f
-xjusSCaZYtnTsfMX7eyORJ0ISbd8aQOgP+98nPntqxdDxm/2+pr/ERSJ9quknvti
-Yf02ZLa3Pzey4DrtQuBUtUXGZxP5AgMBAAECgYA23HGL65/oBq47rqIHLZXCWjOs
-1lq17dgL70WdLCXNn7sRvBfWQA0XvZC1KYMdMRr1pmP8LNy3RlEdIMurjQ/+uIzm
-m3fBIMV0y8DTdMJGK7KxQ3Ae8nYC2peQT5lIQ0x0N97HjP/zDBNzP64aPBQvajsz
-c9Uw80KgPe46fcP30QJBAPj/iLIuKEeLTIkek3Pajo0B3o6Bo8c1PSPaSaTLtVYh
-9yUH1fN+Yl/2xOduokJAT2XARmgKkXh3j/ZRZphiiX8CQQDDFqRMLTU3hIrtWRB5
-0mWLW7qTls/4WeKAgEtjuiZhqSShhWNkz7oANJIYJHRFLGijAsiqUbu3bztkhIIC
-pG6HAkB12iSuCRDBhBoOkG1EGX79GJRpKM0G3Zj5njjbChvjD6J1YXcPj5MqTpc1
-3vRnnR63T0FDvzTJKvX1pOOFXqYrAkEAiC/oJd1xRv5Z1XLVU5WSmYRBbQJc0Cw/
-OCFXf5jVblubXL43Morod3g7fGsGV7u2mAU7e9puxpD5zyPJdnq/RQJBAJhHrkmy
-uYxAHYkkQsERMuMI1SQE+DZap8Yy4QL3Is2mlxqumzya0ztx6OdB1s5kQlfLguHn
-ITwcBCndByLBGis=
------END PRIVATE KEY-----
+-----BEGIN RSA PRIVATE KEY-----
+MIICXAIBAAKBgQDg5A1uZ5F36vQEYbMWCV4wY4OVmicYWEjjl/8YPA01tsz4x68i
+/NnlMNalqpGCIZ0AwqGI5DZAWWoR400L3SAmYD6sWj2L9ViIAPk3ceDU8olYrf/N
+wj78wVoG7qqNLgMoBNM584nlY4jy8zJ0Ka9WFBS2aDtB3Aulc1Q8ZfhuewIDAQAB
+AoGAfD+C7CxsQkSc7I7N0q76SuGwIUc5skmUe6nOViVXZwXH2Or55+qqt+VzsbO7
+EJphk7n0ZR0wm/zKjXd3acaRq5j3fOyXip9fDoNj+oUKAowDJ9vub0NOPpU2bgb0
+xDnDeR0BRVBOTWqrkDeDPBSxw5RlJunesDkamAmj4VXHHgECQQDzqDtaEuEZ7x7d
+kJKCmfGyP01s+YPlquDgogzAeMAsz17TFt8JS4RO0rX71+lmx7qqpRqIxVXIsR58
+NI2Th7tRAkEA7Eh1C1WahLCxojQOam/l7GyE+2ignZYExqonOOvsk6TG0LcFm7W9
+x39ouTlfChM26f8VYAsPxIrvsDlI1DDCCwJBAITmA8lzdrgQhwNOsbrugLg6ct63
+kcuZUqLzgIUS168ZRJ1aYjjNqdLcd0pwT+wxkI03FKv5Bns6sGgKuhX3+KECQFm/
+Z93HRSrTZpViynr5R88WpShNZHyW5/eB1+YSDslB1FagvhuX2570MRXxybys8bXN
+sxPI/9M6prI8AALBBmMCQD+2amH2Y9ukJy10WuYei943mrCsp1oosWjcoMADRCpj
+ZA2UwSzj67PBc5umDIAlhVRMX0zH/gLj54rfIkH5zLk=
+-----END RSA PRIVATE KEY-----
 ```
 
 The root key above is checked in as ```priv/sample_keys/insecure_root_key.pem```.
@@ -222,22 +217,21 @@ The root key above is checked in as ```priv/sample_keys/insecure_root_key.pem```
 The content of the sample ```insecure_root_cert.crt``` file is:
 
 ```
------BEGIN TRUSTED CERTIFICATE-----
-MIICfTCCAeYCCQDKj1afHejp2TANBgkqhkiG9w0BAQsFADCBgjELMAkGA1UEBhMC
-VVMxDzANBgNVBAgMBk9yZWdvbjERMA8GA1UEBwwIUG9ydGxhbmQxDzANBgNVBAoM
-BkdFTklWSTEjMCEGA1UECwwaUmVtb3RlIFZlaGljbGUgSW50ZXJhY3Rpb24xGTAX
-BgNVBAMMEHNhbXBsZV9yb290X2NlcnQwHhcNMTUxMTI0MDAxMTAyWhcNMTYxMTIz
-MDAxMTAyWjCBgjELMAkGA1UEBhMCVVMxDzANBgNVBAgMBk9yZWdvbjERMA8GA1UE
-BwwIUG9ydGxhbmQxDzANBgNVBAoMBkdFTklWSTEjMCEGA1UECwwaUmVtb3RlIFZl
-aGljbGUgSW50ZXJhY3Rpb24xGTAXBgNVBAMMEHNhbXBsZV9yb290X2NlcnQwgZ8w
-DQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAL3AquND4A5bM1GCDLl4GG0qZZZR7CuQ
-3GjxDRWWOYZ6k/0SBHaRa3ztr4NoXC3imlQ3eEeQXCUBko5fxjusSCaZYtnTsfMX
-7eyORJ0ISbd8aQOgP+98nPntqxdDxm/2+pr/ERSJ9quknvtiYf02ZLa3Pzey4Drt
-QuBUtUXGZxP5AgMBAAEwDQYJKoZIhvcNAQELBQADgYEArGhXmzq4YxPbjkhhKl/T
-MnozrN/9gxhBmju6d/I8JWAotXwzdKDcR6VF041qQtlz1XNndO3zs+wC8R8HMOuA
-Opm03LN0ae6GU5pg1odUzvBMmLR3Ox1Y0Lhxo/eX19ZVAK63AIQSwM2GER1p9dHE
-jsUTodMEygTULLZ0yYJ9wkM=
------END TRUSTED CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICUjCCAbugAwIBAgIJAMI080XZPsPUMA0GCSqGSIb3DQEBCwUAMEIxCzAJBgNV
+BAYTAlVTMQ8wDQYDVQQIDAZPcmVnb24xETAPBgNVBAcMCFBvcnRsYW5kMQ8wDQYD
+VQQKDAZHRU5JVkkwHhcNMTUxMTI3MjMxMTQ0WhcNMTYxMTI2MjMxMTQ0WjBCMQsw
+CQYDVQQGEwJVUzEPMA0GA1UECAwGT3JlZ29uMREwDwYDVQQHDAhQb3J0bGFuZDEP
+MA0GA1UECgwGR0VOSVZJMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDg5A1u
+Z5F36vQEYbMWCV4wY4OVmicYWEjjl/8YPA01tsz4x68i/NnlMNalqpGCIZ0AwqGI
+5DZAWWoR400L3SAmYD6sWj2L9ViIAPk3ceDU8olYrf/Nwj78wVoG7qqNLgMoBNM5
+84nlY4jy8zJ0Ka9WFBS2aDtB3Aulc1Q8ZfhuewIDAQABo1AwTjAdBgNVHQ4EFgQU
+4Sz8rAMA+dHymJTlZSkap65qnfswHwYDVR0jBBgwFoAU4Sz8rAMA+dHymJTlZSka
+p65qnfswDAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOBgQDFOapf3DNEcXgp
+1u/g8YtBW24QsyB+RRavA9oKcFiIaHMkbJyUsOergwOXxBYhduuwVzQQo9P5nR0W
+RdUfwtE0GuaiC8WUmjR//vKwakj9Bjuu73ldYj9ji9+eXsL/gtpGWTIlHeGugpFs
+mVrUm0lY/n2ilJQ1hzBZ9lFLq0wfjw==
+-----END CERTIFICATE-----
 ```
 
 The root certificate above is checked in as ```priv/sample_certificates/insecure_root_key.pem```.
@@ -272,18 +266,40 @@ The content of the sample ```insercure_device_key.pem``` private key
 file, which has no password protection, is:
 
 ```
------BEGIN PRIVATE KEY-----
-TBD
------END PRIVATE KEY-----
+-----BEGIN RSA PRIVATE KEY-----
+MIICXAIBAAKBgQCbb4jPAESKxarj3NJsgfQbhfTHZAP9kmram2TFnkzlCRxq4wQx
+BDC0O85PAMgZou0armGGbOu0si4cpVRioerCQJXnMWx1MI+3GUktW5ijI3ui+tYC
+sMQZtjSBVNXFZdoyZU2lPVWITOMZOe8o9vJ5DcUmFj9b2xV9jQ19oh+2+QIDAQAB
+AoGAVCYV0rs6YEaTNbke0k+ocB4dXrTu1CCoaKEn9TS2PGiqUdOFOWQjWe/myS6L
+JhXmd0Ng2P2uvayY+jknbh5qkNeEgTDhXJlAjiXlCADYArhgib+evRHgKz7RLTjX
+tGklbmc7oECTEpjkchJC5XcJhXzHCIjroyOJvBuAVa+SeAECQQDNC+KW7fTKQpiG
+YNGIt5MxCMjRparLz0fWod9J9U56wrWzU9Rnb7h9iwzTEJUEcVl9z8rnUdWtYQ8X
+3lsz5cDhAkEAwg+kDWbLtXWlIvXhhla7q0+RfKb8vu/gXnkXJa6rcJdJztKRbP3b
+9fehVeu9m+1+abahjC1zmQimwd2QVc8BGQJADbtfCGaVPzpoho9TWQmaRO1mrYuf
+vZh7IiejEYvpHpWNn53cmrTDsTyvti7lG/APYzqYRxeW7M6UOS/+AaLAYQJAJbEW
+AwhZPphoB59MO2RzNPXSYyyn4IoEwTSxuz7uy4KG8mXRmyK/a0m6i06rWDLLn8q6
+G9jkH/AfO35GP3RiWQJBAJLWBlKpHf8TxT65jAwxBhd9ZOkC2w0WidbSYjX9wkkD
+38K7ZDm1LSIR69Ut6tdwotkytXvDniOMPY6ENar5IUs=
+-----END RSA PRIVATE KEY-----
 ```
 
 
 The content of the sample ```insecure_device_cert.crt``` file is:
 
 ```
------BEGIN TRUSTED CERTIFICATE-----
-TBD
------END TRUSTED CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIB8zCCAVwCAQEwDQYJKoZIhvcNAQELBQAwQjELMAkGA1UEBhMCVVMxDzANBgNV
+BAgMBk9yZWdvbjERMA8GA1UEBwwIUG9ydGxhbmQxDzANBgNVBAoMBkdFTklWSTAe
+Fw0xNTExMjcyMzE0NTJaFw0xNjExMjYyMzE0NTJaMEIxCzAJBgNVBAYTAlVTMQ8w
+DQYDVQQIDAZPcmVnb24xETAPBgNVBAcMCFBvcnRsYW5kMQ8wDQYDVQQKDAZHRU5J
+VkkwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAJtviM8ARIrFquPc0myB9BuF
+9MdkA/2SatqbZMWeTOUJHGrjBDEEMLQ7zk8AyBmi7RquYYZs67SyLhylVGKh6sJA
+lecxbHUwj7cZSS1bmKMje6L61gKwxBm2NIFU1cVl2jJlTaU9VYhM4xk57yj28nkN
+xSYWP1vbFX2NDX2iH7b5AgMBAAEwDQYJKoZIhvcNAQELBQADgYEAhbqVr9E/0M72
+9nc6DI+qgqsRSMfoyvA3Cmn/ECxl1ybGkuzO7sB8fGjgMQ9zzcb6q1uP3wGjPioq
+MymiYYjUmCTvzdvRBZ+6SDjrZfwUuYexiKqI9AP6XKaHlAL14+rK+6HN4uIkZcIz
+PwSMHih1bsTRpyY5Z3CUDcDJkYtVbYs=
+-----END CERTIFICATE-----
 ```
 
 These files are checked into ```priv/sample_certifcates``` and ```priv/sample_keys```.
