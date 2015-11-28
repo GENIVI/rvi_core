@@ -12,6 +12,27 @@
 
 .PHONY:	all deps compile clean rpm rpmclean
 
+SRC_LIST=BUILD.md \
+	CONFIGURE.md \
+	doc \
+	LICENSE \
+	Makefile \
+	README.md \
+	rebar \
+	rebar.config \
+	rel \
+	RELEASE.md \
+	scripts/setup_gen \
+	scripts/rvi.service \
+	scripts/rvi.sh \
+	scripts/rvi_install.sh \
+	components \
+	ebin \
+	src \
+	rvi_sample.config \
+	rvi_yocto.config \
+	TODO 
+
 VERSION=0.4.0
 
 all: deps compile
@@ -25,28 +46,38 @@ compile:
 recomp:
 	./rebar  compile skip_deps=true
 
-clean:   rpmclean
+clean:   
 	./rebar clean
 
-rpmclean:
+debian_clean:
+	rm -rf ./debian_build
+
+rpm_clean:
 	rm -rf ./rpm/BUILD/* \
 		./rpm/BUILDROOT/* \
 		./rpm/RPMS/* \
 		./rpm/SOURCES/* \
 		./rpm/SRPMS/*
 
-# Create a SOURCES tarball for RPM
-rpm_tarball: rpmclean clean
-	tar czf /tmp/rvi-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
-		LICENSE Makefile README.md rebar rebar.config rel \
-		RELEASE.md rpm scripts/setup_gen scripts/rvi \
-		scripts/rvi.service scripts/rvi_node.sh scripts/rvi.sh \
+# Create a source tarball
+src_tarball: clean
+	tar czf ./rvi-$(VERSION).tgz $(SRC_LIST)
 		components rvi_sample.config scripts/setup_rvi_node.sh src \
 		TODO 
-	mv /tmp/rvi-$(VERSION).tgz ./rpm/SOURCES/
 
+# Create a SOURCES tarball for RPM
+rpm_tarball: clean rpm_clean 
+	tar czf ./rvi-$(VERSION).tgz $(SRC_LIST) rpm
+	mv ./rvi-$(VERSION).tgz ./rpm/SOURCES/
 
-rpm:	rpm_tarball
+# Create a debian tarball
+debian_package: clean debian_clean
+	install --mode=0755 -d ./debian_build
+	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian
+	(cd ./debian_build; tar xf rvi_$(VERSION).orig.tar.gz)
+	(cd ./debian_build/rvi-$(VERSION); debuild -us -uc)
+
+rpm:	rpmclean rpm_tarball 
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
 install: # deps compile
