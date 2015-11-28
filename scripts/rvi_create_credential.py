@@ -255,8 +255,8 @@ if not id_string:
 cred = { 
     'iss': issuer,
     'id': id_string,
-    'sources': register,
-    'destinations': invoke,
+    'right_to_register': register,
+    'right_to_invoke': invoke,
     'create_timestamp': int(time.time()),
     'device_cert': device_cert,
     'validity': { 
