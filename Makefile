@@ -24,7 +24,7 @@ SRC_LIST=BUILD.md \
 	RELEASE.md \
 	scripts/setup_gen \
 	scripts/rvi.service \
-	scripts/rvi.sh \
+	scripts/rvi_ctl \
 	scripts/rvi_install.sh \
 	components \
 	ebin \
@@ -73,14 +73,20 @@ rpm_tarball: clean rpm_clean
 # Create a debian tarball
 debian_package: clean debian_clean
 	install --mode=0755 -d ./debian_build
-	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian
+# Pack up all relevant files, and debian/,  necessary for a build.
+# Add rvi-$(VERSION) at the beginning of each file so
+# that theu get packed up into a correctly named subdirectory
+# 
+	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz --exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian
+# Unpack the created tar file
 	(cd ./debian_build; tar xf rvi_$(VERSION).orig.tar.gz)
-	(cd ./debian_build/rvi-$(VERSION); debuild -us -uc)
+# Descend into the unpacked directory and build.
+	(cd ./debian_build/rvi-$(VERSION); debuild -uc -us)
 
 rpm:	rpmclean rpm_tarball 
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
-install: # deps compile
-	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi
+install: deps compile
+	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi $(DESTDIR)/opt/rvi $(DESTDIR)/var/opt/rvi $(DESTDIR)/var/opt/log/rvi
 	install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
 	install --mode=0644 rvi_yocto.config $(DESTDIR)/etc/opt/rvi/rvi.config

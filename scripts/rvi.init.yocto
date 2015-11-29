@@ -29,7 +29,7 @@ DAEMON_NAME="rvi"
 case "$1" in
   start)
         echo -n "Starting $DAEMON_NAME: "
-        $DAEMON_PATH/rvi.sh start
+        $DAEMON_PATH/rvi_ctl start
         RETVAL=$?
         if [ $RETVAL -eq 0 ] ; then
             echo "OK"
@@ -40,7 +40,7 @@ case "$1" in
 
   stop)
         echo -n "Stopping $DAEMON_NAME: "
-        $DAEMON_PATH/rvi.sh stop
+        $DAEMON_PATH/rvi_ctl stop
         RETVAL=$?
         if [ $RETVAL -eq 0 ] ; then
             echo "OK"
@@ -51,7 +51,7 @@ case "$1" in
 
   restart)
         echo -n "Restarting $DAEMON_NAME: " 
-        $DAEMON_PATH/rvi.sh restart
+        $DAEMON_PATH/rvi_ctl restart
         RETVAL=$?
         if [ $RETVAL -eq 0 ] ; then
             echo "OK"

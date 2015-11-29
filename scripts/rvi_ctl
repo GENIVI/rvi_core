@@ -12,25 +12,21 @@
 # through an RPM.
 #
 
-SELF_DIR=$(dirname $(readlink -f "$0"))
+# Assignment of default values done by rvi_install.sh
+echo ${RVI_LIBDIR:="__RVI_LIBDIR__"} > /dev/null
+echo ${RVI_BINDIR:="__RVI_BINDIR__"} > /dev/null
+echo ${RVI_RUNDIR:="__RVI_RUNDIR__"} > /dev/null
+echo ${RVI_LOGDIR:="__RVI_LOGDIR__"} > /dev/null
+echo ${ERL:=erl} > /dev/null
 
-ERL=${ERL:=erl}
 
 usage() {
     echo "Usage: $0 -d config_dir -c config_file -l log_dir \\" 
     echo "       start|stop|console|attach|ping"
     echo
     echo "  -c config_file  Configuration file to launch rvi node with. "
-    echo "                  If omitted the rvi.config in the configuration "
+    echo "                  If omitted the rvi.config in the runtime "
     echo "                  directory will be used."
-    echo
-    echo "  -d config_dir   Directory to put generated uuid 'device_id' file and"
-    echo "                  processed config files."
-    echo "                  Defauts to the '/etc/opt/rvi'."
-    echo
-    echo "  -l log_dir      The directory to store log files in."
-    echo "                  Defaults to '/tmp/rvi/[config]/log' where [config]"
-    echo "                  is the base name of the configuration file."
     echo
     echo "  start           Start an rvi node with the given configuration file."
     echo
@@ -40,26 +36,21 @@ usage() {
     echo 
     echo "  attach          Attach to an rvi node previously started with 'start'."
     echo
-    echo "  ping            Ping to check if an rvi node is up. Returns 0 if up."
+    echo "Environennt variables. Default value in paranthesis::"
+    echo "\$RVI_LIBDIR ($RVI_LIBDIR)  Location of RVI library files."
+    echo "\$RVI_BINDIR ($RVI_BINDIR)  Location of binary files."
+    echo "\$RVI_LOGDIR ($RVI_LOGDIR)  Location of log files."
+    echo "\$RVI_RUNDIR ($RVI_RUNDIR)  Location of runtime files."
     exit 1
 }
 
 CONFIG_FILE=""
-
 SNAME=rvi
 COOKIE=rvi_cookie
-unset CONFIG_DIR
-unset LOG_DIR
-while getopts "c:d:" o; do
+while getopts "c:" o; do
     case "${o}" in
         c)
             CONFIG_FILE=${OPTARG}
-            ;;
-        d)
-            CONFIG_DIR=${OPTARG}
-            ;;
-        l)
-            LOG_DIR=${OPTARG}
             ;;
         *)
             usage
@@ -67,32 +58,36 @@ while getopts "c:d:" o; do
     esac
 done
 
-CONFIG_DIR=${CONFIG_DIR:=/etc/opt/rvi}
-
 shift $((${OPTIND}-1))
 CMD=$1
+
+if [ -z "${CONFIG_FILE}" ]
+then
+    echo "Missing -c <config_file> argument."
+    usage
+fi
 
 if [ "${CMD}" != "start" -a "${CMD}" != "stop" -a  "${CMD}" != "console" -a  "${CMD}" != "ping" ]
 then
     usage
 fi
 
-export ERL_LIBS=${SELF_DIR}/rvi:${SELF_DIR}/rvi/deps:${SELF_DIR}/rvi/components
+
+export ERL_LIBS=${RVI_LIBDIR}:${RVI_LIBDIR}/deps:${RVI_LIBDIR}/components
 
 
-# Check that we have a config dir
-if [ ! -d ${CONFIG_DIR} ]
+# Check that we have a runtime dir, if not create it
+if [ ! -d ${RVI_RUNDIR} ]
 then
-    install -d --mode=0755 ${CONFIG_DIR}
+    install -D -d --mode=0755 ${RVI_RUNDIR}
 fi
 
 # Check if we have a uuid file.
-if [ ! -f ${CONFIG_DIR}/device_id ]
+if [ ! -f ${RVI_RUNDIR}/device_id ]
 then
-    echo "Creating device ID in ${CONFIG_DIR}/device_id"
-    cat /proc/sys/kernel/random/uuid > ${CONFIG_DIR}/device_id
+    echo "Creating device ID in ${RVI_RUNDIR}/device_id"
+    cat /proc/sys/kernel/random/uuid > ${RVI_RUNDIR}/device_id
 fi
-
 
 
 #
@@ -100,8 +95,6 @@ fi
 #
 if [ ${CMD} = "start" -o ${CMD} = "console" ]
 then
-    # Default to rvi.config
-    CONFIG_FILE=${CONFIG_FILE:=${CONFIG_DIR}/rvi.config}
     #
     # Check if we need to prepend current dir
     # to relative config file path
@@ -122,8 +115,8 @@ then
     # /tmp/rvi/sys.config
     #
     (
-	cd ${CONFIG_DIR}
-	${SELF_DIR}/setup_gen rvi ${CONFIG_FILE} rvi
+	cd ${RVI_RUNDIR}
+	${RVI_BINDIR}/setup_gen rvi ${CONFIG_FILE} rvi
     )
 
     # Did we succeed with config generation?
@@ -135,16 +128,14 @@ then
     fi
 fi
    
-TMP_DIR=/tmp/rvi/$(basename ${CONFIG_FILE} .config)
-LOG_DIR=${LOG_DIR:=${TMP_DIR}/log}
+TMP_DIR=${RVI_RUNDIR}/$(basename ${CONFIG_FILE} .config)
 
-LAUNCH="${ERL} -boot ${CONFIG_DIR}/rvi/start -sname ${SNAME} -config ${CONFIG_DIR}/rvi/sys -setcookie ${COOKIE}"
+LAUNCH="${ERL} -boot ${RVI_RUNDIR}/rvi/start -sname ${SNAME} -config ${RVI_RUNDIR}/rvi/sys -setcookie ${COOKIE}"
 
 case "${CMD}" in
    start)
-	 install -d --mode 0755  ${TMP_DIR}
-	 install -d --mode 0755  ${LOG_DIR}
-	 exec run_erl -daemon ${TMP_DIR}/ ${LOG_DIR} "exec ${LAUNCH}"
+	 install -D -d --mode 0755  ${RVI_LOGDIR}
+	 exec run_erl -daemon ${RVI_RUNDIR}/ ${RVI_LOGDIR} "exec ${LAUNCH}"
 	 ;;
 
    console)
@@ -152,15 +143,15 @@ case "${CMD}" in
        ;;
 
    stop)
-       exec ${SELF_DIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} stop
+       exec ${RVI_BINDIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} stop
        ;;
 
    ping)
-       exec ${SELF_DIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} ping
+       exec ${RBI_BINDIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} ping
        ;;
 
    attach) 
-       exec to_erl ${TMP_DIR}
+       exec to_erl ${RVI_RUNDIR}
        ;;
 
 esac 

@@ -8,66 +8,100 @@
 #
 
 #
-# Setup an RVI release with a configuration file.
+# Setup an RVI release
 #
-# This script will setup a directory with with the same name
-# as the release name. The script uses Ulf Wiger's setup application 
-# (github.com/Feuerlabs/setup) to generate the release.
-# 
-# With the -d argument, a developer release will be built with
-# only
-#
-#  Once setup, the RVI node can be started with ./rvi_node <release_na,e?
-#
-#  Please note that the generated release will depend on the built
-#
-#  In order to create a standalone release, use create_rvi_release.sh
 #
 
 SELF_DIR=$(dirname $(readlink -f "$0"))
 SETUP_GEN=$SELF_DIR/setup_gen  # Ulf's kitchen sink setup utility
 
 usage() {
-    echo "Usage: $0 binary_dir"
+    echo "Usage: $0 binary_dir library_dir runtime_dir log_dir [prefix_strip]"
     echo 
-    echo "RVI will be installed in 'target_dir'."
+    echo "RVI binaries will be installed in 'binary_dir'."
+    echo "RVI libraries will be installed in 'library_dir'."
+    echo "RVI runtime files will be installed in 'runtime_dir'."
+    echo "RVI logging will be done in 'log_dir'."
+    echo
+    echo "If 'prefix_strip' is provided, that part of the directories above"
+    echo "will be stripped of the given prefix in all internlal references."
+    echo
+    echo "If, for example, 'binary_dir' is './build/root/usr/bin', and"
+    echo "'perfix_strip' is './build/root', all internal references"
+    echo "in the files installed udner './build/root/usr/bin' will"
+    echo "reference '/usr/bin'."
+    echo "Useful in build systems where packages are built up"
+    echo "in subdirectories."
     echo 
-    echo "The created node can be started with: 'target_dir'/rvi.sh"
-    echo "RVI in 'target_dir' will rely on a native erlang to function"
+    echo "The created node can be started with: 'binary_dir'/rvi"
+    echo "RVI in 'library_dir' will rely on a separate erlang install"
+    echo "to run."
     exit 1
 }
 
-cd ${SELF_DIR}/..
+
 
 shift $((${OPTIND}-1))
 
-if [ "${#}" != "1" ]
+if [ "${#}" != "4" -a  "${#}" != "5" ]
 then
-    echo "Target directory not specifiied."
-    usagee
+    echo "Wrong number of arguments."
+    usage
 fi
 
-TARGET_DIR=$1
+BIN_DIR=$1
+LIB_DIR=$2
+RUN_DIR=$3
+LOG_DIR=$4
 
-rm -rf ${TARGET_DIR} > /dev/null 2>&1 
+if [ "${#}" = "5" ]
+then
+    PREFIX_STRIP=$5
+fi
 
-install --mode=0755 -d ${TARGET_DIR}/rvi
+rm -rf ${LIB_DIR} ${BIN_DIR} > /dev/null 2>&1 
+
+install --mode=0755 -d ${BIN_DIR}
+install --mode=0755 -d ${LIB_DIR}
+install --mode=0755 -d ${LOG_DIR}
+install --mode=0755 -d ${RUN_DIR}
 
 FILE_SET=$(find ebin components deps -name ebin -o -name priv)
 
-echo "Installing rvi at ${TARGET_DIR}."
+tar cf - ${FILE_SET} | (cd ${LIB_DIR} ; tar xf - )
 
-tar cf - ${FILE_SET} | (cd ${TARGET_DIR}/rvi ; tar xf - )
+# Patch up the rvi with the correct directories.
+if [ -s "${PREFIX_STRIP}" ] 
+then
+    STRIP_BIN_DIR=$(echo ${BIN_DIR} | sed "s|^${PREFIX_STRIP}||")
+    STRIP_LIB_DIR=$(echo ${LIB_DIR} | sed "s|^${PREFIX_STRIP}||")
+    STRIP_RUN_DIR=$(echo ${RUN_DIR} | sed "s|^${PREFIX_STRIP}||")
+    STRIP_LOG_DIR=$(echo ${LOG_DIR} | sed "s|^${PREFIX_STRIP}||")
+else
+    STRIP_BIN_DIR=${BIN_DIR}
+    STRIP_LIB_DIR=${LIB_DIR}
+    STRIP_RUN_DIR=${RUN_DIR}
+    STRIP_LOG_DIR=${LOG_DIR}
+fi
 
-install --mode=0755 scripts/rvi.sh ${TARGET_DIR}
-install --mode=0755 scripts/setup_gen ${TARGET_DIR}
-install --mode=0755 rel/files/nodetool ${TARGET_DIR}
+sed -e "s|__RVI_LIBDIR__|${STRIP_LIB_DIR}|g" \
+    -e "s|__RVI_BINDIR__|${STRIP_BIN_DIR}|g" \
+    -e "s|__RVI_RUNDIR__|${STRIP_RUN_DIR}|g" \
+    -e "s|__RVI_LOGDIR__|${STRIP_LOG_DIR}|g" < scripts/rvi_ctl > /tmp/rvi_ctl
 
-echo "RVI installed under ${TARGET_DIR}"
-echo "Start:              ${TARGET_DIR}/rvi.sh -c <config_file> start"
-echo "Attach started RVI: ${TARGET_DIR}/rvi.sh attach"
-echo "Stop:               ${TARGET_DIR}/rvi.sh stop"
-echo "Start console mode: ${TARGET_DIR}/rvi.sh -c <config_file> console"
+install --mode=0755 /tmp/rvi_ctl ${BIN_DIR}
+install --mode=0755 scripts/setup_gen ${BIN_DIR}
+install --mode=0755 rel/files/nodetool ${BIN_DIR}
 
+echo "RVI binary files installed under ${BIN_DIR}"
+echo "RVI library files installed under ${LIB_DIR}"
+echo "RVI runtime files installed under ${RUN_DIR}"
+echo "RVI log files installed under ${LOG_DIR}"
+echo
+echo "Start:              ${BIN_DIR}/rvi_ctl -c <config_file> start"
+echo "Attach started RVI: ${BIN_DIR}/rvi_ctl attach"
+echo "Stop:               ${BIN_DIR}/rvi_ctl stop"
+echo "Start console mode: ${BIN_DIR}/rvi_ctl -c <config_file> console"
+echo
 exit 0
 

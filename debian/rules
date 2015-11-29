@@ -8,8 +8,8 @@ export DH_VERBOSE=1
 	dh $@
 
 override_dh_auto_install:
-	echo "YESSSSSSS"
-	$(MAKE) DESTDIR=$$(pwd) install
+	./scripts/rvi_install.sh ./debian/rvi/usr/bin ./debian/rvi/usr/lib/rvi ./debian/rvi/var/opt/rvi ./debian/rvi/var/log/rvi ./debian/rvi
+	install --mode=0644 rvi_yocto.config ./debian/rvi/usr/lib/rvi/rvi.config
 
 #override_dh_auto_configure:
 #	dh_auto_configure -- --prefix=/opt/rvi
