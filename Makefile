@@ -26,11 +26,10 @@ SRC_LIST=BUILD.md \
 	scripts/rvi.service \
 	scripts/rvi_ctl \
 	scripts/rvi_install.sh \
+	python/*.py \
 	components \
 	ebin \
 	src \
-	rvi_sample.config \
-	rvi_yocto.config \
 	TODO 
 
 VERSION=0.4.0
@@ -77,9 +76,8 @@ debian_package: clean debian_clean
 # Add rvi-$(VERSION) at the beginning of each file so
 # that theu get packed up into a correctly named subdirectory
 # 
-	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz --exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian
+	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz --exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian rvi_debian.config
 # Unpack the created tar file
-	install -D --mode=0644 rvi_yocto.config ./debian_build/rvi-$(VERSION)/etc/rvi/rvi.config
 	(cd ./debian_build; tar xf rvi_$(VERSION).orig.tar.gz)
 # Descend into the unpacked directory and build.
 	(cd ./debian_build/rvi-$(VERSION); debuild -uc -us)
