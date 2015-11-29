@@ -26,7 +26,7 @@ case "$1" in
     # Set up our config for apache
     cat /proc/sys/kernel/random/uuid > /etc/rvi/device_id
     echo "RVI Device ID set to $(cat /etc/rvi/device_id) in /etc/rvi/device_id"
-
+    update-rc.d rvi defaults
   ;;
 
   abort-upgrade|abort-remove|abort-deconfigure)

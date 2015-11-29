@@ -48,8 +48,8 @@ recomp:
 clean:   
 	./rebar clean
 
-debian_clean:
-	rm -rf ./debian_build
+ubuntu_clean:
+	rm -rf ./ubuntu_build
 
 rpm_clean:
 	rm -rf ./rpm/BUILD/* \
@@ -69,18 +69,18 @@ rpm_tarball: clean rpm_clean
 	tar czf ./rvi-$(VERSION).tgz $(SRC_LIST) rpm
 	mv ./rvi-$(VERSION).tgz ./rpm/SOURCES/
 
-# Create a debian tarball
-debian_package: clean debian_clean
-	install --mode=0755 -d ./debian_build
+# Create an ubuntu 14.04 tarball
+ubuntu_package: clean ubuntu_clean
+	install --mode=0755 -d ./ubuntu_build
 # Pack up all relevant files, and debian/,  necessary for a build.
 # Add rvi-$(VERSION) at the beginning of each file so
 # that theu get packed up into a correctly named subdirectory
 # 
-	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz --exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian rvi_debian.config
+	tar czf ./ubuntu_build/rvi_$(VERSION).orig.tar.gz --exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian rvi_ubuntu.config
 # Unpack the created tar file
-	(cd ./debian_build; tar xf rvi_$(VERSION).orig.tar.gz)
+	(cd ./ubuntu_build; tar xf rvi_$(VERSION).orig.tar.gz)
 # Descend into the unpacked directory and build.
-	(cd ./debian_build/rvi-$(VERSION); debuild -uc -us)
+	(cd ./ubuntu_build/rvi-$(VERSION); debuild -uc -us)
 
 rpm:	rpmclean rpm_tarball 
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
