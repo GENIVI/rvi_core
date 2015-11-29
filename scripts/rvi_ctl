@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (C) 2014, Jaguar Land Rover
+
 #
 # Mozilla Public License, version 2.0.  The full text of the 
 # Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
@@ -15,18 +15,18 @@
 # Assignment of default values done by rvi_install.sh
 echo ${RVI_LIBDIR:="__RVI_LIBDIR__"} > /dev/null
 echo ${RVI_BINDIR:="__RVI_BINDIR__"} > /dev/null
-echo ${RVI_RUNDIR:="__RVI_RUNDIR__"} > /dev/null
 echo ${RVI_LOGDIR:="__RVI_LOGDIR__"} > /dev/null
 echo ${ERL:=erl} > /dev/null
 
 
+
 usage() {
-    echo "Usage: $0 -d config_dir -c config_file -l log_dir \\" 
+    echo "Usage: $0 -d config_dir [-c config_file] -l log_dir \\" 
     echo "       start|stop|console|attach|ping"
     echo
-    echo "  -c config_file  Configuration file to launch rvi node with. "
-    echo "                  If omitted the rvi.config in the runtime "
-    echo "                  directory will be used."
+    echo "  -c config_file  Configuration file to launch rvi node with."
+    echo "                  Mandatory for start and console. Ignored for"
+    echo "                  all other commands."
     echo
     echo "  start           Start an rvi node with the given configuration file."
     echo
@@ -40,7 +40,6 @@ usage() {
     echo "\$RVI_LIBDIR ($RVI_LIBDIR)  Location of RVI library files."
     echo "\$RVI_BINDIR ($RVI_BINDIR)  Location of binary files."
     echo "\$RVI_LOGDIR ($RVI_LOGDIR)  Location of log files."
-    echo "\$RVI_RUNDIR ($RVI_RUNDIR)  Location of runtime files."
     exit 1
 }
 
@@ -61,40 +60,26 @@ done
 shift $((${OPTIND}-1))
 CMD=$1
 
-if [ -z "${CONFIG_FILE}" ]
-then
-    echo "Missing -c <config_file> argument."
-    usage
-fi
 
 if [ "${CMD}" != "start" -a "${CMD}" != "stop" -a  "${CMD}" != "console" -a  "${CMD}" != "ping" ]
 then
     usage
 fi
 
+RUNDIR=${RVI_RUNDIR:-"/tmp/rvi"}/$(basename ${CONFIG_FILE} .config)
 
 export ERL_LIBS=${RVI_LIBDIR}:${RVI_LIBDIR}/deps:${RVI_LIBDIR}/components
-
-
-# Check that we have a runtime dir, if not create it
-if [ ! -d ${RVI_RUNDIR} ]
-then
-    install -D -d --mode=0755 ${RVI_RUNDIR}
-fi
-
-# Check if we have a uuid file.
-if [ ! -f ${RVI_RUNDIR}/device_id ]
-then
-    echo "Creating device ID in ${RVI_RUNDIR}/device_id"
-    cat /proc/sys/kernel/random/uuid > ${RVI_RUNDIR}/device_id
-fi
-
 
 #
 # See if we need to process a config file
 #
 if [ ${CMD} = "start" -o ${CMD} = "console" ]
 then
+    if [ -z "${CONFIG_FILE}" ]
+    then
+	echo "Missing -c <config_file> argument."
+	usage
+    fi
     #
     # Check if we need to prepend current dir
     # to relative config file path
@@ -112,10 +97,12 @@ then
     fi
     # 
     # Generate a config file that will end up as
-    # /tmp/rvi/sys.config
+    # /tmp/rvi/[cfg]/sys.config
     #
     (
-	cd ${RVI_RUNDIR}
+	rm -rf ${RUNDIR}
+	install -D -d --mode=0755 ${RUNDIR}
+	cd ${RUNDIR}
 	${RVI_BINDIR}/setup_gen rvi ${CONFIG_FILE} rvi
     )
 
@@ -127,15 +114,13 @@ then
 	exit "$?"
     fi
 fi
-   
-TMP_DIR=${RVI_RUNDIR}/$(basename ${CONFIG_FILE} .config)
 
-LAUNCH="${ERL} -boot ${RVI_RUNDIR}/rvi/start -sname ${SNAME} -config ${RVI_RUNDIR}/rvi/sys -setcookie ${COOKIE}"
+LAUNCH="${ERL} -boot ${RUNDIR}/rvi/start -sname ${SNAME} -config ${RUNDIR}/rvi/sys -setcookie ${COOKIE}"
 
 case "${CMD}" in
    start)
 	 install -D -d --mode 0755  ${RVI_LOGDIR}
-	 exec run_erl -daemon ${RVI_RUNDIR}/ ${RVI_LOGDIR} "exec ${LAUNCH}"
+	 exec run_erl -daemon ${RUNDIR}/ ${RVbI_LOGDIR} "exec ${LAUNCH}"
 	 ;;
 
    console)
@@ -151,7 +136,7 @@ case "${CMD}" in
        ;;
 
    attach) 
-       exec to_erl ${RVI_RUNDIR}
+       exec to_erl ${RUNDIR}
        ;;
 
 esac 

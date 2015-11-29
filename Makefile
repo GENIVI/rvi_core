@@ -79,6 +79,7 @@ debian_package: clean debian_clean
 # 
 	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz --exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian
 # Unpack the created tar file
+	install -D --mode=0644 rvi_yocto.config ./debian_build/rvi-$(VERSION)/etc/rvi/rvi.config
 	(cd ./debian_build; tar xf rvi_$(VERSION).orig.tar.gz)
 # Descend into the unpacked directory and build.
 	(cd ./debian_build/rvi-$(VERSION); debuild -uc -us)
@@ -87,6 +88,6 @@ rpm:	rpmclean rpm_tarball
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
 install: deps compile
-	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi $(DESTDIR)/opt/rvi $(DESTDIR)/var/opt/rvi $(DESTDIR)/var/opt/log/rvi
+	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi $(DESTDIR)/opt/rvi $(DESTDIR)/var/opt/log/rvi
 	install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
 	install --mode=0644 rvi_yocto.config $(DESTDIR)/etc/opt/rvi/rvi.config
