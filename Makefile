@@ -76,10 +76,15 @@ ubuntu_package: clean ubuntu_clean
 # Add rvi-$(VERSION) at the beginning of each file so
 # that theu get packed up into a correctly named subdirectory
 # 
-	tar czf ./ubuntu_build/rvi_$(VERSION).orig.tar.gz --exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" $(SRC_LIST) debian rvi_ubuntu.config
-# Unpack the created tar file
+	tar czf ./ubuntu_build/rvi_$(VERSION).orig.tar.gz \
+		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
+		$(SRC_LIST) \
+		debian \
+		rvi_ubuntu.config \
+		scripts/rvi.init.ubuntu
+	# Unpack the created tar file
 	(cd ./ubuntu_build; tar xf rvi_$(VERSION).orig.tar.gz)
-# Descend into the unpacked directory and build.
+	# Descend into the unpacked directory and build.
 	(cd ./ubuntu_build/rvi-$(VERSION); debuild -uc -us)
 
 rpm:	rpmclean rpm_tarball 
