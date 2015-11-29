@@ -1,4 +1,4 @@
-#! /bin/sh
+#!/bin/sh
 #
 # Copyright (C) 2014, Jaguar Land Rover
 #
@@ -10,7 +10,19 @@
 # Init.d script to start and stop an RVI system installed
 # through an RPM.
 #
+### BEGIN INIT INFO
+# Provides:          rvi
+# Required-Start:    $networking $syslog
+# Required-Stop:     $networking $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start/Stop RVI node at boot time
+# Description:       Manage Remote Vehicle Interaction Node run state.
+### END INIT INFO
+
 export PATH="/bin/:/usr/bin:/sbin:/usr/sbin"
+export HOME=/tmp/rvi
+install -d -D --mode=0755 ${HOME}
 . /lib/lsb/init-functions
 
 set -e 
@@ -32,7 +44,17 @@ case "$1" in
             log_end_msg 1
         fi
         ;;
+
   restart)
+        log_daemon_msg "Restarting Remote Vehicle Interaction Node..." "rvi"
+        if /usr/bin/rvi_ctl restart; then
+            log_end_msg 0
+        else
+            log_end_msg 1
+        fi
+        ;;
+
+  force-reload)
         log_daemon_msg "Restarting Remote Vehicle Interaction Node..." "rvi"
         if /usr/bin/rvi_ctl restart; then
             log_end_msg 0
