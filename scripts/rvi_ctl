@@ -120,7 +120,7 @@ LAUNCH="${ERL} -boot ${RUNDIR}/rvi/start -sname ${SNAME} -config ${RUNDIR}/rvi/s
 case "${CMD}" in
    start)
 	 install -D -d --mode 0755  ${RVI_LOGDIR}
-	 exec run_erl -daemon ${RUNDIR}/ ${RVbI_LOGDIR} "exec ${LAUNCH}"
+	 exec run_erl -daemon ${RUNDIR}/ ${RVI_LOGDIR} "exec ${LAUNCH}"
 	 ;;
 
    console)

@@ -86,6 +86,10 @@ sed -e "s|__RVI_LIBDIR__|${STRIP_LIB_DIR}|g" \
 install --mode=0755 /tmp/rvi_ctl ${BIN_DIR}
 install --mode=0755 scripts/setup_gen ${BIN_DIR}
 install --mode=0755 rel/files/nodetool ${BIN_DIR}
+install --mode=0755 python/rvi_service.py ${BIN_DIR}/rvi_service
+install --mode=0755 python/rvi_call.py ${BIN_DIR}/rvi_call
+install --mode=0644 python/rvilib.py ${BIN_DIR}
+install --mode=0755 python/rvi_get_services.py ${BIN_DIR}/rvi_get_services
 
 echo "RVI binary files installed under ${BIN_DIR}"
 echo "RVI library files installed under ${LIB_DIR}"

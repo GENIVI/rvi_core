@@ -9,4 +9,4 @@ export DH_VERBOSE=1
 
 override_dh_auto_install:
 	./scripts/rvi_install.sh ./debian/rvi/usr/bin ./debian/rvi/usr/lib/rvi ./debian/rvi/var/log/rvi ./debian/rvi
-	install -D --mode=0644 ./rvi_debian.config ./debian/rvi/etc/rvi/rvi.config
+	install -D --mode=0644 ./rvi_debian.config ./debian/rvi/etc/rvi/rvi_default.config
