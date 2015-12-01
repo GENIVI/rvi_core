@@ -1,7 +1,7 @@
 rvi for Debian
 --------------
 
-Will rely on existing Erlang installation to work.
+Will rely on existing Erlang installation at build time, specifically the 'rebar' package.
 
 We will copy out the Erlang VM BEAM files to /opt/rvi and the configuration files to /etc/opt/rvi
 
