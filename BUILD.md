@@ -99,6 +99,18 @@ The following warnings are expected, and are not a failure indication:
 
 The compiled code is available under ```ebin/``` and ```deps/*/ebin```.
 
+## BUILD RVI ON DEBIAN (JESSIE) ##
+
+This section describes building RVI in a clean chrooted Debian Jessie
+system. This document assumes that you have git installed on your system and
+you are building RVI from source.
+
+## BUILD DEPENDENCIES
+
+## INSTALL ERLANG ##
+
+
+
 ## CREATE A RELEASE ##
 
 See ```CONFIGURE.md``` for details on configuring and creating a
