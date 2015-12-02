@@ -3,7 +3,7 @@ Upstream-Name: rvi
 Source: http://github.com/PDXostc/rvi_core
 
 Files: *
-Copyright:  Copyright 2014,2015,2016 Jaguar Land Rover
+Copyright:  Copyright 2016 Jaguar Land Rover
 
 License: MPL-2.0
  This program is licensed under the terms and conditions of the

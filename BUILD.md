@@ -107,8 +107,11 @@ you are building RVI from source.
 
 ## BUILD DEPENDENCIES
 
+* erlang
+
 ## INSTALL ERLANG ##
 
+apt-get install erlang
 
 
 ## CREATE A RELEASE ##
