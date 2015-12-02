@@ -50,21 +50,23 @@ to_string(S) ->
     unicode:characters_to_list([S]).
 
 strip(Str) -> lstrip(rstrip(Str)).
-lstrip(Str) -> re:replace(Str,"^\\s","", [unicode]).
-rstrip(Str) -> re:replace(Str, "\\s\$", "", [unicode]).
+lstrip(Str) -> re:replace(Str,"^\\s","", [unicode,{return, list}]).
+rstrip(Str) -> re:replace(Str, "\\s\$", "", [unicode, {return, list}]).
 
 % Strip double spaces at end of line -- markdown reads as hard return.
-brstrip(Str) -> re:replace(Str, "\\s+\\s\$", "", [global, multiline, unicode]).
+brstrip(Str) -> re:replace(Str, "\\s+\\s\$", "", [global, multiline, unicode,
+						  {return, list}]).
 
 %% The '#root#' tag is called when the entire structure has been
 %% exported. It does not appear in the structure itself.
 
 '#root#'(Data, Attrs, [], _E) ->
+    Data1 = replace_edown_p(Data),
     case find_attribute(header, Attrs) of
 	{value, Hdr} ->
-	    [lists:flatten(io_lib:fwrite("HEADER: ~p~n", [Hdr])), Data];
+	    [lists:flatten(io_lib:fwrite("HEADER: ~p~n", [Hdr])), Data1];
 	false ->
-	    Data
+	    Data1
     end.
 
 %% Note that SGML does not have the <Tag/> empty-element form.
@@ -195,7 +197,7 @@ md_elem(Tag, Data, Attrs, Parents, E) ->
 	'div' -> Data;
 	ul    -> Data;
 	ol    -> Data;
-	p     -> ["\n", Data, "\n"];
+	p     -> ["<edown_p>", Data, "<edown_p>"];  % no need to use closing tag
 	b     -> ["__", no_nl(Data), "__"];
 	em    -> ["_", no_nl(Data), "_"];
 	i     -> ["_", no_nl(Data), "_"];
@@ -203,7 +205,7 @@ md_elem(Tag, Data, Attrs, Parents, E) ->
 	code  ->
 	    %% edoc_macros.erl hard-codes expansion of the {@type ...} macro
 	    %% as a HTML href inside <code>...</code>
-	    case re:run(Data, "<a href=", []) of
+	    case re:run(Data, "<a href=", [unicode]) of
 		{match,_} ->
 		    %% ["<code>", no_nl(Data), "</code>"];
 		    ["<code>", no_nl(Data), "</code>"];
@@ -262,6 +264,22 @@ needs_html(T, _Attrs) ->
 no_nl(S) ->
     string:strip([C || C <- to_string(S),
 		       C =/= $\n], both).
+
+replace_edown_p(Data) ->
+    Data1 = unicode:characters_to_list([Data]),
+    replace_edown_p(Data1, []).
+
+replace_edown_p("<edown_p>" ++ Data, Acc) ->
+    case lstrip(Data) of
+	"<edown_p>" ++ _ = Data1 ->
+	    replace_edown_p(Data1, Acc);
+	Data1 ->
+	    replace_edown_p(Data1, "\n\n" ++ lstrip(Acc))
+    end;
+replace_edown_p([H|T], Acc) ->
+    replace_edown_p(T, [H|Acc]);
+replace_edown_p([], Acc) ->
+    lists:reverse(Acc).
 
 %% attr(#xmlAttribute{name = N, value = V}) ->
 %%     "(" ++ atom_to_list(N) ++ "=" ++ [a_val(V)] ++ ")".

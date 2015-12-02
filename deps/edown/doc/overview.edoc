@@ -45,11 +45,11 @@ It is also possible to add the branch information specifically:
 `{top_level_readme, {File, BaseHref, Branch}}', although this shouldn't be
 necessary as long as edown can derive the branch name from git.
 
-Using Atlassian Stash as target
--------------------------------
+Using Atlassian Stash or Gitlab as target
+-----------------------------------------
 
-The option `{edown_target, github | stash}' can be used to control which
-is the intended host repository. This affects how links are rewritten in
+The option `{edown_target, github | stash | gitlab}' can be used to control
+which is the intended host repository. This affects how links are rewritten in
 order to find related files and stay on the correct branch.
 
 The default value is `github'.
