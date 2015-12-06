@@ -2,8 +2,9 @@ sudo: true
 language: erlang
 otp_release: 18.1
 before_install:
-  - sudo apt-get install python-dev libffi-dev
-  - sudo apt-get install bluez libbluetooth-dev lynx
+  - sudo apt-get -y update
+  - sudo apt-get -y install python-dev libffi-dev
+  - sudo apt-get -y install bluez libbluetooth-dev lynx
 before_script:
   - export PATH=$HOME/.local/bin:$PATH
   - pip install -r requirements.txt --user `whoami`
