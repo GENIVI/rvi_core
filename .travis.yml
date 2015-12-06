@@ -1,6 +1,6 @@
 sudo: true
 language: erlang
-otp_release: R16B03-1
+otp_release: 18.1
 before_install:
   - sudo apt-get install python-dev libffi-dev
   - sudo apt-get install bluez libbluetooth-dev lynx
