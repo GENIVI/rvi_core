@@ -143,18 +143,20 @@ end_per_testcase(Case, _Config) ->
 
 t_backend_keys_and_cert(Config) ->
     RootKeyDir = ensure_dir(root_keys()),
-    cmd([scripts(),"/rvi_create_root_key.sh -o ",
-	 RootKeyDir, "/root -b 2048"]),
+    cmd(["openssl genrsa -out ", RootKeyDir, "/root_key.pem 1024"]),
+    cmd(["openssl req -x509 -batch -new -nodes -batch"
+	 " -key ", RootKeyDir, "/root_key.pem",
+	 " -days 365 -out ", RootKeyDir, "/root_cert.crt"]),
     Dir = ensure_dir("basic_backend_keys"),
     generate_device_keys(Dir, Config),
-    generate_cert(backend, Dir, ensure_dir("basic_backend_certs"), Config).
+    generate_cred(backend, Dir, ensure_dir("basic_backend_creds"), Config).
 
 t_sample_keys_and_cert(Config) ->
     Dir = ensure_dir("basic_sample_keys"),
     generate_device_keys(Dir, Config),
-    generate_cert(sample, Dir, ensure_dir("basic_sample_certs"), Config).
+    generate_cred(sample, Dir, ensure_dir("basic_sample_creds"), Config).
 
-t_install_backend_node(Config) ->
+t_install_backend_node(_Config) ->
     install_rvi_node("basic_backend", env(),
 		     [root(), "/priv/test_config/basic_backend.config"]).
 
@@ -184,34 +186,69 @@ t_install_bt_sample_node(_Config) ->
     install_sample_node("bt_sample", "bt_sample.config").
 
 t_start_basic_backend(_Config) ->
-    cmd(["./basic_backend/rvi.sh -s basic_backend -l ./basic_backend/rvi/log -d ./basic_backend -c ./basic_backend/priv/test_config/basic_backend.config start"]),
+    cmd([env(),
+	 " ./basic_backend/rvi.sh"
+	 " -s basic_backend"
+	 " -l ./basic_backend/rvi/log"
+	 " -d ./basic_backend"
+	 " -c ./basic_backend/priv/test_config/basic_backend.config"
+	 " start"]),
     await_started("basic_backend"),
     ok.
 
 t_start_basic_sample(_Config) ->
-    cmd(["./basic_sample/rvi.sh -s basic_sample -l ./basic_sample/rvi/log -d ./basic_sample -c ./basic_sample/priv/test_config/basic_sample.config start"]),
+    cmd([env(),
+	 " ./basic_sample/rvi.sh"
+	 " -s basic_sample"
+	 " -l ./basic_sample/rvi/log"
+	 " -d ./basic_sample"
+	 " -c ./basic_sample/priv/test_config/basic_sample.config"
+	 " start"]),
     await_started("basic_sample"),
     ok.
 
 t_start_bt_backend(_Config) ->
-    cmd(["./bt_backend/rvi.sh -s bt_backend -l ./bt_backend/rvi/log -d ./bt_backend -c ./bt_backend/priv/test_config/bt_backend.config start"]),
+    cmd([env(),
+	 " ./bt_backend/rvi.sh -s bt_backend"
+	 " -l ./bt_backend/rvi/log"
+	 " -d ./bt_backend"
+	 " -c ./bt_backend/priv/test_config/bt_backend.config"
+	 " start"]),
     await_started("bt_backend"),
     ok.
 
 t_start_bt_sample(_Config) ->
-    cmd(["./bt_sample/rvi.sh -s bt_sample -l ./bt_sample/rvi/log -d ./bt_sample -c ./bt_sample/priv/test_config/bt_sample.config start"]),
+    cmd([env(),
+	 " ./bt_sample/rvi.sh"
+	 " -s bt_sample"
+	 " -l ./bt_sample/rvi/log"
+	 " -d ./bt_sample"
+	 " -c ./bt_sample/priv/test_config/bt_sample.config"
+	 " start"]),
     await_started("bt_sample"),
     ok.
 
 t_start_tls_backend(_Config) ->
-    cmd(["./tls_backend/rvi.sh -s tls_backend -l ./tls_backend/rvi/log -d ./tls_backend -c ./tls_backend/priv/test_config/tls_backend.config start"]),
+    cmd([env(),
+	 " ./tls_backend/rvi.sh"
+	 " -s tls_backend"
+	 " -l ./tls_backend/rvi/log"
+	 " -d ./tls_backend"
+	 " -c ./tls_backend/priv/test_config/tls_backend.config"
+	 " start"]),
     await_started("tls_backend"),
     ok.
 
 t_start_tls_sample(_Config) ->
-    cmd(["./tls_sample/rvi.sh -s tls_sample -l ./tls_sample/rvi/log -d ./tls_sample -c ./tls_sample/priv/test_config/tls_sample.config start"]),
+    cmd([env(),
+	 " ./tls_sample/rvi.sh"
+	 " -s tls_sample"
+	 " -l ./tls_sample/rvi/log"
+	 " -d ./tls_sample"
+	 " -c ./tls_sample/priv/test_config/tls_sample.config"
+	 " start"]),
     await_started("tls_sample"),
-    ok. 
+    ok.
 
 t_register_lock_service(_Config) ->
     Pid =
@@ -235,7 +272,7 @@ t_call_lock_service(_Config) ->
     verify_call_res(join_stdout_msgs(CallRes)),
     ct:log("CallRes = ~p~n", [CallRes]).
 
-t_remote_call_lock_service(Config) ->
+t_remote_call_lock_service(_Config) ->
     CallPid = spawn_cmd(
                 [python(),
                  "/rvi_call.py -n ", service_edge("backend"),
@@ -351,41 +388,58 @@ try_match(Pat, Data) ->
     ct:log("try_match(S, ~p) -> ~p~nS=~s~n", [Pat, Res, Data]),
     Res.
 
-generate_device_keys(Dir, Config) ->
+generate_device_keys(Dir, _Config) ->
     ensure_dir(Dir),
-    cmd([scripts(),"/rvi_create_device_key.py ",
-	 "-p ", root_keys(), "/root_priv.pem -o ", Dir, "/dev -b 2048"]).
+    RootKeyDir = root_keys(),
+    cmd(["openssl genrsa -out ", Dir, "/device_key.pem 2014"]),
+    cmd(["openssl req -new -batch"
+	 " -subj ", subj(),
+	 " -key ", Dir, "/device_key.pem"
+	 " -out ", Dir, "/device_cert.csr"]),
+    cmd(["openssl x509 -req -days 365"
+	 " -in ", Dir, "/device_cert.csr"
+	 " -CA ", root_keys(), "/root_cert.crt"
+	 " -CAkey ", RootKeyDir, "/root_key.pem"
+	 " -set_serial 01"
+	 " -out ", Dir, "/device_cert.crt"]).
 
-generate_cert(sample, KeyDir, CertDir, Config) ->
-    %% Don't put lock_cert.json in the certs directory, since rvi_core
+generate_cred(sample, KeyDir, CredDir, _Config) ->
+    %% Don't put lock_cred.json in the certs directory, since rvi_core
     %% will report a parse failure for it.
     UUID = uuid(),
     {Start, Stop} = start_stop(),
-    cmd([scripts(), "/rvi_create_certificate.py"
+    cmd([scripts(), "/rvi_create_credential.py"
 	 " --id=", UUID,
-	 " --device_key=", KeyDir, "/dev_pub.pem",
+	 " --issuer=GENIVI"
+	 " --device_cert=", KeyDir, "/device_cert.crt",
 	 " --start='", Start, "'"
 	 " --stop='", Stop, "'"
-	 " --root_key=", root_keys(), "/root_priv.pem"
+	 " --root_key=", root_keys(), "/root_key.pem"
 	 " --register='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock'"
 	 " --invoke='jlr.com/backend/set_state'"
-	 " --jwt_out=", CertDir, "/lock_cert.jwt"
-	 " --cert_out=", KeyDir, "/lock_cert.json"]),
+	 " --jwt_out=", CredDir, "/lock_cred.jwt"
+	 " --cred_out=", KeyDir, "/lock_cred.json"]),
     ok;
-generate_cert(backend, KeyDir, CertDir, Config) ->
+generate_cred(backend, KeyDir, CertDir, _Config) ->
     UUID = uuid(),
     {Start, Stop} = start_stop(),
-    cmd([scripts(), "/rvi_create_certificate.py"
+    cmd([scripts(), "/rvi_create_credential.py"
 	 " --id=", UUID,
-	 " --device_key=", KeyDir, "/dev_pub.pem",
+	 " --issuer=GENIVI"
+	 " --device_cert=", KeyDir, "/device_cert.crt",
 	 " --start='", Start, "'"
 	 " --stop='", Stop, "'"
-	 " --root_key=", root_keys(), "/root_priv.pem"
+	 " --root_key=", root_keys(), "/root_key.pem"
 	 " --register='jlr.com'"
 	 " --invoke='jlr.com'"
-	 " --jwt_out=", CertDir, "/backend_cert.jwt"
-	 " --cert_out=", KeyDir, "/backend_cert.json"]),
+	 " --jwt_out=", CertDir, "/backend_cred.jwt"
+	 " --cred_out=", KeyDir, "/backend_cred.json"]),
     ok.
+
+subj() ->
+    "/C=US/ST=OR/O=JLR/localityName=Portland/organizationalUnitName=Ostc".
+
+
 
 start_stop() ->
     DT = erlang:localtime(),
@@ -405,7 +459,7 @@ ensure_dir(Dir) ->
     Dir.
 
 env() ->
-    "RVI_LOGLEVEL=debug RVI_MYIP=127.0.0.1".
+    "RVI_LOGLEVEL=debug RVI_MYIP=127.0.0.1 RVI_BACKEND=127.0.0.1".
 
 root() ->
     code:lib_dir(rvi_core).
@@ -422,7 +476,7 @@ root_keys() ->
 service_edge("backend") -> "http://localhost:8801";
 service_edge("sample" ) -> "http://localhost:9001".
 
-install_rvi_node(Name, Env, ConfigF) ->
+install_rvi_node(Name, Env, _ConfigF) ->
     Root = code:lib_dir(rvi_core),
     Scripts = filename:join(Root, "scripts"),
     ct:log("Root = ~p", [Root]),
@@ -433,7 +487,7 @@ install_rvi_node(Name, Env, ConfigF) ->
     Res = cmd(Cmd),
     ct:log("install_rvi_node/1 -> ~p", [Res]),
 
-    
+
     Res1 = cmd(lists:flatten(["install -d --mode 0755 ./", Name])),
     ct:log("install_rvi_node/2 -> ~p", [Res1]),
 
@@ -449,16 +503,16 @@ install_sample_node(Name, ConfigF) ->
     install_rvi_node(Name, Env,
 		     [root(), "/priv/test_config/", ConfigF]).
 
-in_priv_dir(F, Cfg) ->
-    %% PrivDir = ?config(priv_dir, Cfg),
-    %% in_dir(PrivDir, F, Cfg).
-    F(Cfg).
+%% in_priv_dir(F, Cfg) ->
+%%     %% PrivDir = ?config(priv_dir, Cfg),
+%%     %% in_dir(PrivDir, F, Cfg).
+%%     F(Cfg).
 
 cmd(C) ->
     cmd(C, []).
 
 cmd(C, Opts) ->
-    {ok, Res} = cmd_(C, Opts).
+    {ok, _Res} = cmd_(C, Opts).
 
 cmd_(C0, Opts) ->
     C = binary_to_list(iolist_to_binary(C0)),
@@ -474,7 +528,7 @@ cmd_(C0, Opts) ->
     CmdRes.
 
 cmd_res({_, L}) ->
-    {Err,L1} = take(stderr, L, ""),
+    {Err,_L1} = take(stderr, L, ""),
     {Out,L2} = take(stdout, L, ""),
     {Out, Err, L2}.
 
@@ -515,8 +569,8 @@ await_started(Name) ->
 save_ospid(Node) ->
     save({Node,pid}, rpc:call(Node, os, getpid, [])).
 
-get_ospid(Node) ->
-    lookup({Node, pid}).
+%% get_ospid(Node) ->
+%%     lookup({Node, pid}).
 
 stop_nodes() ->
     Nodes = ets:select(?DATA, [{ {{'$1',pid},'$2'}, [], [{{'$1','$2'}}] }]),

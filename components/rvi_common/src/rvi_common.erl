@@ -191,7 +191,6 @@ notification(Component,
     ?debug("         Module : ~p", [Module]),
     ?debug("       Function : ~p", [Function]),
     ?debug("  InArgPropList : ~p", [InArgPropList]),
-    ?debug("       CompSpec : ~p", [CompSpec]),
 
     case get_module_type(Component, Module, CompSpec) of
 	%% We have a gen_server
@@ -288,6 +287,8 @@ unstruct(X) ->
 
 
 %% If Path is just a single element, convert to list and try again.
+get_json_element(_, []) ->
+    {error, undefined};
 get_json_element(ElemPath, JSON) when is_atom(ElemPath) ->
     get_json_element([ElemPath], JSON);
 
@@ -299,7 +300,7 @@ get_json_element(ElemPath, JSON) when is_tuple(JSON) ->
 
 get_json_element(ElemPath, [T|_] = JSON) when is_tuple(T) ->
     get_json_element_(ElemPath, JSON);
-get_json_element(ElemPath, JSON) when is_list(JSON) ->
+get_json_element(ElemPath, [H|_] = JSON) when is_integer(H) ->
     case  exo_json:decode_string(JSON) of
 	{ok,  Data } ->
 	    get_json_element_(ElemPath, Data);
@@ -311,7 +312,7 @@ get_json_element(ElemPath, JSON) when is_list(JSON) ->
 get_json_element(P, J) ->
     ?warning("get_json_element(): Unknown call structure; Path: ~p | JSON: ~p",
 	      [P, J]),
-    {error, call, {P, J}}.
+    {error, {call, {P, J}}}.
 
 get_json_element_(_, undefined) ->
     { error, undefined };
@@ -508,7 +509,7 @@ get_component_config_(Component, Default, CompList) ->
 
 get_component_specification() ->
     CS = get_component_specification_(),
-    lager:debug("CompSpec = ~p", [CS]),
+    %% lager:debug("CompSpec = ~p", [CS]),
     CS.
 
 get_component_specification_() ->
@@ -580,8 +581,8 @@ get_component_modules(_, _) ->
 get_module_specification(Component, Module, CompSpec) ->
     case get_component_modules(Component, CompSpec) of
 	undefined ->
-	    ?debug("get_module_specification(): Missing: rvi_core:component: ~p: ~p",
-		   [Component, CompSpec]),
+	    ?debug("get_module_specification(): Missing: rvi_core:component: ~p",
+		   [Component]),
 	    undefined;
 
 	Modules ->
@@ -614,7 +615,7 @@ get_module_config(Component, Module, Key, CompSpec) ->
 	    case proplists:get_value(Key, ModConf, undefined ) of
 		undefined ->
 		    ?debug("get_module_config(): Missing component spec: "
-			   "rvi_core:component:~p:~p:~p{...}: ~p",
+			   "~p:~p:~p{...}: ~p",
 			   [Component, Module, Key, ModConf]),
 		    {error, {not_found, Component, Module, Key}};
 
@@ -764,9 +765,9 @@ start_json_rpc_server(Component, Module, Supervisor, XOpts) ->
 				      Module,
 				      ExoHttpOpts);
 	Err ->
-	    ?info("rvi_common:start_json_rpc_server(~p:~p): "
-		  "No JSON-RPC address setup. skip",
-		  [ Component, Module ]),
+	    ?debug("start_json_rpc_server(~p:~p): "
+		   "No JSON-RPC address setup. skip",
+		   [ Component, Module ]),
 	    Err
     end.
 

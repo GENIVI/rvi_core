@@ -1,6 +1,10 @@
 -module(dlink_data_msgpack).
 
--compile(export_all).
+-export([init/1,
+	 decode/3,
+	 encode/2]).
+
+-export([port_options/0]).
 
 -record(st, {opts = [{allow_atom, pack},
 		     {enable_str, true},
@@ -13,15 +17,16 @@ port_options() ->
 init(_CS) ->
     #st{}.
 
-decode(Msg0, #st{buf = Prev, opts = Opts} = St) ->
+decode(Msg0, F, #st{buf = Prev, opts = Opts} = St) when is_function(F, 1) ->
     Msg = append(Prev, Msg0),
     case msgpack:unpack_stream(Msg, Opts) of
 	{error, incomplete} ->
-	    {more, St#st{buf = Msg}};
+	    {ok, St#st{buf = Msg}};
 	{error, E} ->
-	    {error, E, St};
+	    {error, E};
 	{Decoded, Rest} when is_binary(Rest) ->
-	    {ok, Decoded, St#st{buf = Rest}}
+	    F(Decoded),
+	    decode(Rest, F, St#st{buf = <<>>})
     end.
 
 encode({struct, Elems}, #st{opts = Opts} = St) ->

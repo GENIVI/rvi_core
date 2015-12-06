@@ -31,6 +31,13 @@ instance(SupMod, AppMod, Opts) ->
 
 
 handle_body(Socket, Request, Body, AppMod) when Request#http_request.method == 'POST' ->
+    ensure_ready(fun handle_post/4, Socket, Request, Body, AppMod);
+
+handle_body(Socket, _Request, _Body, _AppMod) ->
+    exo_http_server:response(Socket, undefined, 404, "Not Found",
+			     "Object not found. Try using POST method.").
+
+handle_post(Socket, Request, Body, AppMod) ->
     case Request#http_request.headers of
 	#http_chdr{content_type = "application/json" ++ _ = T}
 	  when T=="application/json";
@@ -39,11 +46,7 @@ handle_body(Socket, Request, Body, AppMod) when Request#http_request.method == '
 	    handle_post_json(Socket, Request, Body, AppMod);
 	#http_chdr{content_type = "multipart/" ++ _} ->
 	    handle_post_multipart(Socket, Request, Body, AppMod)
-    end;
-
-handle_body(Socket, _Request, _Body, _AppMod) ->
-    exo_http_server:response(Socket, undefined, 404, "Not Found",
-			     "Object not found. Try using POST method.").
+    end.
 
 handle_post_json(Socket, _Request, Body, AppMod) ->
     try decode_json(Body) of
@@ -210,4 +213,16 @@ opt(K, L, Def) ->
     case lists:keyfind(K, 1, L) of
 	{_, V} -> V;
 	false  -> Def
+    end.
+
+
+ensure_ready(F, Socket, Request, Body, AppMod) ->
+    try rvi_server:ensure_ready(_Timeout = 10000),
+	 F(Socket, Request, Body, AppMod)
+    catch
+	error:timeout ->
+	    ?error("~p timeout waiting for rvi_core", [?MODULE]),
+	    exo_http_server:response(Socket, undefined, 501,
+				     "Internal Error",
+				     "Internal Error")
     end.

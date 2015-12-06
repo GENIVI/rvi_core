@@ -14,13 +14,16 @@
 -include_lib("rvi_common/include/rvi_common.hrl").
 -export([start_link/1,
          add_listener/1,
-         remove_listener/1]).
+         remove_listener/1,
+	 accept_ack/4]).
+-export([sock_opts/0]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2]).
 
 -record(st, {listeners = [],
 	     acceptors = [],
+	     mode = bt,
 	     cs = #component_spec{}
 	    }).
 
@@ -34,41 +37,33 @@ add_listener(Channel) ->
 remove_listener(Channel) ->
     gen_server:call(?MODULE, {remove_listener, Channel}).
 
+accept_ack(Result, LRef, Addr, Chan) ->
+    ?MODULE ! {accept, self(), LRef, Addr, Chan, Result},
+    ok.
+
+sock_opts() ->
+    [binary, {active, once}, {packet, 0}].
+
 init(Mode) ->
 
     {ok, #st {
 	    listeners = [],
 	    acceptors = [],
+	    mode = Mode,
 	    cs = rvi_common:set_value(bt_mode, Mode, rvi_common:get_component_specification())
 	   }
     }.
 
 
-handle_call({add_listener, Channel}, _From, #st{cs = CS} = St) ->
+handle_call({add_listener, Channel}, _From, #st{mode = Mode,
+						listeners = Ls} = St) ->
     ?info("bt_listener:add_listener(): Setting up listener on channel ~p", [ Channel]),
 
-    Mode = rvi_common:get_value(bt_mode, bt, CS),
     case listen(Mode, Channel) of
         {ok, ListenRef} ->
 	    ?info("bt_listener:add_listener(): ListenRef: ~p", [ ListenRef]),
-	    {ok, ConnPid} = bt_connection:accept(Channel,
-						 ListenRef,
-						 Mode,
-						 dlink_bt_rpc,
-						 handle_socket,
-						 CS),
-
-
-
-     	    %%{ noreply, NSt} = handle_info({accept, ListenRef, Channel, ok}, St),
-
-	    { reply,
-	      ok,
-	      St#st {
-		acceptors = [ { Channel, ConnPid } | St#st.acceptors ],
-		listeners = [ { ListenRef, Channel } | St#st.listeners ]
-	       }
-	    };
+	    St1 = St#st{listeners = [{ListenRef, Channel}|Ls]},
+	    {reply, ok, start_acceptor(ListenRef, Channel, St1)};
 
 	Err ->
 	    ?info("bt_listener:add_listener(): Failed: ~p", [ Err]),
@@ -86,12 +81,19 @@ handle_call(_Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({accept, ListenRef, BTAddr, Channel, ok} , St) ->
+handle_info({accept, Pid, ListenRef, BTAddr, Channel, ok},
+	    #st{listeners = Ls,
+		acceptors = As} = St) ->
     %% Fire up a new process to handle the
     %% future incoming connection.
     ?info("bt_listener:accept(): ListenRef: ~p", [ ListenRef]),
     ?info("bt_listener:accept(): Remote: ~p-~p", [BTAddr, Channel ]),
 
+    case lists:keyfind(ListenRef, 1, Ls) of
+	{_, Channel} ->
+	    As1 = lists:keydelete(Pid, 2, As),
+	    {noreply, start_acceptor(ListenRef, Channel,
+				     St#st{acceptors = As1})};
     %% Must fix multiple acceptors in bt_linux_drv.c
     %% {ok, ConnPid} = bt_connection:accept(Channel,
     %%  					 ListenRef,
@@ -101,7 +103,9 @@ handle_info({accept, ListenRef, BTAddr, Channel, ok} , St) ->
 
 
     %% {noreply, St#st {acceptors = [ { Channel, ConnPid } | St#st.acceptors ]}};
-    {noreply, St };
+	_ ->
+	    {noreply, St }
+    end;
 
 handle_info(_Msg, State) ->
     ?info("bt_listener:handle_info(): Unknown: ~p", [ _Msg]),
@@ -115,4 +119,16 @@ terminate(_Reason, _State) ->
 listen(bt, Channel) ->
     rfcomm:listen(Channel);
 listen(tcp, Port) ->
-    exo_socket:listen(Port).
+    gen_tcp:listen(Port, sock_opts()).
+
+start_acceptor(ListenRef, Channel, #st{mode = Mode,
+				       acceptors = As,
+				       cs = CS} = St) ->
+    ?debug("start acceptor(~p, ~p, St)", [ListenRef, Channel]),
+    {ok, ConnPid} = bt_connection:accept(Channel,
+					 ListenRef,
+					 Mode,
+					 dlink_bt_rpc,
+					 handle_socket,
+					 CS),
+    St#st{acceptors = [{Channel, ConnPid}|As]}.

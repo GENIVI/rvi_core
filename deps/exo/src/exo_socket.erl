@@ -9,7 +9,7 @@
 %%%---- END COPYRIGHT ---------------------------------------------------------
 %%% @author Tony Rogvall <tony@rogvall.se>
 %%% @doc
-%%%    EXO socket 
+%%%    EXO socket
 %%% @end
 %%% Created : 15 Dec 2011 by Tony Rogvall <tony@rogvall.se>
 
@@ -17,7 +17,7 @@
 
 
 -export([listen/1, listen/2, listen/3]).
--export([accept/1, accept/2]).
+-export([accept/1, accept/2, accept/3]).
 -export([async_accept/1, async_accept/2]).
 -export([connect/2, connect/3, connect/4, connect/5]).
 %% -export([async_connect/2, async_connect/3, async_connect/4]).
@@ -85,7 +85,7 @@ listen(Port, Protos=[tcp|_], Opts0) ->
 	    Error
     end.
 
-%% 
+%%
 %%
 %%
 connect(Host, Port) ->
@@ -108,7 +108,7 @@ connect(Host, Port, Protos=[tcp|_], Opts0, Timeout) ->
     TcpConnectOpts = [{active,false},{packet,0},{mode,binary}|TcpOpts1],
     case gen_tcp:connect(Host, Port, TcpConnectOpts, Timeout) of
 	{ok, S} ->
-	    X = 
+	    X =
 		#exo_socket { mdata   = gen_tcp,
 			      mctl    = inet,
 			      protocol = Protos,
@@ -214,11 +214,11 @@ connect_upgrade(X, Protos0, Timeout) ->
 	    {SSLOpts0,Opts1} = split_options(ssl_connect_opts(),Opts),
 	    {_,SSLOpts} = split_options([ssl_imp], SSLOpts0),
 	    ?dbg("SSL upgrade, options = ~w\n", [SSLOpts]),
-	    ?dbg("exo_socket: before ssl:connect opts=~w\n", 
+	    ?dbg("exo_socket: before ssl:connect opts=~w\n",
 		 [getopts(X, [active,packet,mode])]),
 	    case ssl_connect(X#exo_socket.socket, SSLOpts, Timeout) of
 		{ok,S1} ->
-		    ?dbg("exo_socket: ssl:connect opt=~w\n", 
+		    ?dbg("exo_socket: ssl:connect opt=~w\n",
 			 [ssl:getopts(S1, [active,packet,mode])]),
 		    X1 = X#exo_socket { socket=S1,
 					mdata = ssl,
@@ -227,25 +227,25 @@ connect_upgrade(X, Protos0, Timeout) ->
 					tags={ssl,ssl_closed,ssl_error}},
 		    connect_upgrade(X1, Protos1, Timeout);
 		Error={error,_Reason} ->
-		    ?dbg("exo_socket: ssl:connect error=~w\n", 
+		    ?dbg("exo_socket: ssl:connect error=~w\n",
 			 [_Reason]),
 		    Error
 	    end;
 	[http|Protos1] ->
 	    {_, Close,Error} = X#exo_socket.tags,
-	    X1 = X#exo_socket { packet = http, 
+	    X1 = X#exo_socket { packet = http,
 				tags = {http, Close, Error }},
 	    connect_upgrade(X1, Protos1, Timeout);
 	[] ->
 	    setopts(X, [{mode,X#exo_socket.mode},
 			{packet,X#exo_socket.packet},
 			{active,X#exo_socket.active}]),
-	    ?dbg("exo_socket: after upgrade opts=~w\n", 
+	    ?dbg("exo_socket: after upgrade opts=~w\n",
 		 [getopts(X, [active,packet,mode])]),
 	    {ok,X}
     end.
-			       
-ssl_connect(Socket, Options, Timeout) ->    
+
+ssl_connect(Socket, Options, Timeout) ->
     case ssl:connect(Socket, Options, Timeout) of
 	{error, ssl_not_started} ->
 	    ssl:start(),
@@ -288,28 +288,39 @@ async_socket(Listen, Socket, AuthOpts)
 		ok ->
 		    {ok,Mod} = inet_db:lookup_socket(Listen#exo_socket.socket),
 		    inet_db:register_socket(Socket, Mod),
-		    X = Listen#exo_socket { transport=Socket, socket=Socket },
-		    maybe_auth(
-		      accept_upgrade(X, tl(X#exo_socket.protocol), infinity),
-		      server,
-		      X#exo_socket.opts ++ AuthOpts);
+		    {ok, Listen#exo_socket { transport=Socket, socket=Socket,
+					     opts = Listen#exo_socket.opts ++ AuthOpts }};
 		Error ->
 		    prim_inet:close(Socket),
 		    Error
 	    end;
 	Error ->
+	    ?debug("getopts() -> ~p", [Error]),
 	    prim_inet:close(Socket),
 	    Error
     end.
 
-    
 accept(X) when is_record(X, exo_socket) ->
-    accept_upgrade(X, X#exo_socket.protocol, infinity).
+    Timeout = proplists:get_value(accept_timeout, X#exo_socket.opts, infinity),
+    maybe_auth(
+      accept_upgrade(X, X#exo_socket.protocol, Timeout),
+      server,
+      X#exo_socket.opts).
 
-accept(X, Timeout) when 
-      is_record(X, exo_socket), 
+accept(X, Timeout) when
+      is_record(X, exo_socket),
       (Timeout =:= infnity orelse (is_integer(Timeout) andalso Timeout >= 0)) ->
-    accept_upgrade(X, X#exo_socket.protocol, Timeout).
+    maybe_auth(
+      accept_upgrade(X, X#exo_socket.protocol, Timeout),
+      server,
+      X#exo_socket.opts).
+
+accept(X, Protos, Timeout) when
+      is_record(X, exo_socket) ->
+    maybe_auth(
+      accept_upgrade(X, Protos, Timeout),
+      server,
+      X#exo_socket.opts).
 
 accept_upgrade(X=#exo_socket { mdata = M }, Protos0, Timeout) ->
     ?dbg("exo_socket: accept protos=~w\n", [Protos0]),
@@ -327,11 +338,11 @@ accept_upgrade(X=#exo_socket { mdata = M }, Protos0, Timeout) ->
 	    {SSLOpts0,Opts1} = split_options(ssl_listen_opts(),Opts),
 	    {_,SSLOpts} = split_options([ssl_imp], SSLOpts0),
 	    ?dbg("SSL upgrade, options = ~w\n", [SSLOpts]),
-	    ?dbg("exo_socket: before ssl_accept opt=~w\n", 
+	    ?dbg("exo_socket: before ssl_accept opt=~w\n",
 		 [getopts(X, [active,packet,mode])]),
 	    case ssl_accept(X#exo_socket.socket, SSLOpts, Timeout) of
 		{ok,S1} ->
-		    ?dbg("exo_socket: ssl_accept opt=~w\n", 
+		    ?dbg("exo_socket: ssl_accept opt=~w\n",
 			 [ssl:getopts(S1, [active,packet,mode])]),
 		    X1 = X#exo_socket{socket=S1,
 				      mdata = ssl,
@@ -340,7 +351,7 @@ accept_upgrade(X=#exo_socket { mdata = M }, Protos0, Timeout) ->
 				      tags={ssl,ssl_closed,ssl_error}},
 		    accept_upgrade(X1, Protos1, Timeout);
 		Error={error,_Reason} ->
-		    ?dbg("exo_socket: ssl:ssl_accept error=~w\n", 
+		    ?dbg("exo_socket: ssl:ssl_accept error=~w\n",
 			 [_Reason]),
 		    Error
 	    end;
@@ -348,14 +359,14 @@ accept_upgrade(X=#exo_socket { mdata = M }, Protos0, Timeout) ->
 	    accept_probe_ssl(X,Protos1,Timeout);
 	[http|Protos1] ->
 	    {_, Close,Error} = X#exo_socket.tags,
-	    X1 = X#exo_socket { packet = http, 
+	    X1 = X#exo_socket { packet = http,
 				tags = {http, Close, Error }},
 	    accept_upgrade(X1,Protos1,Timeout);
 	[] ->
 	    setopts(X, [{mode,X#exo_socket.mode},
 			{packet,X#exo_socket.packet},
 			{active,X#exo_socket.active}]),
-	    ?dbg("exo_socket: after upgrade opts=~w\n", 
+	    ?dbg("exo_socket: after upgrade opts=~w\n",
 		 [getopts(X, [active,packet,mode])]),
 	    {ok,X}
     end.
@@ -393,7 +404,7 @@ accept_probe_ssl(X=#exo_socket { mdata=M, socket=S,
 	    Error
     end.
 
-ssl_accept(Socket, Options, Timeout) ->    
+ssl_accept(Socket, Options, Timeout) ->
     case ssl:ssl_accept(Socket, Options, Timeout) of
 	{error, ssl_not_started} ->
 	    ssl:start(),
@@ -417,7 +428,7 @@ request_type(<<ContentType:8, _Version:16, _Length:16, _/binary>>) ->
     end;
 request_type(_) ->
     undefined.
-    
+
 %%
 %% exo_socket wrapper for socket operations
 %%
@@ -426,7 +437,7 @@ close(#exo_socket { mdata = M, socket = S}) ->
 
 shutdown(#exo_socket { mdata = M, socket = S}, How) ->
     M:shutdown(S, How).
-    
+
 send(#exo_socket { mdata = M,socket = S, mauth = A,auth_state = Sa} = X, Data) ->
     if A == undefined ->
 	    M:send(S, Data);
@@ -520,11 +531,11 @@ tcp_connect_options() ->
 
 
 ssl_listen_opts() ->
-    [versions, verify, verify_fun, 
+    [versions, verify, verify_fun,
      fail_if_no_peer_cert, verify_client_once,
-     depth, cert, certfile, key, keyfile, 
+     depth, cert, certfile, key, keyfile,
      password, cacerts, cacertfile, dh, dhfile, cihpers,
-     %% deprecated soon 
+     %% deprecated soon
      ssl_imp,   %% always new!
      %% server
      verify_client_once,
@@ -533,9 +544,9 @@ ssl_listen_opts() ->
      debug, hibernate_after, erl_dist ].
 
 ssl_connect_opts() ->
-    [versions, verify, verify_fun, 
+    [versions, verify, verify_fun,
      fail_if_no_peer_cert,
-     depth, cert, certfile, key, keyfile, 
+     depth, cert, certfile, key, keyfile,
      password, cacerts, cacertfile, dh, dhfile, cihpers,
      debug].
 

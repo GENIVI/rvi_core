@@ -14,7 +14,11 @@
   {applications, [
 		  kernel,
 		  stdlib,
-		  rvi_common
+		  rvi_common,
+                  authorize,
+                  service_edge,
+                  service_discovery,
+                  schedule
 		 ]},
   {mod, {dlink_app, []}},
   {start_phases, [{announce, []}]},

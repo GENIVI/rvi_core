@@ -20,7 +20,7 @@
 
 %%
 %% methods
-%%   init(Socket, Args) ->  
+%%   init(Socket, Args) ->
 %%      {ok, State'}
 %%      {stop, Reason, State'}
 %%
@@ -30,7 +30,7 @@
 %%
 %%   close(Socket, State) ->
 %%      {ok, State'}
-%%      
+%%
 %%   error(Socket, Error, State) ->
 %%      {ok, State'}
 %%      {stop, Reason, State'}
@@ -53,7 +53,7 @@
 %% -define(debug(Fmt,Args), ok).
 %% -define(error(Fmt,Args), error_logger:format(Fmt, Args)).
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 
 -record(state, {
 	  listen,    %% #exo_socket{}
@@ -102,15 +102,15 @@
 -spec behaviour_info(callbacks) -> list().
 behaviour_info(callbacks) ->
     [
-     {init,  2},  %% init(Socket::socket(), Args::[term()] 
+     {init,  2},  %% init(Socket::socket(), Args::[term()]
                   %%   -> {ok,state()} | {stop,reason(),state()}
-     {data,  3},  %% data(Socket::socket(), Data::io_list(), State::state()) 
+     {data,  3},  %% data(Socket::socket(), Data::io_list(), State::state())
                   %%   -> {ok,state()}|{close,state()}|{stop,reason(),state()}
      {close, 2},  %% close(Socket::socket(), State::state())
                   %%   -> {ok,state()}
      {error, 3},  %% error(Socket::socket(),Error::error(), State:state())
                   %%   -> {ok,state()} | {stop,reason(),state()}
-     {control, 4} %% control(Socket::socket(), Request::term(), 
+     {control, 4} %% control(Socket::socket(), Request::term(),
                   %%         From::term(), State:state())
                   %%   -> {reply, Reply::term(),state()} | {noreply, state()} |
                   %%      {ignore, state()} | {send, Bin::binary(), state()} |
@@ -175,15 +175,15 @@ init([Port,Protos,Options,Module,Args] = _X) ->
 	{ok,Listen} ->
 	    case exo_socket:async_accept(Listen) of
 		{ok, Ref} ->
-		    {ok, #state{ listen = Listen, 
-				 active = Active, 
+		    {ok, #state{ listen = Listen,
+				 active = Active,
 				 socket_reuse = Reuse,
 				 ref=Ref,
-				 module=Module, 
+				 module=Module,
 				 args=Args
 			       }};
 		{error, Reason} ->
-		    {stop,Reason}		    
+		    {stop,Reason}
 	    end;
 	{error,Reason} ->
 	    {stop,Reason}
@@ -196,8 +196,8 @@ init([Port,Protos,Options,Module,Args] = _X) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec handle_call(Request::term(), 
-		  From::{pid(), Tag::term()}, 
+-spec handle_call(Request::term(),
+		  From::{pid(), Tag::term()},
 		  State::#state{}) ->
 			 {reply, Reply::term(), State::#state{}} |
 			 {noreply, State::#state{}} |
@@ -271,28 +271,34 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({inet_async, LSocket, Ref, {ok,Socket}} = _Msg, State) when 
+handle_info({inet_async, LSocket, Ref, {ok,Socket}} = _Msg, State) when
       (State#state.listen)#exo_socket.socket =:= LSocket,
       Ref =:= State#state.ref ->
     ?debug("<-- ~p~n", [_Msg]),
     Listen = State#state.listen,
+    AcceptTimeout = proplists:get_value(accept_timeout, Listen#exo_socket.opts, infinity),
     NewAccept = exo_socket:async_accept(Listen),
-    case exo_socket:async_socket(Listen, Socket, [delay_auth]) of
+    case exo_socket:async_socket(Listen, Socket, [{delay_auth, true}]) of
 	{ok, XSocket} ->
-	    case exo_socket_session:start(XSocket,
+	    F = fun() ->
+			exo_socket:accept(
+			  XSocket, tl(XSocket#exo_socket.protocol), AcceptTimeout)
+		end,
+	    XSocketFun = {XSocket, F},
+	    case exo_socket_session:start(XSocketFun,
 					  State#state.module,
 					  State#state.args) of
-		{ok,Pid} ->
+		{ok, Pid} ->
 		    exo_socket:controlling_process(XSocket, Pid),
 		    gen_server:cast(Pid, {activate,State#state.active});
 		_Error ->
 		    exo_socket:close(XSocket)
 	    end;
-    	_Error ->
-    	    error
+	_Error ->
+	    error
     end,
     case NewAccept of
-	{ok,Ref1} ->
+	{ok, Ref1} ->
 	    {noreply, State#state { ref = Ref1 }};
 	{error, Reason} ->
 	    {stop, Reason, State}
@@ -436,4 +442,3 @@ send_reuse_message(Host, Port, Args, M, MyPort, XSocket, RUSt) ->
     ReuseMsg = exo_socket_session:encode_reuse(
 		 MyPort, ReuseOpts),
     exo_socket:send(XSocket, ReuseMsg).
-

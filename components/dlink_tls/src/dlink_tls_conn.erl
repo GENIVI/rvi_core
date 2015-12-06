@@ -19,7 +19,7 @@
 
 -behaviour(gen_server).
 -include_lib("lager/include/log.hrl").
-
+-include_lib("public_key/include/public_key.hrl").
 
 %% API
 
@@ -145,7 +145,6 @@ init({IP, Port, Sock, Mod, Fun, CompSpec}) ->
     ?debug("connection:init(): Sock:     ~p", [Sock]),
     ?debug("connection:init(): Module:   ~p", [Mod]),
     ?debug("connection:init(): Function: ~p", [Fun]),
-    %% Grab socket control
     {ok, PktMod} = get_module_config(packet_mod, ?PACKET_MOD, CompSpec),
     PktSt = PktMod:init(CompSpec),
     {ok, #st{
@@ -194,7 +193,11 @@ handle_call({upgrade, Role, CompSpec} = Req, _From, #st{sock = S} = St) ->
 	    ?debug("upgrade to TLS succcessful~n", []),
             ssl:setopts(NewS, [{active, Last}]),
             {ok, {IP, Port}} = ssl:peername(NewS),
-            NewCS = rvi_common:set_value(dlink_tls_role, client, CompSpec),
+            {ok, PeerCert} = ssl:peercert(NewS),
+            ?debug("SSL PeerCert=~w", [abbrev(PeerCert)]),
+            NewCS = rvi_common:set_value(
+                      dlink_tls_role, Role,
+                      rvi_common:set_value(dlink_tls_peer_cert, PeerCert, CompSpec)),
 	    {reply, ok, St#st{sock = NewS, mode = tls, role = Role,
                               ip = inet_parse:ntoa(IP), port = Port,
                               cs = NewCS}};
@@ -219,7 +222,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({send, Data},  #st{packet_mod = PMod, packet_st = PSt} = St) ->
     ?debug("~p:handle_call(send): Sending: ~p",
-	   [ ?MODULE, Data]),
+	   [ ?MODULE, abbrev(Data)]),
     {ok, Encoded, PSt1} = PMod:encode(Data, PSt),
     case St#st.mode of
 	tcp -> gen_tcp:send(St#st.sock, Encoded);
@@ -253,52 +256,38 @@ handle_info({tcp, Sock, Data},
 	    #st { ip = undefined } = St) ->
     {ok, {IP, Port}} = inet:peername(Sock),
     NSt = St#st { ip = inet_parse:ntoa(IP), port = Port },
-    ?warning("YESSSS"),
     handle_info({tcp, Sock, Data}, NSt);
 
-handle_info({ssl, Sock, Data},
-	    #st{ip = IP, port = Port,
-		mod = Mod, func = Fun, cs = CS,
-                packet_mod = PMod, packet_st = PSt} = State) ->
-    ?debug("handle_info(data): ~p", [Data]),
-    case PMod:decode(Data, PSt) of
-        {ok, Elements, PSt1} ->
-	    ?debug("~p:handle_info(data complete): Processed: ~p",
-                   [?MODULE, Elements]),
-            Mod:Fun(self(), IP, Port, data, Elements, CS),
+handle_info({ssl, Sock, Data}, #st{ip = IP, port = Port,
+                                   packet_mod = PMod, packet_st = PSt} = State) ->
+    ?debug("handle_info(data): Data: ~p", [abbrev(Data)]),
+    ?debug("handle_info(data): From: ~p:~p ", [ IP, Port]),
+    case PMod:decode(Data, fun(Elems) ->
+                                   handle_elems(Elems, State)
+                           end, PSt) of
+        {ok, PSt1} ->
             ssl:setopts(Sock, [{active, once}]),
             {noreply, State#st{packet_st = PSt1}};
         {error, Reason} ->
-            {stop, Reason, State};
-        {more, PSt1} ->
-	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
-            ssl:setopts(Sock, [{active, once}]),
-            {noreply, State#st{packet_st = PSt1}}
+            {stop, Reason, State}
     end;
 handle_info({tcp, Sock, Data},
 	    #st { ip = IP,
 		  port = Port,
-		  mod = Mod,
-		  func = Fun,
-                  cs = CS,
                   packet_mod = PMod,
                   packet_st = PSt} = State) ->
-    ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
-    ?debug("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, IP, Port]),
+    ?debug("handle_info(data): Data: ~p", [Data]),
+    ?debug("handle_info(data): From: ~p:~p ", [IP, Port]),
 
-    case PMod:decode(Data, PSt) of
-        {ok, Elements, PSt1} ->
-	    ?debug("~p:handle_info(data complete): Processed: ~p",
-                   [?MODULE, Elements]),
-            Mod:Fun(self(), IP, Port, data, Elements, CS),
+    case PMod:decode(Data, fun(Elems) ->
+                                   handle_elems(Elems, State)
+                           end, PSt) of
+        {ok, PSt1} ->
             inet:setopts(Sock, [{active, once}]),
             {noreply, State#st{packet_st = PSt1}};
         {error, Reason} ->
-            {stop, Reason, State};
-        {more, PSt1} ->
-	    ?debug("~p:handle_info(data incomplete)", [ ?MODULE]),
-            inet:setopts(Sock, [{active, once}]),
-            {noreply, State#st{packet_st = PSt1}}
+            ?debug("decode failed, Reason = ~p", [Reason]),
+            {stop, Reason, State}
     end;
 
 handle_info({tcp_closed, Sock},
@@ -361,23 +350,87 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 do_upgrade(Sock, client, CompSpec) ->
-    ssl:connect(Sock, tls_opts(client, CompSpec));
+    Opts = tls_opts(client, CompSpec),
+    ?debug("TLS Opts = ~p", [Opts]),
+    ssl:connect(Sock, Opts);
 do_upgrade(Sock, server, CompSpec) ->
-    ssl:ssl_accept(Sock, tls_opts(server, CompSpec)).
+    Opts = tls_opts(client, CompSpec),
+    ?debug("TLS Opts = ~p", [Opts]),
+    ssl:ssl_accept(Sock, Opts).
 
 %% FIXME: For now, use the example certs delivered with the OTP SSL appl.
-tls_opts(Role, CompSpec) ->
-    Dir = tls_dir(Role),
-    {ok, CertFile} = get_config(certfile, filename:join(Dir, "cert.pem"), CompSpec),
-    {ok, KeyFile}  = get_config(keyfile, filename:join(Dir, "key.pem"), CompSpec),
-    [{certfile, CertFile},
-     {keyfile, KeyFile}].
+tls_opts(Role, _CompSpec) ->
+    {ok, DevCert} = setup:get_env(rvi_core, device_cert),
+    {ok, DevKey} = setup:get_env(rvi_core, device_key),
+    {ok, CACert} = setup:get_env(rvi_core, root_cert),
+    [
+     {verify, verify_peer},
+     {certfile, DevCert},
+     {keyfile, DevKey},
+     {cacertfile, CACert},
+     {verify_fun, {fun verify_fun/3, public_root_key()}},
+     {partial_chain, fun(X) ->
+                             partial_chain(Role, X)
+                     end}
+    ].
 
-tls_dir(Role) when Role==client;
-                   Role==server ->
-    filename:join([code:lib_dir(ssl), "examples", "certs", "etc",
-                   atom_to_list(Role)]).
+public_root_key() ->
+    authorize_keys:provisioning_key().
 
-get_config(Key, Default, CompSpec) ->
-    rvi_common:get_module_config(
-      dlink_tls, dlink_tls_rpc, Key, Default, CompSpec).
+verify_fun(Cert, What, St) ->
+    ?debug("verify_fun(~p, ~p, ~p)", [abbrev(Cert), What, abbrev(St)]),
+    verify_fun_(Cert, What, St).
+
+verify_fun_(Cert, {bad_cert, selfsigned_peer}, PubKey) ->
+    ?debug("Verify self-signed cert: ~p", [abbrev(Cert)]),
+    try verify_cert_sig(Cert, PubKey) of
+        true ->
+            ?debug("verified!", []),
+            {valid, PubKey};
+        false ->
+            ?debug("verification FAILED", []),
+            {bad_cert, invalid_signature}
+    catch
+        error:Error ->
+            ?debug("Caught error:~p~n~p", [Error, erlang:get_stacktrace()]),
+            {fail, PubKey}
+    end;
+verify_fun_(_, {bad_cert, Reason}, St) ->
+    ?debug("Bad cert: ~p", [Reason]),
+    {fail, St};
+verify_fun_(_, {extension, _}, St) ->
+    {unknown, St};
+verify_fun_(_, valid, St) ->
+    {valid, St};
+verify_fun_(_, valid_peer, St) ->
+    {valid_peer, St}.
+
+partial_chain(_, Certs) ->
+    ?debug("partial_chain() invoked, length(Certs) = ~w", [length(Certs)]),
+    Decoded = (catch [public_key:der_decode('Certificate', C)
+                      || C <- Certs]),
+    ?debug("partial_chain: ~p", [[lager:pr(Dec) || Dec <- Decoded]]),
+    {trusted_ca, hd(Certs)}.
+
+handle_elems(Elements, #st{mod = Mod, func = Fun, cs = CS,
+                           ip = IP, port = Port}) ->
+    ?debug("handle_info(data complete): Processed: ~p", [abbrev(Elements)]),
+    Mod:Fun(self(), IP, Port, data, Elements, CS),
+    ok.
+
+verify_cert_sig(#'OTPCertificate'{tbsCertificate = TBS,
+				  signature = Sig}, PubKey) ->
+    DER = public_key:pkix_encode('OTPTBSCertificate', TBS, otp),
+    {SignType, _} = signature_algorithm(TBS),
+    public_key:verify(DER, SignType, Sig, PubKey).
+
+signature_algorithm(#'OTPCertificate'{tbsCertificate = TBS}) ->
+    signature_algorithm(TBS);
+signature_algorithm(#'OTPTBSCertificate'{
+		       signature = #'SignatureAlgorithm'{
+				      algorithm = Algo}}) ->
+    public_key:pkix_sign_types(Algo).
+
+
+abbrev(T) ->
+    authorize_keys:abbrev(T).

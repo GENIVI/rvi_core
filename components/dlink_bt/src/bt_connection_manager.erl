@@ -67,6 +67,7 @@ find_connection_by_address(BTAddr, Channel) ->
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
+    ?debug("start_link()", []),
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================

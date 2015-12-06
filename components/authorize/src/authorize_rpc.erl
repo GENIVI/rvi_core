@@ -18,19 +18,18 @@
 	 terminate/2, code_change/3]).
 
 -export([start_json_server/0]).
--export([get_authorize_jwt/1,
-	 get_certificates/1,
+-export([get_credentials/1,
 	 sign_message/2,
 	 validate_message/3,
 	 validate_authorization/3,
 	 validate_authorization/4,
-	 store_certs/3,
+	 store_creds/3,
+	 store_creds/4,
 	 authorize_local_message/3,
 	 authorize_remote_message/3]).
 -export([filter_by_service/3]).
 
 %% for testing & development
--export([sign/1]).
 -export([public_key/0, public_key_json/0,
 	 private_key/0]).
 
@@ -51,7 +50,7 @@ start_link() ->
 
 init([]) ->
     ?debug("authorize_rpc:init(): called."),
-    {Priv, Pub} =  authorize_keys:get_key_pair(),
+    {Priv, Pub} =  authorize_keys:get_device_key(),
     ?debug("KeyPair = {~s, ~s}~n", [authorize_keys:pp_key(Priv),
 				    authorize_keys:pp_key(Pub)]),
     {ok, #st { cs = rvi_common:get_component_specification(),
@@ -74,15 +73,10 @@ validate_message(CompSpec, JWT, Conn) ->
 		       [{jwt, JWT},
 			{conn, Conn}], [status, message], CompSpec).
 
-get_authorize_jwt(CompSpec) ->
-    ?debug("authorize_rpc:get_authorize_jwt()~n", []),
-    rvi_common:request(authorize, ?MODULE, get_authorize_jwt,
-		       [], [status, jwt], CompSpec).
-
-get_certificates(CompSpec) ->
-    ?debug("authorize_rpc:get_certificates()~n", []),
-    rvi_common:request(authorize, ?MODULE, get_certificates,
-		       [], [status, certs], CompSpec).
+get_credentials(CompSpec) ->
+    ?debug("authorize_rpc:get_credentials()~n", []),
+    rvi_common:request(authorize, ?MODULE, get_credentials,
+		       [], [status, creds], CompSpec).
 
 validate_authorization(CompSpec, JWT, Conn) ->
     ?debug("authorize_rpc:validate_authorization():"
@@ -92,19 +86,24 @@ validate_authorization(CompSpec, JWT, Conn) ->
 			{conn, Conn}],
 		       [status], CompSpec).
 
-validate_authorization(CompSpec, JWT, Certs, Conn) ->
+validate_authorization(CompSpec, JWT, Creds, Conn) ->
     ?debug("authorize_rpc:validate_authorization():"
 	   " Conn = ~p~n", [Conn]),
     rvi_common:request(authorize, ?MODULE, validate_authorization,
 		       [{jwt, JWT},
-			{certs, Certs},
+			{creds, Creds},
 			{conn, Conn}],
 		       [status], CompSpec).
 
-store_certs(CompSpec, Certs, Conn) ->
-    rvi_common:request(authorize, ?MODULE, store_certs,
-		       [{certs, Certs},
-			{conn, Conn}],
+store_creds(CompSpec, Creds, Conn) ->
+    store_creds(CompSpec, Creds, Conn, undefined).
+
+store_creds(CompSpec, Creds, Conn, PeerCert) ->
+    ?debug("API: store_creds(), PeerCert = ~p", [authorize_keys:abbrev(PeerCert)]),
+    rvi_common:request(authorize, ?MODULE, store_creds,
+		       [{creds, Creds},
+			{conn, Conn},
+			{peer_cert, PeerCert}],
 		       [status], CompSpec).
 
 authorize_local_message(CompSpec, Service, Params) ->
@@ -129,11 +128,6 @@ filter_by_service(CompSpec, Services, Conn) ->
 		       [{ services, Services },
 			{ conn, Conn }],
 		       [status, services], CompSpec).
-
-%% For testing while developing cert functionality
-sign(Term) ->
-    %% Use private key of authorize_rpc to make a JWT token
-    gen_server:call(?SERVER, {sign, Term}).
 
 public_key() ->
     gen_server:call(?SERVER, public_key).
@@ -163,34 +157,30 @@ handle_rpc("validate_message", Args) ->
 	gen_server:call(?SERVER, { rvi, validate_message, [JWT, Conn, LogId] }),
     {ok, [ {status, rvi_common:json_rpc_status(Status)},
 	   {message, Msg} ]};
-handle_rpc("get_authorize_jwt", Args) ->
+handle_rpc("get_credentials", Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     [ Status | Rem ] =
-	gen_server:call(?SERVER, { rvi, get_authorize_jwt, [LogId] }),
-    {ok, [ rvi_common:json_rpc_status(Status) | Rem ] };
-handle_rpc("get_certificates", Args) ->
-    LogId = rvi_common:get_json_log_id(Args),
-    [ Status | Rem ] =
-	gen_server:call(?SERVER, { rvi, get_certificates, [LogId] }),
+	gen_server:call(?SERVER, { rvi, get_credentials, [LogId] }),
     {ok, [ rvi_common:json_rpc_status(Status) | Rem ] };
 handle_rpc("validate_authorization", Args) ->
     {ok, JWT} = rvi_common:get_json_element(["jwt"], Args),
     {ok, Conn} = rvi_common:get_json_element(["connection"], Args),
     LogId = rvi_common:get_json_log_id(Args),
     CmdArgs =
-	case rvi_common:get_json_element(["certs"], Args) of
-	    {ok, Certs} -> [JWT, Certs, Conn, LogId];
+	case rvi_common:get_json_element(["creds"], Args) of
+	    {ok, Creds} -> [JWT, Creds, Conn, LogId];
 	    {error, _}  -> [JWT, Conn, LogId]
 	end,
     [ Status | Rem ] =
 	gen_server:call(?SERVER, {rvi, validate_authorization, CmdArgs}),
     {ok, [ rvi_common:json_rpc_status(Status) | Rem] };
-handle_rpc("store_certs", Args) ->
-    {ok, Certs} = rvi_common:get_json_element(["certs"], Args),
+handle_rpc("store_creds", Args) ->
+    {ok, Creds} = rvi_common:get_json_element(["creds"], Args),
     {ok, Conn} = rvi_common:get_json_element(["conn"], Args),
+    {ok, PeerCert} = rvi_common:get_json_element(["peer_cert"], Args),
     LogId = rvi_common:get_json_log_id(Args),
     [ Status | Rem ] =
-	gen_server:call(?SERVER, {rvi, store_certs, [Certs, Conn, LogId]}),
+	gen_server:call(?SERVER, {rvi, store_creds, [Creds, Conn, PeerCert, LogId]}),
     {ok, [ rvi_common:json_rpc_status(Status) | Rem]};
 handle_rpc("authorize_local_message", Args) ->
     {ok, Service} = rvi_common:get_json_element(["service"], Args),
@@ -236,38 +226,35 @@ handle_notification(Other, _Args) ->
 %%
 handle_call({rvi, sign_message, [Msg | LogId]}, _, #st{private_key = Key} = State) ->
     Sign = authorize_sig:encode_jwt(Msg, Key),
-    log(LogId, "signed", []),
+    log(LogId, result, "signed", []),
     {reply, [ ok, Sign ], State};
 handle_call({rvi, validate_message, [JWT, Conn | LogId]}, _, State) ->
     try  begin Res = authorize_keys:validate_message(JWT, Conn),
-	       log(LogId, "validated", []),
+	       log(LogId, result, "validated", []),
 	       {reply, [ok, Res], State}
 	 end
     catch
 	error:_Err ->
-	    log(LogId, "validation FAILED", []),
+	    log(LogId, error, "validation FAILED", []),
 	    {reply, [not_found], State}
     end;
-handle_call({rvi, get_authorize_jwt, [_LogId]}, _From, State) ->
-    {reply, [ ok, authorize_keys:authorize_jwt() ], State};
-
-handle_call({rvi, get_certificates, [_LogId]}, _From, State) ->
-    {reply, [ ok, authorize_keys:get_certificates() ], State};
+handle_call({rvi, get_credentials, [_LogId]}, _From, State) ->
+    {reply, [ ok, authorize_keys:get_credentials() ], State};
 
 handle_call({rvi, validate_authorization, [JWT, Conn | [_] = LogId]}, _From, State) ->
-    %% The authorize JWT contains the public key used to sign the cert
+    %% The authorize JWT contains the public key used to sign the cred
     ?debug(
        "authorize_rpc:handle_call({rvi, validate_authorization, [_,_,_]})~n",
        []),
     try authorize_sig:decode_jwt(JWT, authorize_keys:provisioning_key()) of
 	{_Header, Keys} ->
-	    log(LogId, "auth jwt validated", []),
+	    log(LogId, result, "auth jwt validated", []),
 	    KeyStructs = get_json_element(["keys"], Keys, []),
 	    authorize_keys:save_keys(KeyStructs, Conn),
 	    {reply, [ok], State};
 	invalid ->
 	    ?warning("Invalid auth JWT from ~p~n", [Conn]),
-	    log(LogId, "auth jwt INVALID", []),
+	    log(LogId, error, "auth jwt INVALID", []),
 	    {reply, [not_found], State}
     catch
 	error:_Err ->
@@ -275,22 +262,22 @@ handle_call({rvi, validate_authorization, [JWT, Conn | [_] = LogId]}, _From, Sta
 	    {reply, [not_found], State}
     end;
 
-handle_call({rvi, validate_authorization, [JWT, Certs, Conn | [_] = LogId] }, _From, State) ->
-    %% The authorize JWT contains the public key used to sign the cert
+handle_call({rvi, validate_authorization, [JWT, Creds, Conn | [_] = LogId] }, _From, State) ->
+    %% The authorize JWT contains the public key used to sign the cred
     ?debug(
        "authorize_rpc:handle_call({rvi, validate_authorization, [_,_,_]})~n",
        []),
     try authorize_sig:decode_jwt(JWT, authorize_keys:provisioning_key()) of
 	{_Header, Keys} ->
-	    log(LogId, "auth jwt validated", []),
+	    log(LogId, result, "auth jwt validated", []),
 	    KeyStructs = get_json_element(["keys"], Keys, []),
 	    ?debug("KeyStructs = ~p~n", [KeyStructs]),
 	    authorize_keys:save_keys(KeyStructs, Conn),
-	    do_store_certs(Certs, Conn, LogId),
+	    do_store_creds(Creds, Conn, undefined, LogId),
 	    {reply, [ok], State};
 	invalid ->
 	    ?warning("Invalid auth JWT from ~p~n", [Conn]),
-	    log(LogId, "auth jwt INVALID", []),
+	    log(LogId, error, "auth jwt INVALID", []),
 	    {reply, [not_found], State}
     catch
 	error:_Err ->
@@ -298,21 +285,17 @@ handle_call({rvi, validate_authorization, [JWT, Certs, Conn | [_] = LogId] }, _F
 	    {reply, [not_found], State}
     end;
 
-handle_call({store_certs, [Certs, Conn | LogId]}, _From, State) ->
-    do_store_certs(Certs, Conn, LogId),
+handle_call({rvi, store_creds, [Creds, Conn, PeerCert | LogId]}, _From, State) ->
+    do_store_creds(Creds, Conn, PeerCert, LogId),
     {reply, [ok], State};
 handle_call({rvi, authorize_local_message, [Service, _Params | LogId] } = R, _From, State) ->
     ?debug("authorize_rpc:handle_call(~p)~n", [R]),
-    case authorize_keys:find_cert_by_service(Service) of
-	{ok, {ID, _Cert}} ->
-	    %% Msg = Params ++ [{<<"certificate">>, Cert}],
-	    %% ?debug("authorize_rpc:authorize_local_message~nMsg = ~p~n",
-	    %% 	   [authorize_keys:abbrev_payload(Msg)]),
-	    %% Sig = authorize_sig:encode_jwt(Msg, Key),
-	    log(LogId, "auth msg: Cert=~s", [authorize_keys:abbrev_bin(ID)]),
+    case authorize_keys:find_cred_by_service(Service) of
+	{ok, {ID, _Cred}} ->
+	    log(LogId, result, "auth msg: Cred=~s", [authorize_keys:abbrev_bin(ID)]),
 	    {reply, [ok], State};
 	_ ->
-	    log(LogId, "NO CERTS for ~s", [Service]),
+	    log(LogId, error, "NO CREDS for ~s", [Service]),
 	    {reply, [ not_found ], State}
     end;
 
@@ -330,11 +313,11 @@ handle_call({rvi, authorize_remote_message, [_Service, Params | LogId]},
     ?debug("authorize_rpc:authorize_remote_message(): parameters:    ~p~n", [Parameters]),
     case authorize_keys:validate_service_call(SvcName, {IP, Port}) of
 	invalid ->
-	    log(LogId, "remote msg REJECTED", []),
+	    log(LogId, error, "remote msg REJECTED", []),
 	    {reply, [ not_found ], State};
-	{ok, CertID} ->
-	    ?debug("validated Cert ID=~p", [CertID]),
-	    log(LogId, "remote msg allowed: Cert=~s", [CertID]),
+	{ok, CredID} ->
+	    ?debug("validated Cred ID=~p", [CredID]),
+	    log(LogId, result, "remote msg allowed: Cred=~s", [CredID]),
 	    {reply, [ok], State}
     end;
 
@@ -370,11 +353,12 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-do_store_certs(Certs, Conn, LogId) ->
-    ?debug("Storing ~p certs for conn ~p~n", [length(Certs), Conn]),
-    lists:foreach(fun(Cert) ->
-			  store_cert(Cert, Conn, LogId)
-		  end, Certs).
+do_store_creds(Creds, Conn, PeerCert, LogId) ->
+    ?debug("Storing ~p creds for conn ~p~nPeerCert = ~w",
+	   [length(Creds), Conn, authorize_keys:abbrev(PeerCert)]),
+    lists:foreach(fun(Cred) ->
+			  store_cred(Cred, Conn, PeerCert, LogId)
+		  end, Creds).
 
 get_json_element(Path, JSON, Default) ->
     case rvi_common:get_json_element(Path, JSON) of
@@ -384,26 +368,26 @@ get_json_element(Path, JSON, Default) ->
 	    Default
     end.
 
-store_cert(Cert, Conn, LogId) ->
-    case authorize_sig:decode_jwt(Cert, authorize_keys:provisioning_key()) of
-	{_CHeader, CertStruct} ->
-	    case authorize_keys:save_cert(CertStruct, Cert, Conn, LogId) of
+store_cred(CredJWT, Conn, PeerCert, LogId) ->
+    case authorize_sig:decode_jwt(CredJWT, authorize_keys:provisioning_key()) of
+	{_CHeader, CredStruct} ->
+	    case authorize_keys:save_cred(CredStruct, CredJWT, Conn, PeerCert, LogId) of
 		ok ->
 		    ok;
 		{error, Reason} ->
 		    ?warning(
-		       "Couldn't store certificate from ~p: ~p~n",
+		       "Couldn't store credential from ~p: ~p~n",
 		       [Conn, Reason]),
 		    ok
 	    end;
 	invalid ->
-	    ?warning("Invalid certificate from ~p~n", [Conn]),
+	    log(LogId, warning, "credential INVALID (~p)", [Conn]),
 	    ok
     end.
 
-log([ID], Fmt, Args) ->
-    rvi_log:log(ID, <<"authorize">>, rvi_log:format(Fmt, Args));
-log(_, _, _) ->
+log([ID], Lvl, Fmt, Args) ->
+    rvi_log:log(ID, Lvl, <<"authorize">>, rvi_log:format(Fmt, Args));
+log(_, _, _, _) ->
     ok.
 
 %% check_msg(Checks, Params) ->

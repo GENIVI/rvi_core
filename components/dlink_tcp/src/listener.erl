@@ -63,7 +63,7 @@ terminate(_Reason, _State) ->
     ok.
 
 sock_opts() ->
-    [binary, {active, once}, {packet, 4}].
+    [binary, {active, once}, {packet, 0}].
 
 new_connection(IP, Port, Sock, State) ->
     ?debug("listener:new_connection(): Peer IP:    ~p (ignored)", [IP]),
@@ -75,5 +75,5 @@ new_connection(IP, Port, Sock, State) ->
     %% Provide component spec as extra arg.
     {ok, _P} = connection:setup(undefined, 0, Sock,
 				dlink_tcp_rpc,
-				handle_socket, [gen_nb_server:get_cb_state(State)]),
+				handle_socket, gen_nb_server:get_cb_state(State)),
     {ok, State}.
