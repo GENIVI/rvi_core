@@ -122,21 +122,19 @@ start_connection_manager(ServerOpts, CompSpec) ->
     Mode = get_mode(ServerOpts),
     Channel = get_channel(Mode, ServerOpts),
 
-    ?info("dlink_bt:init_rvi_component(~p): Starting listener.", [self()]),
-
-    %% Fire up listener
-
     case Mode of
 	bt ->
 	    bt:start(),
-	    bt:debug(debug);
+	    ?debug("starting bt:debug() if lager debug: ~p", [bt:debug(debug)]);
 	tcp ->
 	    ?debug("Mode == tcp; not starting bt driver", []),
 	    ok
     end,
+
+    ?debug("Starting listener.", []),
     bt_listener:start_link(Mode),
     bt_connection_manager:start_link(),
-    ?info("dlink_bt:start_connection_manager(): Adding listener on bluetooth channel ~p", [Channel ]),
+    ?debug("dlink_bt:start_connection_manager(): Adding listener on bluetooth channel ~p", [Channel ]),
 
     %% Add listener channel.
     case bt_listener:add_listener(Channel) of
@@ -144,7 +142,7 @@ start_connection_manager(ServerOpts, CompSpec) ->
 	    ok;
 
 	Err ->
-	    ?error("dlink_bt:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
+	    ?error("~p: Failed to launch listener: ~p", [?MODULE, Err]),
 	    ok
     end,
 
