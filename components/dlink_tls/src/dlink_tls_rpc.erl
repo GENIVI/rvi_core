@@ -833,11 +833,11 @@ log_orphan(Pfx, Fmt, Args) ->
 
 start_log(Pfx, Fmt, Args, CS) ->
     LogId = rvi_log:new_id(Pfx),
-    rvi_log:log(LogId, <<"dlink_tcp">>, rvi_log:format(Fmt, Args)),
+    rvi_log:log(LogId, <<"dlink_tls">>, rvi_log:format(Fmt, Args)),
     rvi_common:set_value(rvi_log_id, LogId, CS).
 
 log(Fmt, Args, CS) ->
-    rvi_log:flog(Fmt, Args, <<"dlink_tcp">>, CS).
+    rvi_log:flog(Fmt, Args, <<"dlink_tls">>, CS).
 
 abbrev(Data) ->
     authorize_keys:abbrev(Data).

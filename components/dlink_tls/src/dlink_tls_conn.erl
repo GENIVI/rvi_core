@@ -146,6 +146,7 @@ init({IP, Port, Sock, Mod, Fun, CompSpec}) ->
     ?debug("connection:init(): Module:   ~p", [Mod]),
     ?debug("connection:init(): Function: ~p", [Fun]),
     {ok, PktMod} = get_module_config(packet_mod, ?PACKET_MOD, CompSpec),
+    ?debug("packet_mod = ~p", [PktMod]),
     PktSt = PktMod:init(CompSpec),
     {ok, #st{
 	    ip = IP,
@@ -159,7 +160,7 @@ init({IP, Port, Sock, Mod, Fun, CompSpec}) ->
 	   }}.
 
 get_module_config(Key, Default, CS) ->
-    rvi_common:get_module_config(dlink_tls, dlink_tls_rpc, Key, Default, CS).
+    rvi_common:get_module_config(data_link, dlink_tls_rpc, Key, Default, CS).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -224,6 +225,7 @@ handle_cast({send, Data},  #st{packet_mod = PMod, packet_st = PSt} = St) ->
     ?debug("~p:handle_call(send): Sending: ~p",
 	   [ ?MODULE, abbrev(Data)]),
     {ok, Encoded, PSt1} = PMod:encode(Data, PSt),
+    ?debug("Encoded~n~s", [Encoded]),
     case St#st.mode of
 	tcp -> gen_tcp:send(St#st.sock, Encoded);
 	tls -> ssl:send(St#st.sock, Encoded)

@@ -20,6 +20,8 @@
     t_install_sms_sample_node/1,
     t_install_tls_backend_node/1,
     t_install_tls_sample_node/1,
+    t_install_tlsj_backend_node/1,
+    t_install_tlsj_sample_node/1,
     t_install_bt_backend_node/1,
     t_install_bt_sample_node/1,
     t_start_basic_backend/1,
@@ -28,6 +30,8 @@
     t_start_bt_sample/1,
     t_start_tls_backend/1,
     t_start_tls_sample/1,
+    t_start_tlsj_backend/1,
+    t_start_tlsj_sample/1,
     t_register_lock_service/1,
     t_call_lock_service/1,
     t_remote_call_lock_service/1,
@@ -43,7 +47,8 @@ all() ->
      {group, test_install},
      {group, test_run},
      {group, test_run_bt},
-     {group, test_run_tls}
+     {group, test_run_tls},
+     {group, test_run_tlsj}
     ].
 
 groups() ->
@@ -60,6 +65,8 @@ groups() ->
        t_install_sms_sample_node,
        t_install_tls_backend_node,
        t_install_tls_sample_node,
+       t_install_tlsj_backend_node,
+       t_install_tlsj_sample_node,
        t_install_bt_backend_node,
        t_install_bt_sample_node
       ]},
@@ -85,6 +92,15 @@ groups() ->
       [
        t_start_tls_backend,
        t_start_tls_sample,
+       t_register_lock_service,
+       t_call_lock_service,
+       t_remote_call_lock_service,
+       t_no_errors
+      ]},
+     {test_run_tlsj, [],
+      [
+       t_start_tlsj_backend,
+       t_start_tlsj_sample,
        t_register_lock_service,
        t_call_lock_service,
        t_remote_call_lock_service,
@@ -178,6 +194,13 @@ t_install_tls_backend_node(_Config) ->
 t_install_tls_sample_node(_Config) ->
     install_sample_node("tls_sample", "tls_sample.config").
 
+t_install_tlsj_backend_node(_Config) ->
+    install_rvi_node("tlsj_backend", env(),
+		     [root(), "/priv/test_config/tlsj_backend.config"]).
+
+t_install_tlsj_sample_node(_Config) ->
+    install_sample_node("tlsj_sample", "tlsj_sample.config").
+
 t_install_bt_backend_node(_Config) ->
     install_rvi_node("bt_backend", env(),
 		     [root(), "/priv/test_config/bt_backend.config"]).
@@ -248,6 +271,28 @@ t_start_tls_sample(_Config) ->
 	 " -c ./tls_sample/priv/test_config/tls_sample.config"
 	 " start"]),
     await_started("tls_sample"),
+    ok.
+
+t_start_tlsj_backend(_Config) ->
+    cmd([env(),
+	 " ./tlsj_backend/rvi.sh"
+	 " -s tlsj_backend"
+	 " -l ./tlsj_backend/rvi/log"
+	 " -d ./tlsj_backend"
+	 " -c ./tlsj_backend/priv/test_config/tlsj_backend.config"
+	 " start"]),
+    await_started("tlsj_backend"),
+    ok.
+
+t_start_tlsj_sample(_Config) ->
+    cmd([env(),
+	 " ./tlsj_sample/rvi.sh"
+	 " -s tlsj_sample"
+	 " -l ./tlsj_sample/rvi/log"
+	 " -d ./tlsj_sample"
+	 " -c ./tlsj_sample/priv/test_config/tlsj_sample.config"
+	 " start"]),
+    await_started("tlsj_sample"),
     ok.
 
 t_register_lock_service(_Config) ->

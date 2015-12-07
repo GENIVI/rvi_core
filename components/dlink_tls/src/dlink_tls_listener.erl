@@ -78,6 +78,6 @@ new_connection(IP, Port, Sock, State) ->
     {ok, P} = dlink_tls_conn:setup(
                 undefined, 0, Sock,
                 dlink_tls_rpc,
-                handle_socket, [CompSpec]),
+                handle_socket, CompSpec),
     dlink_tls_conn:upgrade(P, server, CompSpec),
     {ok, State}.
