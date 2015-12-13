@@ -197,14 +197,16 @@ handle_call_({validate_message, JWT, Conn}, _, S) ->
     {reply, validate_message_(JWT, Conn), S};
 handle_call_({validate_service_call, Svc, Conn}, _, S) ->
     {reply, validate_service_call_(Svc, Conn), S};
-handle_call_({save_cred, Cred, JWT, {IP, Port} = Conn, PeerCert, LogId}, _, S) ->
+handle_call_({save_cred, Cred, JWT, {IP, Port} = Conn0, PeerCert, LogId}, _, S) ->
+    Conn = normalize_conn(Conn0),
+    ?debug("save_cred: ~p (Conn=~p, PeerCert=~p)", [Cred, Conn, abbrev(PeerCert)]),
     case process_cred_struct(Cred, JWT, PeerCert) of
 	invalid ->
 	    log(LogId, warning, "cred INVALID Conn=~s:~w", [IP, Port]),
 	    {reply, {error, invalid}, S};
 	#cred{} = C ->
 	    ets:insert(?CREDS, {{Conn, C#cred.id}, C}),
-	    log(LogId, result, "cred stored ~s Conn=~s:~w", [abbrev_bin(C#cred.id), IP, Port]),
+	    log(LogId, result, "cred stored ~s Conn=~p", [abbrev_bin(C#cred.id), Conn]),
 	    {reply, ok, S}
     end;
 handle_call_({filter_by_service, Services, Conn} =R, _From, State) ->
@@ -244,13 +246,25 @@ creds_by_conn(Conn) ->
     ?debug("rough selection: ~p~n", [[{abbrev_bin(C),I} || {C,I} <- Creds]]),
     [C || {C,V} <- Creds, check_validity(V, UTC)].
 
-cred_recs_by_conn(Conn) ->
-    ?debug("cred_recs_by_conn(~p)~n", [Conn]),
+cred_recs_by_conn(Conn0) ->
+    Conn = normalize_conn(Conn0),
+    ?debug("cred_recs_by_conn(~p)~nAll = ~p", [Conn, abbrev(ets:tab2list(?CREDS))]),
     UTC = rvi_common:utc_timestamp(),
     Creds = ets:select(?CREDS, [{ {{Conn,'_'}, '$1'},
 				  [], ['$1'] }]),
     ?debug("rough selection: ~p~n", [[abbrev_bin(C#cred.id) || C <- Creds]]),
     [C || C <- Creds, check_validity(C#cred.validity, UTC)].
+
+normalize_conn(local) ->
+    local;
+normalize_conn({IP, Port} = Conn) when is_binary(IP), is_binary(Port) ->
+    Conn;
+normalize_conn({IP, Port}) ->
+    {to_bin(IP), to_bin(Port)}.
+
+to_bin(B) when is_binary(B) -> B;
+to_bin(L) when is_list(L) -> iolist_to_binary(L);
+to_bin(I) when is_integer(I) -> integer_to_binary(I).
 
 filter_by_service_(Services, Conn) ->
     ?debug("Filter: creds = ~p", [[{K,abbrev_payload(V)} || {K,V} <- ets:tab2list(?CREDS)]]),

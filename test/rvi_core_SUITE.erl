@@ -39,6 +39,7 @@
    ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("kernel/include/file.hrl").
 
 -define(DATA, rvi_core_data).
 
@@ -46,9 +47,9 @@ all() ->
     [
      {group, test_install},
      {group, test_run},
-     {group, test_run_bt},
      {group, test_run_tls},
-     {group, test_run_tlsj}
+     {group, test_run_tlsj},
+     {group, test_run_bt}
     ].
 
 groups() ->
@@ -79,15 +80,6 @@ groups() ->
        t_remote_call_lock_service,
        t_no_errors
       ]},
-     {test_run_bt, [],
-      [
-       t_start_bt_backend,
-       t_start_bt_sample,
-       t_register_lock_service,
-       t_call_lock_service,
-       t_remote_call_lock_service,
-       t_no_errors
-      ]},
      {test_run_tls, [],
       [
        t_start_tls_backend,
@@ -101,6 +93,15 @@ groups() ->
       [
        t_start_tlsj_backend,
        t_start_tlsj_sample,
+       t_register_lock_service,
+       t_call_lock_service,
+       t_remote_call_lock_service,
+       t_no_errors
+      ]},
+     {test_run_bt, [],
+      [
+       t_start_bt_backend,
+       t_start_bt_sample,
        t_register_lock_service,
        t_call_lock_service,
        t_remote_call_lock_service,
@@ -133,6 +134,7 @@ init_per_group(Grp, Config) ->
 		    test_run -> ["basic_backend", "basic_sample"];
 		    test_run_bt -> ["bt_backend", "bt_sample"];
 		    test_run_tls -> ["tls_backend", "tls_sample"];
+		    test_run_tlsj -> ["tlsj_backend", "tlsj_sample"];
 		    _ -> []
 		end,
     [{test_dir, CWD}, {test_nodes, TestNodes} | Config].
@@ -208,92 +210,42 @@ t_install_bt_backend_node(_Config) ->
 t_install_bt_sample_node(_Config) ->
     install_sample_node("bt_sample", "bt_sample.config").
 
+generic_start(Name) ->
+    F = filename:join([".", Name, "start_me.sh"]),
+    Cmd = [env(),
+	   " ./", Name, "/rvi.sh",
+	   " -s ", Name,
+	   " -l ./", Name, "/rvi/log",
+	   " -d ./", Name,
+	   " -c ./", Name, "/priv/test_config/", Name, ".config",
+	   " $1"],
+    ok = save_cmd(F, Cmd),
+    cmd([F, " start"]),
+    await_started(Name).
+
 t_start_basic_backend(_Config) ->
-    cmd([env(),
-	 " ./basic_backend/rvi.sh"
-	 " -s basic_backend"
-	 " -l ./basic_backend/rvi/log"
-	 " -d ./basic_backend"
-	 " -c ./basic_backend/priv/test_config/basic_backend.config"
-	 " start"]),
-    await_started("basic_backend"),
-    ok.
+    generic_start("basic_backend").
 
 t_start_basic_sample(_Config) ->
-    cmd([env(),
-	 " ./basic_sample/rvi.sh"
-	 " -s basic_sample"
-	 " -l ./basic_sample/rvi/log"
-	 " -d ./basic_sample"
-	 " -c ./basic_sample/priv/test_config/basic_sample.config"
-	 " start"]),
-    await_started("basic_sample"),
-    ok.
+    generic_start("basic_sample").
 
 t_start_bt_backend(_Config) ->
-    cmd([env(),
-	 " ./bt_backend/rvi.sh -s bt_backend"
-	 " -l ./bt_backend/rvi/log"
-	 " -d ./bt_backend"
-	 " -c ./bt_backend/priv/test_config/bt_backend.config"
-	 " start"]),
-    await_started("bt_backend"),
-    ok.
+    generic_start("bt_backend").
 
 t_start_bt_sample(_Config) ->
-    cmd([env(),
-	 " ./bt_sample/rvi.sh"
-	 " -s bt_sample"
-	 " -l ./bt_sample/rvi/log"
-	 " -d ./bt_sample"
-	 " -c ./bt_sample/priv/test_config/bt_sample.config"
-	 " start"]),
-    await_started("bt_sample"),
-    ok.
+    generic_start("bt_sample").
 
 t_start_tls_backend(_Config) ->
-    cmd([env(),
-	 " ./tls_backend/rvi.sh"
-	 " -s tls_backend"
-	 " -l ./tls_backend/rvi/log"
-	 " -d ./tls_backend"
-	 " -c ./tls_backend/priv/test_config/tls_backend.config"
-	 " start"]),
-    await_started("tls_backend"),
-    ok.
+    generic_start("tls_backend").
 
 t_start_tls_sample(_Config) ->
-    cmd([env(),
-	 " ./tls_sample/rvi.sh"
-	 " -s tls_sample"
-	 " -l ./tls_sample/rvi/log"
-	 " -d ./tls_sample"
-	 " -c ./tls_sample/priv/test_config/tls_sample.config"
-	 " start"]),
-    await_started("tls_sample"),
-    ok.
+    generic_start("tls_sample").
 
 t_start_tlsj_backend(_Config) ->
-    cmd([env(),
-	 " ./tlsj_backend/rvi.sh"
-	 " -s tlsj_backend"
-	 " -l ./tlsj_backend/rvi/log"
-	 " -d ./tlsj_backend"
-	 " -c ./tlsj_backend/priv/test_config/tlsj_backend.config"
-	 " start"]),
-    await_started("tlsj_backend"),
-    ok.
+    generic_start("tlsj_backend").
 
 t_start_tlsj_sample(_Config) ->
-    cmd([env(),
-	 " ./tlsj_sample/rvi.sh"
-	 " -s tlsj_sample"
-	 " -l ./tlsj_sample/rvi/log"
-	 " -d ./tlsj_sample"
-	 " -c ./tlsj_sample/priv/test_config/tlsj_sample.config"
-	 " start"]),
-    await_started("tlsj_sample"),
-    ok.
+    generic_start("tlsj_sample").
 
 t_register_lock_service(_Config) ->
     Pid =
@@ -326,7 +278,7 @@ t_remote_call_lock_service(_Config) ->
     [{_, Svc}] = lookup({service, lock}),
     ok = fetch(
            Svc,
-           {match, <<"Service invoked![\\s]*args: {u'arg1': u'val1'}">>}),
+           {match, <<"Service invoked![\\s]*args: {u'arg1': u'val2'}">>}),
     ct:log("Verified service invoked~n", []),
     CallRes = fetch(CallPid),
     verify_call_res(join_stdout_msgs(CallRes)),
@@ -558,6 +510,12 @@ cmd(C) ->
 
 cmd(C, Opts) ->
     {ok, _Res} = cmd_(C, Opts).
+
+save_cmd(F, Cmd) ->
+    ct:log("save_cmd ~s:~n~s", [F, Cmd]),
+    ok = file:write_file(F, iolist_to_binary(Cmd)),
+    {ok, FI} = file:read_file_info(F),
+    ok = file:write_file_info(F, FI#file_info{mode = 8#755}, []).
 
 cmd_(C0, Opts) ->
     C = binary_to_list(iolist_to_binary(C0)),

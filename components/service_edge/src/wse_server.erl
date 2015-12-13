@@ -47,7 +47,7 @@
 	  connection,   %% 'Connection'
 	  key,          %% "Sec-WebSocket-Key"
 	  protocol,     %% "Sec-WebSocket-Protocol"
-	  origin,       %% 
+	  origin,       %%
 	  version,      %% "Sec-WebSocket-Version"
 	  cookie,       %% 'Cookie'
 	  hs = []
@@ -77,10 +77,10 @@
 %%  but is included here to make the example self-contained
 
 
-start(Port, M, F, A) when is_integer(Port) -> 
+start(Port, M, F, A) when is_integer(Port) ->
     start_([{cb, {M,F,A}}, {port,Port}]).
 
-start(Port,M,F,A, Opts) when is_integer(Port) -> 
+start(Port,M,F,A, Opts) when is_integer(Port) ->
     start_([{port,Port}, {cb, {M,F,A}}] ++ Opts).
 
 start_(Opts) -> spawn(fun() -> init(Opts) end).
@@ -88,7 +88,7 @@ start_(Opts) -> spawn(fun() -> init(Opts) end).
 stop(RegName) when is_atom(RegName) ->
     RegName ! stop.
 
- 
+
 init(Opts) ->
     Port = proplists:get_value(port, Opts, ?WSE_DEFAULT_PORT),
 
@@ -130,7 +130,7 @@ accept_loop(Listen,Opts,Pid) ->
 	    gen_tcp:close(Listen),
 	    exit(stopped)
     end.
-    
+
 accept(Parent, Listen, Opts) ->
     ?debug("Accept ~p\n", [Listen]),
     case gen_tcp:accept(Listen) of
@@ -146,7 +146,7 @@ accept(Parent, Listen, Opts) ->
 
 
 send(Pid, Data) ->
-    try 
+    try
 	Pid ! { send, Data },
 	ok
     catch
@@ -157,7 +157,7 @@ send(Pid, Data) ->
 
 
 close(Pid) ->
-    try 
+    try
 	Pid ! close,
 	ok
     catch
@@ -284,7 +284,6 @@ ws_loop(Buf, Socket, S) ->
     receive
 	%% WebSocket stuff
 	{tcp, Socket, Data} ->
-	     ?debug("tcp ~w: ~p", [Socket, Data]),
 	    ws_data(Buf, Data, Socket, S);
 
 	{tcp_closed, Socket} ->
@@ -293,14 +292,14 @@ ws_loop(Buf, Socket, S) ->
 
 	{'EXIT',Pid,Reason} ->
 	    case get(parent) of
-		Pid -> 
+		Pid ->
 		    ?debug("exit from parent ~w reason=~p\n", [Pid, Reason]),
 		    exit(Reason);
 		_ ->
 		    ?debug("exit from ~w reason=~p\n", [Pid, Reason]),
 		    ws_loop(Buf, Socket, S)
 	    end;
-	
+
 	Message ->
 	    ?debug("handle_local: ~p - ~p", [Message, S]),
 	    case handle_local(Message, Socket, S) of
@@ -313,23 +312,20 @@ ws_loop(Buf, Socket, S) ->
 	    end
     end.
 
-	
+
 
 ws_data(Buf, Data, Socket, S) ->
     case <<Buf/binary, Data/binary>> of
 	%% masked data
 	<<Fin:1,_Rsv:3,Op:4,1:1,126:7,L:16,M:4/binary,Frag:L/binary,Buf1/binary>> ->
-	    ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
 	    Frag1 = ws_mask(M, Frag),
 	    S1 = ws_fragment(Socket, Fin, Op, Frag1, S),
 	    ws_data(Buf1, <<>>, Socket, S1);
 	<<Fin:1,_Rsv:3,Op:4,1:1,127:7,L:64,M:4/binary,Frag:L/binary,Buf1/binary>> ->
-	    ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
 	    Frag1 = ws_mask(M, Frag),
 	    S1 = ws_fragment(Socket,Fin, Op, Frag1, S),
 	    ws_data(Buf1, <<>>, Socket, S1);
 	<<Fin:1,_Rsv:3,Op:4,1:1,L:7,M:4/binary,Frag:L/binary,Buf1/binary>> ->
-	     ?debug("unmask fragment: mask=~p, frag=~p", [M, Frag]),
 	    Frag1 = ws_mask(M, Frag),
 	    S1 = ws_fragment(Socket,Fin, Op, Frag1, S),
 	    ws_data(Buf1, <<>>, Socket, S1);
@@ -364,9 +360,7 @@ ws_mask(<<M:32>>, Frag) ->
 
 ws_fragment(Socket,1, Op, Frag, S) ->
     Payload = iolist_to_binary(lists:reverse([Frag|S#s.fs])),
-    ?debug("op=~w, unmasked payload = ~p", [ws_opcode(Op),Payload]),
     Message = ws_decode(Payload,Op),
-    ?debug("handle_remote: ~p", [Message]),
     handle_remote(Message, Socket, S#s { fs=[] });
 
 ws_fragment(_Socket, 0, _Op, Frag, S) ->
@@ -405,7 +399,7 @@ ws_make_frame(Fin, Op, Mask, Data) ->
 	    <<Fin:1,0:3,Op:4,M:1,127:7,L:64,Mask/binary,Data/binary>>
     end.
 
-    
+
 handle_local({ send,Data},Socket,S0) ->
     ?debug("wse_server:send(): ~p", [ Data]),
     gen_tcp:send(Socket, ws_make_server_frame(Data, S0#s.type)),
@@ -492,7 +486,7 @@ stop_pong_timer(S0) ->
     if is_reference(Tmr) ->
 	    erlang:cancel_timer(Tmr),
 	    receive
-		{timeout,Tmr,pong} -> 
+		{timeout,Tmr,pong} ->
 		    ok
 	    after 0 ->
 		    ok

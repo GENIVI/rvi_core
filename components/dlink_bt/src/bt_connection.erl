@@ -138,7 +138,7 @@ init({connect, BTAddr, Channel, Mode, Mod, Fun, CS}) ->
     {ok, PktMod} = get_module_config(packet_mod, ?PACKET_MOD, CS),
     PktSt = PktMod:init(CS),
     {ok, #st{
-	    remote_addr = BTAddr,
+	    remote_addr = bt_addr(Mode, BTAddr),
 	    channel = Channel,
 	    rfcomm_ref = undefined,
 	    mode = Mode,
@@ -394,9 +394,10 @@ handle_info({inet_async, _L, _Ref, {ok, Sock}} = Msg, #st{mod = Mod,
     inet_db:register_socket(Sock, inet_tcp),
     inet:setopts(Sock, [{active, once}]),
     {ok, {BTAddr, Channel}} = inet:peername(Sock),
+    ?debug("peername (tcp): ~p:~p", [BTAddr, Channel]),
     Mod:Fun(self(), BTAddr, Channel, accepted, Arg),
     {noreply, St#st{rfcomm_ref = Sock,
-		    remote_addr = BTAddr}};
+		    remote_addr = bt_addr(tcp, BTAddr)}};
 
 handle_info(_Info, State) ->
     ?warning("~p:handle_info(): Unknown info: ~p", [ ?MODULE, _Info]),
@@ -442,3 +443,10 @@ handle_elements(Elements, #st{remote_addr = BTAddr,
     ?debug("data complete; processed: ~p",
 	   [authorize_keys:abbrev(Elements)]),
     Mod:Fun(self(), BTAddr, Channel, data, Elements, Arg).
+
+
+bt_addr(tcp, Addr) ->
+    {ok, IP} = inet:ip(Addr),
+    inet_parse:ntoa(IP);
+bt_addr(bt, Addr) ->
+    Addr.

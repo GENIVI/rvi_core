@@ -103,10 +103,10 @@ start_connection_manager() ->
     ?info("dlink_tls:init_rvi_component(~p): Starting listener.", [self()]),
 
     %% Fire up listener
-    dlink_tls_connmgr:start_link(),
-    {ok,Pid} = dlink_tls_listener:start_link(),
+    %% dlink_tls_connmgr:start_link(),
+    %% {ok,Pid} = dlink_tls_listener:start_link(),
 
-    setup_initial_listeners(Pid, TlsOpts, CompSpec),
+    setup_initial_listeners(TlsOpts, CompSpec),
 
     ?info("dlink_tls:init_rvi_component(): Setting up persistent connections."),
 
@@ -118,14 +118,14 @@ start_connection_manager() ->
     setup_persistent_connections_(PersistentConnections, CompSpec),
     ok.
 
-setup_initial_listeners(Pid, [], CompSpec) ->
+setup_initial_listeners([], CompSpec) ->
     ?debug("no initial listeners", []);
-setup_initial_listeners(Pid, [_|_] = TlsOpts, CompSpec) ->
+setup_initial_listeners([_|_] = TlsOpts, CompSpec) ->
     IP = proplists:get_value(ip, TlsOpts, ?DEFAULT_TCP_ADDRESS),
     Port = proplists:get_value(port, TlsOpts, ?DEFAULT_TCP_PORT),
     %% Add listener port.
     ?info("dlink_tls:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
-    case dlink_tls_listener:add_listener(Pid, IP, Port, CompSpec) of
+    case dlink_tls_listener:add_listener(IP, Port, CompSpec) of
 	ok ->
 	    ?notice("---- RVI Node External Address: ~s",
 		    [ application:get_env(rvi_core, node_address, undefined)]);
@@ -212,12 +212,18 @@ connect_remote(IP, Port, CompSpec) ->
 		    %% Setup a genserver around the new connection.
 		    {ok, Pid } = dlink_tls_conn:setup(IP, Port, Sock,
 						      ?MODULE, handle_socket, CompSpec),
-		    UgRes = dlink_tls_conn:upgrade(Pid, client, CompSpec),
-		    ?debug("Upgrade result = ~p", [UgRes]),
-		    %% Send authorize
-		    send_authorize(Pid, CompSpec),
-		    ok;
-
+		    try dlink_tls_conn:upgrade(Pid, client, CompSpec) of
+			ok ->
+			    ?debug("Upgrade result = ~p", [ok]),
+			    %% Send authorize
+			    send_authorize(Pid, CompSpec),
+			    ok
+		    catch
+			error:Error ->
+			    ?error("TLS upgrade (~p,~p) failed ~p",
+				   [IP, Port, Error]),
+			    not_available
+		    end;
 		{error, Err } ->
 		    ?info("dlink_tls:connect_remote(): Failed ~p:~p: ~p",
 			   [IP, Port, Err]),

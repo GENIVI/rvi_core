@@ -42,7 +42,7 @@ accept_ack(Result, LRef, Addr, Chan) ->
     ok.
 
 sock_opts() ->
-    [binary, {active, once}, {packet, 0}].
+    [{reuseaddr, true}, binary, {active, once}, {packet, 0}].
 
 init(Mode) ->
 

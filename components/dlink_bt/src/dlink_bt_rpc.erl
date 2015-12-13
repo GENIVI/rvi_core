@@ -651,11 +651,19 @@ code_change(_OldVsn, St, _Extra) ->
 
 
 send_authorize(Pid, SetupChannel, CompSpec) ->
-    {ok,[{address, Address }]} = bt_drv:local_info([address]),
+    {Address, Channel} =
+	case Mode = get_mode(CompSpec) of
+	    bt ->
+		{ok,[{address, Addr}]} = bt_drv:local_info([address]),
+		{bt_address_to_string(Addr), SetupChannel};
+	    tcp ->
+		{IP, Port} = rvi_common:node_address_tuple(),
+		{IP, integer_to_binary(Port)}
+	end,
     bt_connection:send(Pid,
 		       [{ ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
-			{ ?DLINK_ARG_ADDRESS, bt_address_to_string(Address) },
-			{ ?DLINK_ARG_PORT,  SetupChannel },
+			{ ?DLINK_ARG_ADDRESS, Address },
+			{ ?DLINK_ARG_PORT,  Channel },
 			{ ?DLINK_ARG_VERSION, ?DLINK_BT_VER },
 			{ ?DLINK_ARG_CREDENTIALS, get_credentials(CompSpec) }
 			| log_id_tail(CompSpec)]).

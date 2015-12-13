@@ -176,8 +176,8 @@ send_(Bin, From, #state{socket = S, pending = P} = State) ->
 handle_cast({activate,Active}, #state{socket = XSocket0} = State0) ->
     ?dbg("activate~n", []),
     case XSocket0 of
-	{#exo_socket{}, Fun} when is_function(Fun, 0) ->
-	    try Fun() of
+	{#exo_socket{} = X, Fun} when is_function(Fun, 1) ->
+	    try Fun(X) of
 		{ok, XSocket} ->
 		    activate_(Active, State0#state{socket = XSocket});
 		{error, _} = Error ->

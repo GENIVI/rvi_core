@@ -280,9 +280,9 @@ handle_info({inet_async, LSocket, Ref, {ok,Socket}} = _Msg, State) when
     NewAccept = exo_socket:async_accept(Listen),
     case exo_socket:async_socket(Listen, Socket, [{delay_auth, true}]) of
 	{ok, XSocket} ->
-	    F = fun() ->
+	    F = fun(X) ->
 			exo_socket:accept(
-			  XSocket, tl(XSocket#exo_socket.protocol), AcceptTimeout)
+			  X, tl(X#exo_socket.protocol), AcceptTimeout)
 		end,
 	    XSocketFun = {XSocket, F},
 	    case exo_socket_session:start(XSocketFun,

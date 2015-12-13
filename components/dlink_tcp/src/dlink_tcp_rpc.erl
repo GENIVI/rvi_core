@@ -94,11 +94,11 @@ start_json_server() ->
 start_connection_manager() ->
     %% Fire up listener
     CompSpec = rvi_common:get_component_specification(),
-    connection_manager:start_link(),
+    %% connection_manager:start_link(),
     ?info("dlink_tcp:init_rvi_component(~p): Starting listener.", [self()]),
-    {ok,Pid} = listener:start_link(),
+    %% {ok,Pid} = listener:start_link(),
     %%
-    setup_initial_listeners(Pid, CompSpec),
+    setup_initial_listeners(CompSpec),
 
     ?info("dlink_tcp:init_rvi_component(): Setting up persistent connections."),
 
@@ -112,7 +112,7 @@ start_connection_manager() ->
     ok.
 
 
-setup_initial_listeners(Pid, CompSpec) ->
+setup_initial_listeners(CompSpec) ->
     case rvi_common:get_module_config(data_link,
 				      ?MODULE,
 				      ?SERVER_OPTS,
@@ -123,7 +123,7 @@ setup_initial_listeners(Pid, CompSpec) ->
 	    ?info("dlink_tcp:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
 	    %%
 	    %% Add listener port.
-	    case listener:add_listener(Pid, IP, Port, CompSpec) of
+	    case listener:add_listener(IP, Port, CompSpec) of
 		ok ->
 		    ?notice("---- RVI Node External Address: ~s",
 			    [ application:get_env(rvi_core, node_address, undefined)]);

@@ -28,7 +28,8 @@
 	 terminate/2, code_change/3]).
 
 -export([setup/6]).
--export([upgrade/3]).
+-export([upgrade/3,
+         async_upgrade/3]).
 -export([send/2]).
 -export([send/3]).
 -export([is_connection_up/1]).
@@ -76,6 +77,10 @@ setup(IP, Port, Sock, Mod, Fun, CompSpec) ->
 
 upgrade(Pid, Role, CompSpec) when Role==client; Role==server ->
     gen_server:call(Pid, {upgrade, Role, CompSpec}).
+
+async_upgrade(Pid, Role, CompSpec) when Role==client;
+                                        Role==server ->
+    gen_server:cast(Pid, {upgrade, Role, CompSpec}).
 
 send(Pid, Data) when is_pid(Pid) ->
     gen_server:cast(Pid, {send, Data}).
@@ -186,26 +191,9 @@ handle_call(terminate_connection, _From,  St) ->
     {stop, Reason, ok, NSt};
 handle_call({upgrade, Role, CompSpec} = Req, _From, #st{sock = S} = St) ->
     ?debug("~p:handle_call(~p)~n", [?MODULE, Req]),
-
-    {ok, [{active, Last}]} = inet:getopts(S, [active]),
-    inet:setopts(S, [{active, false}]),
-    case do_upgrade(S, Role, CompSpec) of
-	{ok, NewS} ->
-	    ?debug("upgrade to TLS succcessful~n", []),
-            ssl:setopts(NewS, [{active, Last}]),
-            {ok, {IP, Port}} = ssl:peername(NewS),
-            {ok, PeerCert} = ssl:peercert(NewS),
-            ?debug("SSL PeerCert=~w", [abbrev(PeerCert)]),
-            NewCS = rvi_common:set_value(
-                      dlink_tls_role, Role,
-                      rvi_common:set_value(dlink_tls_peer_cert, PeerCert, CompSpec)),
-	    {reply, ok, St#st{sock = NewS, mode = tls, role = Role,
-                              ip = inet_parse:ntoa(IP), port = Port,
-                              cs = NewCS}};
-	Error ->
-	    ?error("Cannot upgrade to TLS: ~p~n", [Error]),
-	    {stop, Error, Error, St}
-    end;
+    %% deliberately crash (for now) if upgrade fails.
+    {Reply, St1} = handle_upgrade(Role, CompSpec, St),
+    {reply, Reply, St1};
 handle_call(_Request, _From, State) ->
     ?warning("~p:handle_call(): Unknown call: ~p", [ ?MODULE, _Request]),
     Reply = ok,
@@ -221,6 +209,9 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({upgrade, Role, CompSpec}, St) ->
+    {_, St1} = handle_upgrade(Role, CompSpec, St),
+    {noreply, St1};
 handle_cast({send, Data},  #st{packet_mod = PMod, packet_st = PSt} = St) ->
     ?debug("~p:handle_call(send): Sending: ~p",
 	   [ ?MODULE, abbrev(Data)]),
@@ -350,6 +341,26 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+handle_upgrade(Role, CompSpec, #st{sock = S} = St) ->
+    {ok, [{active, Last}]} = inet:getopts(S, [active]),
+    inet:setopts(S, [{active, false}]),
+    case do_upgrade(S, Role, CompSpec) of
+	{ok, NewS} ->
+	    ?debug("upgrade to TLS succcessful~n", []),
+            ssl:setopts(NewS, [{active, Last}]),
+            {ok, {IP, Port}} = ssl:peername(NewS),
+            {ok, PeerCert} = ssl:peercert(NewS),
+            ?debug("SSL PeerCert=~w", [abbrev(PeerCert)]),
+            NewCS = rvi_common:set_value(
+                      dlink_tls_role, Role,
+                      rvi_common:set_value(dlink_tls_peer_cert, PeerCert, CompSpec)),
+	    {ok, St#st{sock = NewS, mode = tls, role = Role,
+                       ip = inet_parse:ntoa(IP), port = Port,
+                       cs = NewCS}};
+	Error ->
+	    ?error("Cannot upgrade to TLS: ~p~n", [Error]),
+            error({cannot_upgrade, Error})
+    end.
 
 do_upgrade(Sock, client, CompSpec) ->
     Opts = tls_opts(client, CompSpec),

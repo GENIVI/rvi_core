@@ -2,10 +2,10 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
-%% 
+%%
 %%%-------------------------------------------------------------------
 %%% @author magnus <magnus@t520.home>
 %%% @copyright (C) 2014, magnus
@@ -33,7 +33,10 @@
 -export([find_connection_by_address/2]).
 -export([connections/0]).
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
+
+-define(PID_TAB, dlink_tcp_conn_by_pid).
+-define(ADDR_TAB, dlink_tcp_conn_by_addr).
 
 -record(st, {
 	  conn_by_pid = undefined,
@@ -70,6 +73,7 @@ connections() ->
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
+    create_ets(),
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================
@@ -93,6 +97,18 @@ init([]) ->
 	    conn_by_addr = dict:new()  %% All managed connection stored by address
 	   }}.
 
+create_ets() ->
+    maybe_create(?PID_TAB),
+    maybe_create(?ADDR_TAB).
+
+maybe_create(Tab) ->
+    case ets:info(Tab, name) of
+	undefined ->
+	    ets:new(Tab, [public, named_table, set]);
+	_ ->
+	    Tab
+    end.
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -107,106 +123,84 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({add_connection, IP, Port, Pid}, _From, 
-	    #st { conn_by_pid = ConPid, 
-		  conn_by_addr = ConAddr} = St) ->
-
-    ?debug("~p:handle_call(add): Adding Pid: ~p, Address: ~p", 
+handle_call({add_connection, IP, Port, Pid}, _From, St) ->
+    ?debug("~p:handle_call(add): Adding Pid: ~p, Address: ~p",
 	     [ ?MODULE, Pid, { IP, Port }]),
     %% Store so that we can find connection both by pid and by address
-    NConPid = dict:store(Pid, { IP, Port }, ConPid),
-    NConAddr = dict:store({ IP, Port }, Pid, ConAddr),
-
-    NSt = St#st { conn_by_pid = NConPid,
-		  conn_by_addr = NConAddr },
-    {reply, ok, NSt};
+    ets_insert(?PID_TAB, {Pid, {IP, Port}}),
+    ets_insert(?ADDR_TAB, {{IP, Port}, Pid}),
+    {reply, ok, St};
 
 %% Delete connection by pid
-handle_call({delete_connection_by_pid, Pid}, _From, 
-	    #st { conn_by_pid = ConPid, 
-		  conn_by_addr = ConAddr} = St) when is_pid(Pid)->
-
+handle_call({delete_connection_by_pid, Pid}, _From, St) when is_pid(Pid)->
     %% Find address associated with Pid
-    case dict:find(Pid, ConPid) of
-	error -> 
-	    ?debug("~p:handle_call(del_by_pid): not found: ~p", 
+    case ets_lookup(?PID_TAB, Pid) of
+	[] ->
+	    ?debug("~p:handle_call(del_by_pid): not found: ~p",
 		   [ ?MODULE, Pid]),
 	    { reply, not_found, St};
-	
-	{ok, Addr } ->
-	    ?debug("~p:handle_call(del_by_pid): deleted Pid: ~p, Address: ~p", 
+
+	[{_, Addr}] ->
+	    ?debug("~p:handle_call(del_by_pid): deleted Pid: ~p, Address: ~p",
 		   [ ?MODULE, Pid, Addr]),
 
-	    NConPid = dict:erase(Pid, ConPid),
-	    NConAddr = dict:erase(Addr, ConAddr),
-
-	    NSt = St#st { conn_by_pid = NConPid,
-			  conn_by_addr = NConAddr },
-
-	    {reply, ok, NSt}
+	    ets_delete(?PID_TAB, Pid),
+	    ets_delete(?ADDR_TAB, Addr),
+	    {reply, ok, St}
     end;
 
 
 %% Delete connection by address
-handle_call({ delete_connection_by_address, IP, Port}, _From, 
-	    #st { conn_by_pid = ConPid, 
-		  conn_by_addr = ConAddr} = St) ->
-
+handle_call({ delete_connection_by_address, IP, Port}, _From, St) ->
     %% Find Pid associated with Address
-    case dict:find({IP, Port}, ConAddr) of
-	error -> 
-	    ?debug("~p:handle_call(del_by_addr): not found: ~p", 
-		   [ ?MODULE, {IP, Port}]),
+    Addr = {IP, Port},
+    case ets_lookup(?ADDR_TAB, Addr) of
+	[] ->
+	    ?debug("~p:handle_call(del_by_addr): not found: ~p",
+		   [ ?MODULE, Addr]),
 	    { reply, not_found, St};
-	
-	{ok, Pid } ->
-	    ?debug("~p:handle_call(del_by_addr): deleted Pid: ~p, Address: ~p", 
-		   [ ?MODULE, Pid, {IP, Port}]),
-	    NConPid = dict:erase(Pid, ConPid),
-	    NConAddr = dict:erase({ IP, Port }, ConAddr),
-	    NSt = St#st { conn_by_pid = NConPid,
-			  conn_by_addr = NConAddr },
-	    {reply, ok, NSt}
+
+	[{_, Pid}] ->
+	    ?debug("~p:handle_call(del_by_addr): deleted Pid: ~p, Address: ~p",
+		   [ ?MODULE, Pid, Addr]),
+	    ets_delete(?PID_TAB, Pid),
+	    ets_delete(?ADDR_TAB, Addr),
+	    {reply, ok, St}
     end;
 
-
 %% Find connection by pid
-handle_call({ find_connection_by_pid, Pid}, _From, 
-	    #st { conn_by_pid = ConPid} = St) when is_pid(Pid)->
-
+handle_call({ find_connection_by_pid, Pid}, _From, St) when is_pid(Pid)->
     %% Find address associated with Pid
-    case dict:find(Pid, ConPid) of
-	error -> 
-	    ?debug("~p:handle_call(find_by_pid): not found: ~p", 
+    case ets_lookup(?PID_TAB, Pid) of
+	[] ->
+	    ?debug("~p:handle_call(find_by_pid): not found: ~p",
 		   [ ?MODULE, Pid]),
 	    { reply, not_found, St};
-	
-	{ok, {IP, Port} } ->
-	    ?debug("~p:handle_call(find_by_addr): Pid: ~p ->: ~p", 
+
+	[{_, {IP, Port}}] ->
+	    ?debug("~p:handle_call(find_by_addr): Pid: ~p ->: ~p",
 		   [ ?MODULE, Pid, {IP, Port}]),
 	    {reply, {ok, IP, Port}, St}
     end;
 
 %% Find connection by address
-handle_call({find_connection_by_address, IP, Port}, _From, 
-	    #st { conn_by_addr = ConAddr} = St) ->
-
+handle_call({find_connection_by_address, IP, Port}, _From, St) ->
     %% Find address associated with Pid
-    case dict:find({IP, Port}, ConAddr) of
-	error -> 
-	    ?debug("~p:handle_call(find_by_addr): not found: ~p", 
+    case ets_lookup(?ADDR_TAB, {IP, Port}) of
+	[] ->
+	    ?debug("~p:handle_call(find_by_addr): not found: ~p",
 		   [ ?MODULE, {IP, Port}]),
 
 	    { reply, not_found, St};
-	
-	{ok, Pid } ->
-	    ?debug("~p:handle_call(find_by_addr): Addr: ~p ->: ~p", 
+
+	[{_, Pid}] ->
+	    ?debug("~p:handle_call(find_by_addr): Addr: ~p ->: ~p",
 		   [ ?MODULE, {IP, Port}, Pid]),
 	    {reply, {ok, Pid}, St}
     end;
 
-handle_call(connections, _From, #st{conn_by_addr = ConAddr} = St) ->
-    {reply, [Addr || {Addr, _} <- dict:to_list(ConAddr)], St};
+handle_call(connections, _From, St) ->
+    {reply, ets_select(?ADDR_TAB, [{ {'$1','_'}, [], ['$1']}]), St};
 
 handle_call(_Request, _From, State) ->
     ?warning("~p:handle_call(): Unknown call: ~p", [ ?MODULE, _Request]),
@@ -269,3 +263,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% Ets wrapper functions to simplify tracing.
+ets_lookup(Tab, Key) ->
+    ets:lookup(Tab, Key).
+
+ets_insert(Tab, Obj) ->
+    ets:insert(Tab, Obj).
+
+ets_delete(Tab, Key) ->
+    ets:delete(Tab, Key).
+
+ets_select(Tab, Pattern) ->
+    ets:select(Tab, Pattern).

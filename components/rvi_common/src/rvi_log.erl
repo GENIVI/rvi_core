@@ -357,7 +357,7 @@ purge_id() ->
 	'$end_of_table' ->
 	    %% Should not be possible ...
 	    ok;
-	{Tid} ->
+	Tid ->
 	    ets:delete(?IDS, Tid),
 	    ets:match_delete(?EVENTS, #evt{id = {Tid,'_'}, _ = '_'})
     end.

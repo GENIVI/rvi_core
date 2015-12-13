@@ -231,7 +231,7 @@ handle_info({tcp, Sock, Data},
 		  port = Port,
 		  packet_mod = PMod,
 		  packet_st = PSt} = State) ->
-    ?debug("handle_info(data): From: ~p:~p ", [IP, Port]),
+    ?debug("handle_info(data, PMod=~p): From: ~p:~p ", [PMod, IP, Port]),
     case PMod:decode(Data, fun(Elems) ->
 				   handle_elements(Elems, State)
 			   end, PSt) of
