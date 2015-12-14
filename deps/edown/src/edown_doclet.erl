@@ -14,14 +14,13 @@
 %% limitations under the License.
 %%==============================================================================
 %% @author Ulf Wiger <ulf@wiger.net>
-%% @copyright 2014 Ulf Wiger
+%% @copyright 2014-2015 Ulf Wiger
 %% @end
 %% =============================================================================
 %% Modified 2012 by Beads Land-Trujillo:  get_git_branch/0, redirect_href/3
 %% =============================================================================
 
 %% @doc EDoc Doclet module for producing Markdown.
-
 
 -module(edown_doclet).
 
@@ -35,21 +34,17 @@
 -define(DEFAULT_FILE_SUFFIX, ".md").
 -define(INDEX_FILE, "README.md").
 -define(OVERVIEW_FILE, "overview.edoc").
--define(PACKAGE_SUMMARY, "package-summary.md").
 -define(OVERVIEW_SUMMARY, "overview-summary.md").
--define(PACKAGES_FRAME, "packages-frame.md").
--define(MODULES_FRAME, "modules-frame.md").
 -define(STYLESHEET, "stylesheet.css").
 -define(IMAGE, "erlang.png").
 -define(NL, "\n").
 
 -include_lib("xmerl/include/xmerl.hrl").
 
-%% Sources is the list of inputs in the order they were found.  Packages
-%% and Modules are sorted lists of atoms without duplicates. (They
+%% Sources is the list of inputs in the order they were found.
+%% Modules are sorted lists of atoms without duplicates. (They
 %% usually include the data from the edoc-info file in the target
-%% directory, if it exists.) Note that the "empty package" is never
-%% included in Packages!
+%% directory, if it exists.)
 
 %% @spec (Command::doclet_gen() | doclet_toc(), edoc_context()) -> ok
 %% @doc Main doclet entry point.
@@ -106,21 +101,14 @@
 %% INHERIT-OPTIONS: stylesheet/1
 
 run(#doclet_gen{}=Cmd, Ctxt) ->
-    %% dbg:tracer(),
-    %% dbg:tpl(?MODULE,x),
-    %% dbg:tpl(edown_layout,x),
-    %% dbg:tpl(edown_xmerl, x),
-    %% dbg:p(all,[c]),
     gen(Cmd#doclet_gen.sources,
 	Cmd#doclet_gen.app,
-	Cmd#doclet_gen.packages,
-	Cmd#doclet_gen.modules,
-	Cmd#doclet_gen.filemap,
+	modules(Cmd),
 	Ctxt);
 run(#doclet_toc{}=Cmd, Ctxt) ->
     toc(Cmd#doclet_toc.paths, Ctxt).
 
-gen(Sources, App, Packages, Modules, FileMap, Ctxt) ->
+gen(Sources, App, Modules, Ctxt) ->
     Dir = Ctxt#context.dir,
     Env = Ctxt#context.env,
     Options0 = Ctxt#context.opts,
@@ -131,16 +119,11 @@ gen(Sources, App, Packages, Modules, FileMap, Ctxt) ->
     Title = title(App, Options),
     %% CSS = stylesheet(Options),
     {Modules1, Error} = sources(Sources, Dir, Modules, Env, Options),
-    packages(Packages, Dir, FileMap, Env, Options),
-    Overview = overview(Dir, Title, Env, Options),
-    Data =
-	Overview
-	 ++ lists:concat([packages_frame(Packages) || Packages =/= []])
-	 ++ lists:concat([modules_frame(Modules1) || Modules1 =/= []]),
-
-    Text = xmerl:export_simple_content(Data, edown_xmerl),
-    write_file(Text, Dir, right_suffix(?INDEX_FILE, Options), '', ''),
-    edoc_lib:write_info_file(App, Packages, Modules1, Dir),
+    Data = overview(Dir, Title, Env, Options)
+        ++ lists:concat([modules_frame(Modules1) || Modules1 =/= []]),
+    Text = edown_lib:export(Data, Options),
+    write_file(Text, Dir, right_suffix(?INDEX_FILE, Options)),
+    write_info_file(App, Modules1, Dir),
     copy_stylesheet(Dir, Options),
     copy_image(Dir, Options),
     make_top_level_README(Data, Options),
@@ -171,12 +154,11 @@ make_top_level_README(Data, Options) ->
             Dir = filename:dirname(Path),
             Filename = filename:basename(Path),
 	    make_top_level_README(Data, Dir, Filename, BaseHRef,
-                                  get_git_branch(), target(Options));
+                                  get_git_branch(), Options);
 	{Path, BaseHRef, Branch} ->
             Dir = filename:dirname(Path),
             Filename = filename:basename(Path),
-	    make_top_level_README(Data, Dir, Filename, BaseHRef, Branch,
-                                  target(Options))
+	    make_top_level_README(Data, Dir, Filename, BaseHRef, Branch, Options)
     end.
 
 target(Options) ->
@@ -186,7 +168,8 @@ target(Options) ->
 %%     Branch = get_git_branch(),
 %%     make_top_level_README(Data, Dir, F, BaseHRef, Branch).
 
-make_top_level_README(Data, Dir, F, BaseHRef, Branch, Target) ->
+make_top_level_README(Data, Dir, F, BaseHRef, Branch, Options) ->
+    Target = target(Options),
     Exp = [xmerl_lib:expand_element(D) || D <- Data],
     New = [xmerl_lib:mapxml(
 	     fun(#xmlElement{name = a,
@@ -200,7 +183,7 @@ make_top_level_README(Data, Dir, F, BaseHRef, Branch, Target) ->
 		(Other) ->
 		     Other
 	     end, Exp1) || Exp1 <- Exp],
-    Text = xmerl:export_simple_content(New, edown_xmerl),
+    Text = edown_lib:export(New, Options),
     write_file(Text, Dir, F).
 
 redirect_href(Attrs, Branch, BaseHRef, Target) ->
@@ -211,7 +194,7 @@ redirect_href(Attrs, Branch, BaseHRef, Target) ->
 	#xmlAttribute{value = "/" ++ _} ->
 	    false;
 	#xmlAttribute{value = Href} = A ->
-	    case re:run(Href, ":", []) of
+	    case re:run(Href, ":", [unicode]) of
 		{match, _} ->
 		    false;
 		nomatch ->
@@ -232,7 +215,9 @@ redirect_href(Attrs, Branch, BaseHRef, Target) ->
 href_redirect_parts(github, BaseHRef, Branch) ->
     {BaseHRef ++ "/blob/" ++ Branch ++ "/", []};
 href_redirect_parts(stash, BaseHRef, Branch) ->
-    {BaseHRef ++ "/browse/", "?at=refs/heads/" ++ Branch}.
+    {BaseHRef ++ "/browse/", "?at=refs/heads/" ++ Branch};
+href_redirect_parts(gitlab, BaseHRef, Branch) ->
+    {BaseHRef ++ "/tree/" ++ Branch ++ "/", []}.
 
 
 do_redirect(Href, Prefix, Args) ->
@@ -295,19 +280,24 @@ sources(Sources, Dir, Modules, Env, Options) ->
 %% set if it was successful. Errors are just flagged at this stage,
 %% allowing all source files to be processed even if some of them fail.
 
-source({M, P, Name, Path}, Dir, Suffix, Env, Set, Private, Hidden,
+source({M, _, Name, Path}, Dir, Suffix, Env, Set, Private, Hidden,
+       Error, Options) ->
+    %% Old style, remove package reference
+    source({M, Name, Path}, Dir, Suffix, Env, Set, Private, Hidden,
+	   Error, Options);
+source({M, Name, Path}, Dir, Suffix, Env, Set, Private, Hidden,
        Error, Options) ->
     File = filename:join(Path, Name),
     Enc = guess_encoding(File),
     case catch {ok, edoc:get_doc(File, Env, Options)} of
 	{ok, {Module, Doc}} ->
-	    check_name(Module, M, P, File),
+	    check_name(Module, M, File),
 	    case ((not is_private(Doc)) orelse Private)
 		andalso ((not is_hidden(Doc)) orelse Hidden) of
 		true ->
 		    Text = edoc:layout(Doc, Options),
-		    Name1 = packages_last(M) ++ Suffix,
-		    write_file(Text, Dir, Name1, Name, P, Enc),
+		    Name1 = atom_to_list(M) ++ Suffix,
+		    write_file(Text, Dir, Name1, Name, Enc),
 		    {sets:add_element(Module, Set), Error};
 		false ->
 		    {Set, Error}
@@ -327,22 +317,27 @@ guess_encoding(File) ->
     end.
 
 write_file(Text, Dir, F) ->
-    write_file(Text, Dir, F, F, '', auto).
+    write_file(Text, Dir, F, F, auto).
 
-write_file(Text, Dir, Name, P) ->
-    write_file(Text, Dir, Name, Name, P, auto).
-
-write_file(Text, Dir, LastName, Name, P) ->
-    write_file(Text, Dir, LastName, Name, P, auto).
-
-write_file(Text, Dir, LastName, Name, P, Enc) ->
+write_file(Text, Dir, LastName, Name, Enc) ->
     %% edoc_lib:write_file/5 (with encoding support) was added in OTP R16B
+    %% -- and removed in 18.0; we reuse the check to detect 18, since we don't
+    %% -- care about pre-R16
     case lists:member({write_file,5}, edoc_lib:module_info(exports)) of
         true ->
-            edoc_lib:write_file(Text, Dir, LastName, P,
+            edoc_lib:write_file(Text, Dir, LastName, '',
                                 [{encoding, encoding(Enc, Name)}]);
         false ->
-            edoc_lib:write_file(Text, Dir, LastName, P)
+            edoc_lib:write_file(Text, Dir, LastName,
+				[{encoding, encoding(Enc, Name)}])
+    end.
+
+write_info_file(App, Modules, Dir) ->
+    case erlang:function_exported(edoc_lib, write_info_file, 4) of
+	true ->
+	    edoc_lib:write_info_file(App, [], Modules, Dir);
+	false ->
+	    edoc_lib:write_info_file(App, Modules, Dir)
     end.
 
 encoding(auto, Name) ->
@@ -351,25 +346,9 @@ encoding(Enc, _) ->
     Enc.
 
 
-check_name(M, M0, P0, File) ->
-    case erlang:function_exported(packages, strip_last, 1) of
-	true ->
-	    check_name_(M, M0, P0, File);
-	false ->
-	    ok
-    end.
-
-%% If running pre-R16B OTP, where packages are still "supported".
-packages_last(M) ->
-    case erlang:function_exported(packages, last, 1) of
-	true  -> packages:last(M);
-	false -> atom_to_list(M)
-    end.
-
-check_name_(M, M0, P0, File) ->
-    P = list_to_atom(packages:strip_last(M)),
-    N = packages:last(M),
-    N0 = packages:last(M0),
+check_name(M, M0, File) ->
+    N = M,
+    N0 = M0,
     case N of
 	[$? | _] ->
 	    %% A module name of the form '?...' is assumed to be caused
@@ -383,83 +362,23 @@ check_name_(M, M0, P0, File) ->
 	       true ->
 		    ok
 	    end
-    end,
-    if P =/= P0 ->
-	    warning("file '~s' belongs to package '~s', not '~s'.",
-		    [File, P, P0]);
-       true ->
-	    ok
     end.
-
-
-%% Generating the summary files for packages.
-
-%% INHERIT-OPTIONS: read_file/4
-%% INHERIT-OPTIONS: edoc_lib:run_layout/2
-
-packages(Packages, Dir, FileMap, Env, Options) ->
-    lists:foreach(fun (P) ->
-			  package(P, Dir, FileMap, Env, Options)
-		  end,
-		  Packages).
-
-package(P, Dir, FileMap, Env, Opts) ->
-    Tags = case FileMap(P) of
-	       "" ->
-		   [];
-	       File ->
-		   read_file(File, package, Env, Opts)
-	   end,
-    Data = edoc_data:package(P, Tags, Env, Opts),
-    F = fun (M) ->
-		M:package(Data, Opts)
-	end,
-    Text = edoc_lib:run_layout(F, Opts),
-    write_file(Text, Dir, ?PACKAGE_SUMMARY, P).
-
-
-
-packages_frame(Ps) ->
-    [{h2, [{class, "indextitle"}], ["Packages"]},
-     {table, [{width, "100%"}, {border, 0},
-	      {summary, "list of packages"}],
-      lists:concat(
-	[[{tr, [{td, [], [{a, [{href, package_ref(P)},
-			       {class, "package"}],
-			   [atom_to_list(P)]}]}]}]
-	 || P <- Ps])}].
-
 
 modules_frame(Ms) ->
     [{h2, [{class, "indextitle"}], ["Modules"]},
      {table, [{width, "100%"}, {border, 0},
-	      {summary, "list of modules"}],
+              {summary, "list of modules"}],
       lists:concat(
-	[[?NL,
-	  {tr, [{td, [],
-		 [{a, [{href, module_ref(M)},
-		       {class, "module"}],
-		   [atom_to_list(M)]}]}]}]
-	 || M <- Ms])}].
+        [[?NL,
+          {tr, [{td, [],
+                 [{a, [{href, module_ref(M)},
+                       {class, "module"}],
+                   [atom_to_list(M)]}]}]}]
+         || M <- Ms])}].
 
 module_ref(M) ->
-    edoc_refs:relative_package_path(M, '') ++ ?DEFAULT_FILE_SUFFIX.
+    atom_to_list(M) ++ ?DEFAULT_FILE_SUFFIX.
 
-package_ref(P) ->
-    edoc_lib:join_uri(edoc_refs:relative_package_path(P, ''),
-		      ?PACKAGE_SUMMARY).
-
-
-%% xhtml(Title, CSS, Content) ->
-%%     xhtml_1(Title, CSS, {body, [{bgcolor, "white"}], Content}).
-
-%% xhtml_1(Title, CSS, Body) ->
-%%     {html, [?NL,
-%% 	    {head, [?NL, {title, [Title]}, ?NL] ++ CSS},
-%% 	    ?NL,
-%% 	    Body,
-%% 	    ?NL]
-%%     }.
 
 %% NEW-OPTIONS: overview
 %% INHERIT-OPTIONS: read_file/4
@@ -476,8 +395,6 @@ overview(Dir, Title, Env, Opts) ->
 		M:overview(Data, Opts)
 	end,
     _Markdown = edoc_lib:run_layout(F, Opts).
-    %% edoc_lib:write_file(Text, Dir, ?OVERVIEW_SUMMARY).
-
 
 copy_image(Dir, Options) ->
     case proplists:get_value(image, Options) of
@@ -599,3 +516,8 @@ toc(_Paths, _Ctxt) ->
     %% Dir = Ctxt#context.dir,
     %% Env = Ctxt#context.env,
     %% app_index_file(Paths, Dir, Env, Opts).
+
+modules({doclet_gen,_,_,_,Ms,_}) ->  % pre-18
+    Ms;
+modules({doclet_gen,_,_,Ms}) ->  % since 18
+    Ms.

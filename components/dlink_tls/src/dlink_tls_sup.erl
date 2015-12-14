@@ -35,5 +35,7 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_one, 5, 10},
 	   [
+            ?CHILD(dlink_tls_connmgr, worker),
+            ?CHILD(dlink_tls_listener, worker),
 	    ?CHILD(dlink_tls_rpc, worker)
 	   ]} }.

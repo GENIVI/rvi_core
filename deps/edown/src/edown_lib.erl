@@ -23,14 +23,18 @@
 
 -module(edown_lib).
 
--export([export/1, redirect_uri/1, get_attrval/2]).
+-export([export/2, redirect_uri/1, get_attrval/2]).
 
 -include_lib("xmerl/include/xmerl.hrl").
 
+-define(HTML_EXPORT, edown_xmerl).
+-define(DEFAULT_XML_EXPORT, ?HTML_EXPORT).
 
-export(Data) ->
-    xmerl:export_simple_content(Data, edown_xmerl).
+export(Data, Options) ->
+    xmerl:export_simple(Data, export_module(Options)).
 
+export_module(Options) ->
+    proplists:get_value(xml_export, Options, ?DEFAULT_XML_EXPORT).
 
 redirect_uri(#xmlElement{} = E) ->
     redirect_uri(get_attrval(href, E), get_attrval(name, E), E);

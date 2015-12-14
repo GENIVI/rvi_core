@@ -68,7 +68,9 @@ start(Port, ServerOptions) ->
 			    [{active,once},{reuseaddr,true},
 			     {verify, verify_none},
 			     {keyfile, filename:join(Dir, "host.key")},
-			     {certfile, filename:join(Dir, "host.cert")}],
+			     {certfile, filename:join(Dir, "host.cert")},
+			     {upgrade_timeout, 5000},
+			     {accept_timeout, 5000}],
 			    ?MODULE, ServerOptions).
 
 %%-----------------------------------------------------------------------------

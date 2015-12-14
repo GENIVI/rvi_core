@@ -1,6 +1,10 @@
 -module(dlink_data_json).
 
--compile(export_all).
+-export([encode/2,
+	 decode/3]).
+-export([init/1,
+	 port_options/0]).
+
 
 init(_Opts) ->
     [].
@@ -8,41 +12,25 @@ init(_Opts) ->
 port_options() ->
     [list, {packet, 0}].
 
-decode(Msg, St) ->
-    {Msg1, St1} = append(St, Msg),
-    try exo_json:decode(St1, Msg1) of
-	{done, {ok, {struct, Elems}}, Rest} ->
-	    {ok, [Elems], Rest};
-	{done, {ok, {array, Structs}}, Rest} ->
-	    {ok, [Str || {struct, Str} <- Structs], Rest};
-	{done, {error, Reason}, Rest} ->
-	    {error, Reason, Rest};
-	{more, Cont} ->
-	    {more, Cont}
-    catch
-	error:Error ->
-	    {error, Error, St1};
-	exit:Exit ->
-	    {error, Exit, St1}
+decode(Msg, F, St) when is_function(F, 1) ->
+    jsx_decode_stream(Msg, F, St).
+
+encode(Msg, St) ->
+    {ok, rvi_common:term_to_json(Msg), St}.
+
+jsx_decode_stream(Data, F, St) ->
+    case jsx_decode(Data, St) of
+        {incomplete, Cont} ->
+	    {ok, Cont};
+        {with_tail, Elems, <<>>} ->
+	    F(Elems),
+	    {ok, []};
+        {with_tail, Elems, Rest} ->
+	    F(Elems),
+	    jsx_decode_stream(Rest, F, [])
     end.
 
-encode({struct, _} = JSON, St) ->
-    try {ok, exo_json:encode(JSON), St}
-    catch exit:Error -> erlang:error(Error)
-    end;
-encode({array, Structs} = JSON, St) ->
-    case lists:all(fun({struct,_}) -> true;
-		      (_) -> false
-		   end, Structs) of
-	true ->
-	    {ok, exo_json:encode(JSON), St};
-	false ->
-	    erlang:error(invalid_json_structure)
-    end.
-
-append([], Msg) ->
-    {Msg, []};
-append([_|_] = St, Msg) ->
-    {St ++ Msg, []};
-append(Cont, Msg) when is_tuple(Cont) ->
-    {Msg, Cont}.
+jsx_decode(Data, []) ->
+    jsx:decode(Data, [stream, return_tail]);
+jsx_decode(Data, Cont) when is_function(Cont, 1) ->
+    Cont(Data).

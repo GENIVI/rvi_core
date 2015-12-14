@@ -100,26 +100,14 @@ start_connection_manager() ->
 						 [],
 						 CompSpec),
     ?debug("TlsOpts = ~p", [TlsOpts]),
-    IP = proplists:get_value(ip, TlsOpts, ?DEFAULT_TCP_ADDRESS),
-    Port = proplists:get_value(port, TlsOpts, ?DEFAULT_TCP_PORT),
-
     ?info("dlink_tls:init_rvi_component(~p): Starting listener.", [self()]),
 
     %% Fire up listener
-    dlink_tls_connmgr:start_link(),
-    {ok,Pid} = dlink_tls_listener:start_link(),
-    ?info("dlink_tls:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
+    %% dlink_tls_connmgr:start_link(),
+    %% {ok,Pid} = dlink_tls_listener:start_link(),
 
-    %% Add listener port.
-    case dlink_tls_listener:add_listener(Pid, IP, Port, CompSpec) of
-	ok ->
-	    ?notice("---- RVI Node External Address: ~s",
-		    [ application:get_env(rvi_core, node_address, undefined)]);
+    setup_initial_listeners(TlsOpts, CompSpec),
 
-	Err ->
-	    ?error("dlink_tls:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
-	    ok
-    end,
     ?info("dlink_tls:init_rvi_component(): Setting up persistent connections."),
 
     {ok, PersistentConnections } = rvi_common:get_module_config(data_link,
@@ -129,6 +117,23 @@ start_connection_manager() ->
 								CompSpec),
     setup_persistent_connections_(PersistentConnections, CompSpec),
     ok.
+
+setup_initial_listeners([], CompSpec) ->
+    ?debug("no initial listeners", []);
+setup_initial_listeners([_|_] = TlsOpts, CompSpec) ->
+    IP = proplists:get_value(ip, TlsOpts, ?DEFAULT_TCP_ADDRESS),
+    Port = proplists:get_value(port, TlsOpts, ?DEFAULT_TCP_PORT),
+    %% Add listener port.
+    ?info("dlink_tls:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
+    case dlink_tls_listener:add_listener(IP, Port, CompSpec) of
+	ok ->
+	    ?notice("---- RVI Node External Address: ~s",
+		    [ application:get_env(rvi_core, node_address, undefined)]);
+
+	Err ->
+	    ?error("dlink_tls:init_rvi_component(): Failed to launch listener: ~p", [ Err ]),
+	    ok
+    end.
 
 setup_persistent_connections_([ ], _CompSpec) ->
      ok;
@@ -207,12 +212,18 @@ connect_remote(IP, Port, CompSpec) ->
 		    %% Setup a genserver around the new connection.
 		    {ok, Pid } = dlink_tls_conn:setup(IP, Port, Sock,
 						      ?MODULE, handle_socket, CompSpec),
-		    UgRes = dlink_tls_conn:upgrade(Pid, client, CompSpec),
-		    ?debug("Upgrade result = ~p", [UgRes]),
-		    %% Send authorize
-		    send_authorize(Pid, CompSpec),
-		    ok;
-
+		    try dlink_tls_conn:upgrade(Pid, client, CompSpec) of
+			ok ->
+			    ?debug("Upgrade result = ~p", [ok]),
+			    %% Send authorize
+			    send_authorize(Pid, CompSpec),
+			    ok
+		    catch
+			error:Error ->
+			    ?error("TLS upgrade (~p,~p) failed ~p",
+				   [IP, Port, Error]),
+			    not_available
+		    end;
 		{error, Err } ->
 		    ?info("dlink_tls:connect_remote(): Failed ~p:~p: ~p",
 			   [IP, Port, Err]),
@@ -324,7 +335,7 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _CS) ->
 handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
 
     ?debug("PeerIP = ~p, PeerPort = ~p", [PeerIP, PeerPort]),
-    ?debug("data(): Elems ~p~nCS = ~p", [Elems, CompSpec]),
+    ?debug("data(): Elems ~p~nCS = ~p", [abbrev(Elems), abbrev(CompSpec)]),
 
     CS = rvi_common:pick_up_json_log_id(Elems, CompSpec),
 
@@ -333,28 +344,28 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
 	    ?debug("got authorize ~s:~w", [PeerIP, PeerPort]),
             [ RemoteAddress,
               RemotePort,
-              Signature ] =
+              Credentials ] =
                 opts([?DLINK_ARG_ADDRESS,
                       ?DLINK_ARG_PORT,
-                      ?DLINK_ARG_SIGNATURE],
+                      ?DLINK_ARG_CREDENTIALS],
                      Elems, undefined),
 
             process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress, RemotePort,
-                              Signature, CS);
+                              Credentials, CS);
 
-	?DLINK_CMD_CERT_EXCHANGE ->
-	    ?debug("got cert exch ~s:~w", [PeerIP, PeerPort]),
-	    [ Certs ] =
-		opts([?DLINK_ARG_CERTIFICATES], Elems, undefined),
-	    ?debug("Certs = ~p", [Certs]),
-	    log("certs from ~s:~w", [PeerIP, PeerPort], CS),
-	    authorize_rpc:store_certs(CS, Certs, {PeerIP, PeerPort}),
-	    case rvi_common:get_value(dlink_tls_role, client, CS) of
-		client -> ok;
-		server ->
-		    send_certs(FromPid, CompSpec)
-	    end,
-	    ok;
+	%% ?DLINK_CMD_CRED_EXCHANGE ->
+	%%     ?debug("got cred exch ~s:~w", [PeerIP, PeerPort]),
+	%%     [ Creds ] =
+	%% 	opts([?DLINK_ARG_CREDENTIALS], Elems, undefined),
+	%%     ?debug("Creds = ~p", [Creds]),
+	%%     log("creds from ~s:~w", [PeerIP, PeerPort], CS),
+	%%     authorize_rpc:store_creds(CS, Creds, {PeerIP, PeerPort}),
+	%%     case rvi_common:get_value(dlink_tls_role, client, CS) of
+	%% 	client -> ok;
+	%% 	server ->
+	%% 	    send_creds(FromPid, CompSpec)
+	%%     end,
+	%%     ok;
 
         ?DLINK_CMD_SERVICE_ANNOUNCE ->
 	    ?debug("got service_announce ~s:~w", [PeerIP, PeerPort]),
@@ -364,7 +375,6 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
                       ?DLINK_ARG_SERVICES],
                      Elems, undefined),
 
-	    Conn = {PeerIP, PeerPort},
 	    log("sa from ~s:~w", [PeerIP, PeerPort], CS),
 	    process_announce(Status, Services, FromPid, PeerIP, PeerPort, CompSpec);
 
@@ -644,12 +654,11 @@ status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
 status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
 
 process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress,
-		  RemotePort, Signature, CompSpec) ->
+		  RemotePort, Credentials, CompSpec) ->
     ?info("dlink_tls:authorize(): Peer Address:   ~s:~p", [PeerIP, PeerPort ]),
     ?info("dlink_tls:authorize(): Remote Address: ~s:~s", [ RemoteAddress, RemotePort ]),
-    ?debug("dlink_tls:authorize(): Signature:      ~p", [ authorize_keys:abbrev_bin(Signature) ]),
 
-    { _NRemoteAddress, _NRemotePort} = Conn =
+    { NRemoteAddress, NRemotePort} = Conn =
         case { RemoteAddress, RemotePort } of
             { "0.0.0.0", 0 } ->
 
@@ -658,33 +667,30 @@ process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress,
                 { PeerIP, PeerPort };
             _ -> { RemoteAddress, RemotePort}
         end,
+    log("auth ~s:~w", [NRemoteAddress, NRemotePort], CompSpec),
+    PeerCert = rvi_common:get_value(dlink_tls_peer_cert, not_found, CompSpec),
+    authorize_rpc:store_creds(CompSpec, Credentials, Conn, PeerCert),
+    connection_authorized(FromPid, Conn, CompSpec).
 
-    case validate_auth_jwt(Signature, {PeerIP, PeerPort}, CompSpec) of
-        true ->
-            connection_authorized(FromPid, Conn, CompSpec);
-        false ->
-            %% close connection (how?)
-            false
-    end.
-
-send_certs(Pid, CompSpec) ->
-    ?debug("send_certs (Pid = ~p)", [Pid]),
-    {LocalIP, LocalPort} = rvi_common:node_address_tuple(),
-    dlink_tls_conn:send(Pid, rvi_common:pass_log_id(
-			       [{?DLINK_ARG_CMD, ?DLINK_CMD_CERT_EXCHANGE},
-				{?DLINK_ARG_ADDRESS, LocalIP},
-				{?DLINK_ARG_PORT, integer_to_list(LocalPort)},
-				{?DLINK_ARG_CERTIFICATES, [get_certificates(CompSpec)]}], CompSpec)).
+%% send_creds(Pid, CompSpec) ->
+%%     ?debug("send_creds (Pid = ~p)", [Pid]),
+%%     {LocalIP, LocalPort} = rvi_common:node_address_tuple(),
+%%     dlink_tls_conn:send(Pid, rvi_common:pass_log_id(
+%% 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_CRED_EXCHANGE},
+%% 				{?DLINK_ARG_ADDRESS, LocalIP},
+%% 				{?DLINK_ARG_PORT, integer_to_list(LocalPort)},
+%% 				{?DLINK_ARG_CREDENTIALS, [get_credentials(CompSpec)]}], CompSpec)).
 
 send_authorize(Pid, CompSpec) ->
-    ?debug("send_authorize() Pid = ~p; CompSpec = ~p", [Pid, CompSpec]),
+    ?debug("send_authorize() Pid = ~p; CompSpec = ~p", [Pid, abbrev(CompSpec)]),
     {LocalIP, LocalPort} = rvi_common:node_address_tuple(),
-    JWT = get_authorize_jwt(CompSpec),
+    Creds = get_credentials(CompSpec),
     dlink_tls_conn:send(Pid, rvi_common:pass_log_id(
 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE},
+				{?DLINK_ARG_VERSION, ?DLINK_TLS_VERSION},
 				{?DLINK_ARG_ADDRESS, LocalIP},
 				{?DLINK_ARG_PORT, integer_to_list(LocalPort)},
-				{?DLINK_ARG_SIGNATURE, JWT}], CompSpec)).
+				{?DLINK_ARG_CREDENTIALS, Creds}], CompSpec)).
     %% dlink_tls_conn:send(Pid,
     %% 			term_to_json(
     %% 			  {struct,
@@ -708,18 +714,8 @@ connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
 	    dlink_tls_connmgr:add_connection(RemoteIP, RemotePort, FromPid),
 	    ?debug("dlink_tls:authorize(): Sending authorize."),
             _Res = send_authorize(FromPid, CompSpec),
-	    case rvi_common:get_value(dlink_tls_role, server, CompSpec) of
-		server -> ok;
-		client ->
-		    send_certs(FromPid, CompSpec)
-	    end,
-	    %% ?debug("dlink_tls:upgrade connection", []),
-	    %% UgRes = dlink_tls_conn:upgrade(FromPid, server),
-	    %% ?debug("upgrade result: ~p", [UgRes]),
 	    ok;
 	_ ->
-	    %% UgRes = dlink_tls_conn:upgrade(FromPid, client),
-	    %% ?debug("upgrade result: ~p", [UgRes]),
 	    ok
     end,
 
@@ -797,31 +793,31 @@ get_connections() ->
     get_connections(ets:first(?CONNECTION_TABLE), []).
 
 
-get_authorize_jwt(CompSpec) ->
-    case authorize_rpc:get_authorize_jwt(CompSpec) of
-	[ok, JWT] ->
-	    JWT;
+%% get_authorize_jwt(CompSpec) ->
+%%     case authorize_rpc:get_authorize_jwt(CompSpec) of
+%% 	[ok, JWT] ->
+%% 	    JWT;
+%% 	[not_found] ->
+%% 	    ?error("No authorize JWT~n", []),
+%% 	    error(cannot_authorize)
+%%     end.
+
+get_credentials(CompSpec) ->
+    case authorize_rpc:get_credentials(CompSpec) of
+	[ok, Creds] ->
+	    Creds;
 	[not_found] ->
-	    ?error("No authorize JWT~n", []),
-	    error(cannot_authorize)
+	    ?error("No credentials found~n", []),
+	    error(no_credentials_found)
     end.
 
-get_certificates(CompSpec) ->
-    case authorize_rpc:get_certificates(CompSpec) of
-	[ok, Certs] ->
-	    Certs;
-	[not_found] ->
-	    ?error("No certificate found~n", []),
-	    error(no_certificate_found)
-    end.
-
-validate_auth_jwt(JWT, Conn, CompSpec) ->
-    case authorize_rpc:validate_authorization(CompSpec, JWT, Conn) of
-	[ok] ->
-	    true;
-	[not_found] ->
-	    false
-    end.
+%% validate_auth_jwt(JWT, Conn, CompSpec) ->
+%%     case authorize_rpc:validate_authorization(CompSpec, JWT, Conn) of
+%% 	[ok] ->
+%% 	    true;
+%% 	[not_found] ->
+%% 	    false
+%%     end.
 
 term_to_json(Term) ->
     binary_to_list(iolist_to_binary(exo_json:encode(Term))).
@@ -834,7 +830,7 @@ opt(K, L, Def) ->
 
 opts(Keys, Elems, Def) ->
     Res = [ opt(K, Elems, Def) || K <- Keys],
-    ?debug("opts(~p) -> ~p", [Keys, Elems]),
+    ?debug("opts(~p) -> ~p", [Keys, abbrev(Elems)]),
     Res.
 
 
@@ -843,8 +839,11 @@ log_orphan(Pfx, Fmt, Args) ->
 
 start_log(Pfx, Fmt, Args, CS) ->
     LogId = rvi_log:new_id(Pfx),
-    rvi_log:log(LogId, <<"dlink_tcp">>, rvi_log:format(Fmt, Args)),
+    rvi_log:log(LogId, <<"dlink_tls">>, rvi_log:format(Fmt, Args)),
     rvi_common:set_value(rvi_log_id, LogId, CS).
 
 log(Fmt, Args, CS) ->
-    rvi_log:flog(Fmt, Args, <<"dlink_tcp">>, CS).
+    rvi_log:flog(Fmt, Args, <<"dlink_tls">>, CS).
+
+abbrev(Data) ->
+    authorize_keys:abbrev(Data).

@@ -75,6 +75,7 @@ receive_message(CompSpec, {IP, Port}, Data) ->
 
 %% CAlled by local exo http server
 handle_rpc("send_message", Args) ->
+    LogId = rvi_common:get_json_log_id(Args),
     {ok, TID} = rvi_common:get_json_element(["transaction_id"], Args),
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
@@ -89,7 +90,8 @@ handle_rpc("send_message", Args) ->
                                          ProtoOpts,
                                          DataLinkMod,
                                          DataLinkOpts,
-                                         Parameters]}),
+                                         Parameters,
+                                         LogId]}),
     {ok, [ {status, rvi_common:json_rpc_status(ok)} ]};
 
 
@@ -99,10 +101,14 @@ handle_rpc(Other, _Args) ->
 
 
 handle_notification("receive_message", Args) ->
+    LogId = rvi_common:get_json_log_id(Args),
     {ok, Data} = rvi_common:get_json_element(["data"], Args),
     {ok, RemoteIP} = rvi_common:get_json_element(["remote_ip"], Args),
     {ok, RemotePort} = rvi_common:get_json_element(["remote_port"], Args),
-    gen_server:cast(?SERVER, { rvi, receive_message, [Data, RemoteIP, RemotePort]}),
+    gen_server:cast(?SERVER, { rvi, receive_message, [Data,
+                                                      RemoteIP,
+                                                      RemotePort,
+                                                      LogId]}),
     ok;
 
 handle_notification(Other, _Args) ->
@@ -117,7 +123,8 @@ handle_call({rvi, send_message,
               ProtoOpts,
               DataLinkMod,
               DataLinkOpts,
-              Parameters]}, _From, St) ->
+              Parameters
+              | LogId]}, _From, St) ->
     ?debug("    protocol:send(): transaction id:  ~p~n", [TID]),
     ?debug("    protocol:send(): service name:    ~p~n", [ServiceName]),
     ?debug("    protocol:send(): timeout:         ~p~n", [Timeout]),
@@ -139,7 +146,7 @@ handle_call(Other, _From, St) ->
 
 
 %% Convert list-based data to binary.
-handle_cast({rvi, receive_message, [Payload, IP, Port]} = Msg, St) ->
+handle_cast({rvi, receive_message, [Payload, IP, Port | LogId]} = Msg, St) ->
     ?debug("~p:handle_cast(~p)", [?MODULE, Msg]),
     {ok, Elems} = msgpack:unpack(Payload, St#st.pack_opts),
 

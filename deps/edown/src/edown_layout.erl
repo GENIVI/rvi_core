@@ -90,9 +90,7 @@
 
 module(Element, Options) ->
     XML = layout_module(Element, init_opts(Element, Options)),
-    Export = proplists:get_value(xml_export, Options,
-				 ?DEFAULT_XML_EXPORT),
-    xmerl:export_simple(XML, Export, []).
+    edown_lib:export(XML, Options).
 
 % Put layout options in a data structure for easier access.
 
@@ -185,9 +183,7 @@ layout_module(#xmlElement{name = module, content = Es}=E, Opts) ->
     Body = ([]   % navigation("top")
             ++ [{h1, Title}]
 	    ++ doc_index(FullDesc, Functions, Types)
-	    ++ [{p,[]}]
-	    ++ ShortDesc
-	    ++ [{p,[]}]
+	    ++ [{p, ShortDesc}]
 	    ++ copyright(Es)
 	    ++ deprecated(Es, "module")
 	    ++ version(Es)
@@ -219,8 +215,7 @@ layout_module(#xmlElement{name = module, content = Es}=E, Opts) ->
     %% 	    io:fwrite("not edown_doclet (~p)~n", [Name])
     %% end,
     %% xhtml(Title, stylesheet(Opts), Body).
-    Res = to_simple(markdown(Title, stylesheet(Opts), Body)),
-    Res.
+    to_simple(markdown(Title, stylesheet(Opts), Body)).
 
 %% This function is a workaround for a bug in xmerl_lib:expand_content/1 that
 %% causes it to lose track of the parents if #xmlElement{} records are
@@ -905,7 +900,9 @@ t_type([E = #xmlElement{name = record, content = Es}]) ->
 t_type([E = #xmlElement{name = abstype, content = Es}]) ->
     t_abstype(E, Es);
 t_type([#xmlElement{name = union, content = Es}]) ->
-    t_union(Es).
+    t_union(Es);
+t_type([#xmlElement{name = type} = K, #xmlElement{name = type} = V]) ->
+    t_map_field([K,V]).
 
 t_var(E) ->
     [get_attrval(name, E)].
@@ -1061,8 +1058,7 @@ type(E) ->
 
 type(E, Ds) ->
     Opts = [],
-    xmerl:export_simple_content(t_utype_elem(E) ++ local_defs(Ds, Opts),
-                                ?HTML_EXPORT).
+    edown_lib:export(t_utype_elem(E) ++ local_defs(Ds, Opts), Opts).
 
 package(E=#xmlElement{name = package, content = Es}, Options) ->
     Opts = init_opts(E, Options),
@@ -1084,7 +1080,7 @@ package(E=#xmlElement{name = package, content = Es}, Options) ->
 	    ++ FullDesc),
     %% XML = xhtml(Title, stylesheet(Opts), Body),
     XML = markdown(Title, stylesheet(Opts), Body),
-    xmerl:export_simple_content(XML, ?HTML_EXPORT).
+    edown_lib:export(XML, Options).
 
 overview(E=#xmlElement{name = overview, content = Es}, Options) ->
     Opts = init_opts(E, Options),
@@ -1266,9 +1262,10 @@ ot_name([E]) ->
 
 get_first_sentence([#xmlElement{name = p, content = Es} | Tail]) ->
     %% Descend into initial paragraph.
+    Tail1 = drop_empty_lines(Tail),
     {First, Rest} = get_first_sentence_1(Es),
     {First,
-     [#xmlElement{name = p, content = Rest} || Rest =/= []] ++ Tail};
+     [#xmlElement{name = p, content = Rest} || Rest =/= []] ++ Tail1};
 get_first_sentence(Es) ->
     get_first_sentence_1(Es).
 
@@ -1288,7 +1285,8 @@ get_first_sentence_1([E = #xmlText{value = Txt} | Es], Acc) ->
 	     if Rest == [] ->
 		     Es;
 		true ->
-		     [#xmlText{value=Rest} | Es]
+		     [#xmlText{value=trim_leading_lines(
+				       normalize_text(Rest))} | Es]
 	     end};
 	none ->
 	    get_first_sentence_1(Es, [E | Acc])
@@ -1296,8 +1294,10 @@ get_first_sentence_1([E = #xmlText{value = Txt} | Es], Acc) ->
 get_first_sentence_1([E | Es], Acc) ->
     % Skip non-text segments - don't descend further
     get_first_sentence_1(Es, [E | Acc]);
+get_first_sentence_1([], []) ->
+    {[], []};
 get_first_sentence_1([], Acc) ->
-    {lists:reverse(Acc), []}.
+    {{p, lists:reverse(Acc)}, []}.
 
 end_of_sentence(Cs, Last) ->
     end_of_sentence(Cs, Last, []).
@@ -1321,3 +1321,21 @@ end_of_sentence_1(C, Cs, true, As) ->
     {value, lists:reverse([C | As]), Cs};
 end_of_sentence_1(_, _, false, _) ->
     none.
+
+drop_empty_lines([#xmlText{value = Txt}=H|T]) ->
+    case trim_leading_lines(normalize_text(Txt)) of
+	[] ->
+	    drop_empty_lines(T);
+	Rest ->
+	    [H#xmlText{value = Rest}|T]
+    end;
+drop_empty_lines([H|T]) when is_list(H) ->
+    drop_empty_lines(H ++ T);
+drop_empty_lines(L) ->
+    L.
+
+trim_leading_lines([H|T]) when H==$\n; H==$\t; H==$\s ->
+    trim_leading_lines(T);
+trim_leading_lines(Str) ->
+    Str.
+

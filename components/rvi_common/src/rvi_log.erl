@@ -2,14 +2,21 @@
 
 -behaviour(gen_server).
 
+-compile(export_all).
+
 -export([start_link/0,
 	 log/3,
-	 flog/4,
+	 flog/4, flog/5,
 	 new_id/1,
 	 fetch/1,
 	 timestamp/0,
 	 format/2
 	]).
+
+-export([entry/3,
+	 exit_good/3,
+	 exit_warn/3,
+	 exit_fail/3]).
 
 -export([start_json_server/0,
 	 handle_rpc/2,
@@ -28,6 +35,7 @@
 	     seq = 1,
 	     node_tag}).
 -record(evt, {id,
+	      level,
 	      component,
 	      event}).
 -define(IDS, rvi_log_ids).
@@ -35,13 +43,35 @@
 
 -define(MAX_LENGTH, 60).
 
+%% levels
+-define(INFO, 0).
+-define(GOOD, 1).
+-define(WARN, 2).
+-define(FAIL, 3).
+
 
 start_link() ->
     create_tabs(),
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+entry(TID, Component, Event) -> log(TID, ?INFO, Component, Event).
+exit_good(TID, Component, Event) -> log(TID, ?GOOD, Component, Event).
+exit_warn(TID, Component, Event) -> log(TID, ?WARN, Component, Event).
+exit_fail(TID, Component, Event) -> log(TID, ?FAIL, Component, Event).
+
 log(TID, Component, Event) when is_binary(TID), is_binary(Component) ->
-    gen_server:cast(?MODULE, {log, TID, timestamp(), Component, bin(Event)}).
+    log(TID, ?INFO, Component, Event).
+
+log(TID, Level, Component, Event) when is_binary(TID), is_binary(Component) ->
+    gen_server:cast(?MODULE, {log, TID, level_num(Level), timestamp(), Component, bin(Event)}).
+
+
+level_num(L) when is_integer(L), L >= ?INFO, L =< ?FAIL ->
+    L;
+level_num(info   ) -> 0;
+level_num(result ) -> 1;
+level_num(warning) -> 2;
+level_num(error  ) -> 3.
 
 new_id(Prefix) ->
     gen_server:call(?MODULE, {new_id, bin(Prefix)}).
@@ -63,18 +93,156 @@ trunc_msg(Bin) ->
 
 
 flog(Fmt, Args, Component, CS) ->
+    flog(0, Fmt, Args, Component, CS).
+
+flog(Level, Fmt, Args, Component, CS) ->
     LogTID = rvi_common:get_log_id(CS),
-    log(LogTID, Component, format(Fmt, Args)).
+    log(LogTID, Level, Component, format(Fmt, Args)).
 
 timestamp() ->
     os:timestamp().
 
+%% shorthand for the select pattern
+-define(ELEM(A), {element, #evt.A, '$_'}).
+-define(PROD, {{'$1', ?ELEM(level), ?ELEM(component), ?ELEM(event)}}).
+
 fetch(Tids) ->
+    fetch(Tids, []).
+
+fetch(Tids, Args) ->
     TidSet = select_ids(Tids),
-    [{Tid, ets:select(?EVENTS, [{#evt{id = {Tid,'$1'},
-				      component = '$2',
-				      event = '$3'}, [], [{{'$1', '$2', '$3'}}] }])}
-     || Tid <- TidSet].
+    lists:foldr(
+      fun(Tid, Acc) ->
+	      case match_events(
+		     Args,
+		     ets:select(?EVENTS, [{#evt{id = {Tid,'$1'},
+						level = '$2',
+						component = '$3',
+						event = '$4'}, [], [?PROD] }])) of
+		  [] -> Acc;
+		  Events ->
+		      [{Tid, Events}|Acc]
+	      end
+      end, [], TidSet).
+
+match_events(_, []) ->
+    [];
+match_events(Args, Events) ->
+    lists:foldl(
+      fun({<<"level">>, Str}, Acc) ->
+	      filter_by_level(Acc, parse_level_expr(Str));
+	 (_, Acc) ->
+	      Acc
+      end, Events, Args).
+
+%% The level comparison expressions use the following syntax:
+%% Expr :: Int
+%% | BinOp Expr
+%% | UnaryOp Expr
+%% | '(' Expr ')'
+%%
+%% BinOp :: '==' | '>=' | '=>' | '<=' | '=<' | '!=' | '|' | '&'
+%% UnaryOp :: '!' | 'not'
+%%
+%% The token scanning pass translates the tokens to standard Erlang tokens
+%% The parsing pass first infills variable references where needed, e.g.
+%% "> 1" would be translated to "L > 1" (where L is a variable bound to the
+%% current Event Level at evaluation time), and
+%% "1" would be translated to "L == 1".
+%%
+%% The infill pass is needed in order to produce a legal Erlang grammar. It's followed
+%% by a call to the erlang parser. The short forms are expanded in the parsed form.
+%%
+%% When parsing and evaluating the expressions any exception is translated into a failed
+%% comparison.
+%%
+parse_level_expr(Str) ->
+    try level_grammar(scan_level_expr(Str, []))
+    catch
+	error:_ ->
+	    [{atom, 1, false}]
+    end.
+
+scan_level_expr(<<"!=", Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'=/=',1}|Acc]);
+scan_level_expr(<<"==", Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'=:=',1}|Acc]);
+scan_level_expr(<<"=>", Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'=<',1}|Acc]);
+scan_level_expr(<<"<=", Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'>=',1}|Acc]);
+scan_level_expr(<<">=", Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'>=',1}|Acc]);
+scan_level_expr(<<"=<", Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'=<',1}|Acc]);
+scan_level_expr(<<">",  Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'>',1}|Acc]);
+scan_level_expr(<<"<",  Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'<',1}|Acc]);
+scan_level_expr(<<"|", Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'orelse',1}|Acc]);
+scan_level_expr(<<"&", Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'andalso',1}|Acc]);
+scan_level_expr(<<I, Rest/binary>>, Acc) when I >= $0, I =< $3 ->
+    scan_level_expr(Rest, [{integer, 1, I-$0} | Acc]);
+scan_level_expr(<<"(",  Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'(',1}|Acc]);
+scan_level_expr(<<")",  Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{')',1}|Acc]);
+scan_level_expr(<<"not",  Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'not',1}|Acc]);
+scan_level_expr(<<"!",  Rest/binary>>, Acc) ->
+    scan_level_expr(Rest, [{'not',1}|Acc]);
+scan_level_expr(<<"\s", Rest/binary>>, Acc) ->  scan_level_expr(Rest, Acc);
+scan_level_expr(<<"\t", Rest/binary>>, Acc) ->  scan_level_expr(Rest, Acc);
+scan_level_expr(<<"\n", Rest/binary>>, Acc) ->  scan_level_expr(Rest, Acc);
+scan_level_expr(<<>>, Acc) ->
+    lists:reverse(Acc).
+
+level_grammar(Toks) ->
+    case erl_parse:parse_exprs(infill_vars(Toks)) of
+	{ok, Exprs} ->
+	    expand_shorthand(Exprs);
+	Error ->
+	    error(Error)
+    end.
+
+-define(is_op(H), H=='=:='; H=='=!='; H=='>'; H=='<'; H=='>='; H=='=<').
+
+infill_vars([{O,_}=H|T]) when ?is_op(O) ->
+    [{var,1,'L'},H|infill_vars(T)];
+infill_vars([H|T]) ->
+    [H|infill_vars(T)];
+infill_vars([]) ->
+    [{dot,1}].
+
+expand_shorthand([Expr|Exprs]) ->
+    [expand_shorthand_(Expr)|expand_shorthand(Exprs)];
+expand_shorthand([]) ->
+    [].
+
+expand_shorthand_({integer,_,_} = I) ->
+    {op, 1, '=:=', {var,1,'L'}, I};
+expand_shorthand_({op,Ln,Op,A,B}) when Op=='andalso';
+				       Op=='orelse' ->
+    {op,Ln,Op,expand_shorthand_(A), expand_shorthand_(B)};
+expand_shorthand_({op,Ln,'not',E}) ->
+    {op,Ln,'not',expand_shorthand_(E)};
+expand_shorthand_(Expr) ->
+    Expr.
+
+filter_by_level([H|T], Expr) ->
+    Res = try erl_eval:exprs(Expr, [{'L', element(2,H)}]) of
+	      {value, true, _} -> true;
+	      _ -> false
+	  catch
+	      _:_ -> false
+	  end,
+    if Res ->
+	    [H|filter_by_level(T, Expr)];
+       true ->
+	    filter_by_level(T, Expr)
+    end.
 
 init(_) ->
     {ok, Tag} = rvi_common:get_module_config(
@@ -117,11 +285,11 @@ handle_notification(Other, _Args) ->
     ok.
 
 handle_cast(log_start, #st{n = N, node_tag = Tag} = St) ->
-    do_log(tid_(<<"rvi_log">>, 0, Tag), timestamp(), <<"rvi_common">>,
+    do_log(tid_(<<"rvi_log">>, 0, Tag), ?INFO, timestamp(), <<"rvi_common">>,
 	   format("Started - Tag = ~s", [Tag]), N),
     {noreply, St};
-handle_cast({log, TID, TS, Component, Event}, #st{n = N} = St) ->
-    do_log(TID, TS, Component, Event, N),
+handle_cast({log, TID, Level, TS, Component, Event}, #st{n = N} = St) ->
+    do_log(TID, Level, TS, Component, Event, N),
     {noreply, St};
 handle_cast(_, St) ->
     {noreply, St}.
@@ -161,10 +329,10 @@ maybe_new(T, Opts) ->
 tid_(Prefix, Seq, Tag) ->
     <<Prefix/binary, ":", (integer_to_binary(Seq))/binary, "-", Tag/binary>>.
 
-do_log(Tid, TS, Component, Event, N) ->
+do_log(Tid, Level, TS, Component, Event, N) ->
     case ets:member(?IDS, Tid) of
 	true ->
-	    store_event(Tid, TS, Component, Event);
+	    store_event(Tid, Level, TS, Component, Event);
 	false ->
 	    case ets:info(?IDS, size) of
 		Sz when Sz >= N ->
@@ -173,13 +341,14 @@ do_log(Tid, TS, Component, Event, N) ->
 		    ok
 	    end,
 	    ets:insert(?IDS, {Tid}),
-	    store_event(Tid, TS, Component, Event)
+	    store_event(Tid, Level, TS, Component, Event)
     end.
 
-store_event(Tid, TS, Component, Event) ->
-    rvi_log_log:info("~-20s ~-12s ~s", [Tid, Component, Event]),
-    ?info("RVI_LOG: ~p/~p/~p", [Tid, Component, Event]),
+store_event(Tid, Level, TS, Component, Event) ->
+    rvi_log_log:info("~-20s ~-2w ~-12s ~s", [Tid, Level, Component, Event]),
+    ?info("RVI_LOG: ~p/~w/~p/~p", [Tid, Level, Component, Event]),
     ets:insert(?EVENTS, #evt{id = {Tid, TS},
+			     level = Level,
 			     component = Component,
 			     event = Event}).
 
@@ -188,7 +357,7 @@ purge_id() ->
 	'$end_of_table' ->
 	    %% Should not be possible ...
 	    ok;
-	{Tid} ->
+	Tid ->
 	    ets:delete(?IDS, Tid),
 	    ets:match_delete(?EVENTS, #evt{id = {Tid,'_'}, _ = '_'})
     end.

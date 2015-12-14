@@ -5,15 +5,16 @@
 * [Function Index](#index)
 * [Function Details](#functions)
 
-
 Markdown layout module for EDoc.
+
 Copyright (c) 2014 Ulf Wiger
 
 __Authors:__ Ulf Wiger ([`ulf@wiger.net`](mailto:ulf@wiger.net)).
+
 <a name="description"></a>
 
 ## Description ##
-  Derived from `edoc_layout`, which is part of the Erlang/OTP application EDoc.
+Derived from `edoc_layout`, which is part of the Erlang/OTP application EDoc.
 The module is intended to be used together with edoc.<a name="index"></a>
 
 ## Function Index ##
@@ -32,16 +33,13 @@ The module is intended to be used together with edoc.<a name="index"></a>
 
 `markdown(Title, CSS, Body) -> any()`
 
-
 <a name="module-2"></a>
 
 ### module/2 ###
 
 `module(Element, Options) -> any()`
 
-
 The layout function.
-
 
 Options to the standard layout:
 
@@ -116,14 +114,13 @@ used for exporting the documentation. See <a href="http://www.erlang.org/doc/man
 
 
 
-
 __See also:__ [//edoc/edoc:layout/2](http://www.erlang.org/doc/man/edoc.html#layout-2), [edown_doclet:layout/2](edown_doclet.md#layout-2).
+
 <a name="overview-2"></a>
 
 ### overview/2 ###
 
 `overview(E, Options) -> any()`
-
 
 <a name="package-2"></a>
 
@@ -131,11 +128,9 @@ __See also:__ [//edoc/edoc:layout/2](http://www.erlang.org/doc/man/edoc.html#lay
 
 `package(E, Options) -> any()`
 
-
 <a name="type-1"></a>
 
 ### type/1 ###
 
 `type(E) -> any()`
-
 

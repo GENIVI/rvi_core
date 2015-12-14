@@ -15,7 +15,8 @@
   {applications, [
                   kernel,
                   stdlib,
-		  rvi_common
+		  rvi_common,
+                  dlink
                  ]},
   {mod, { dlink_tls_app, []}},
   {start_phases, [{json_rpc, []}, {connection_manager, []}, {announce, []}]},

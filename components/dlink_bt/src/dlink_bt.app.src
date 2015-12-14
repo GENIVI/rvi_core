@@ -17,7 +17,7 @@
   {applications, [
                   kernel,
                   stdlib,
-		  rvi_common,
+                  dlink,
 		  bt
                  ]},
   {mod, { dlink_bt_app, []}},

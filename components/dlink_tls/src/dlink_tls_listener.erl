@@ -14,29 +14,57 @@
 -include_lib("lager/include/log.hrl").
 
 -export([start_link/0,
-         add_listener/4,
-         remove_listener/3]).
+         add_listener/3,
+         remove_listener/2]).
 
 -export([init/2, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, sock_opts/0, new_connection/4]).
 
 -behavior(gen_nb_server).
 
+-define(TAB, dlink_tls_listener_tab).
+
 start_link() ->
-    gen_nb_server:start_link(?MODULE, []).
+    create_tabs(),
+    gen_nb_server:start_link({local, ?MODULE}, ?MODULE, []).
 
-add_listener(Pid, IpAddr, Port, CompSpec) ->
-    gen_server:call(Pid, {add_listener, IpAddr, Port, CompSpec}).
+add_listener(IpAddr, Port, CompSpec) ->
+    gen_server:call(?MODULE, {add_listener, IpAddr, Port, CompSpec}).
 
-remove_listener(Pid, IpAddr, Port) ->
-    gen_server:call(Pid, {remove_listener, IpAddr, Port}).
+remove_listener(IpAddr, Port) ->
+    gen_server:call(?MODULE, {remove_listener, IpAddr, Port}).
 
 init([], State) ->
-    {ok, State}.
+    State1 =
+        lists:foldl(
+          fun({{_,_}} = Addr, Acc) ->
+                  case gen_nb_server:add_listen_socket(Addr, Acc) of
+                      {ok, Acc1} ->
+                          ets_insert(?TAB, {Addr}),
+                          Acc1;
+                      _Error ->
+                          ets_delete(?TAB, Addr),
+                          Acc
+                  end;
+             ({cs, CS}, Acc) ->
+                  ets_insert(?TAB, {cs, CS}),
+                  gen_nb_server:store_cb_state(CS, Acc)
+          end, State, ets_select(?TAB, [{ '_', [], ['$_'] }])),
+    {ok, State1}.
+
+create_tabs() ->
+    case ets:info(?TAB, name) of
+        undefined ->
+            ets:new(?TAB, [public, named_table, set]);
+        _ ->
+            ?TAB
+    end.
 
 handle_call({add_listener, IpAddr, Port, CompSpec}, _From, State) ->
+    ets_insert(?TAB, {cs, CompSpec}),
     case gen_nb_server:add_listen_socket({IpAddr, Port}, State) of
         {ok, State1} ->
+            ets_insert(?TAB, {{IpAddr, Port}}),
             {reply, ok, gen_nb_server:store_cb_state( CompSpec, State1 )};
 
         Error ->
@@ -46,6 +74,7 @@ handle_call({add_listener, IpAddr, Port, CompSpec}, _From, State) ->
 handle_call({remove_listener, IpAddr, Port}, _From, State) ->
     case gen_nb_server:remove_listen_socket({IpAddr, Port}, State) of
         {ok, State1} ->
+            ets_delete(?TAB, {IpAddr, Port}),
             {reply, ok, State1};
         Error ->
             {reply, Error, State}
@@ -78,6 +107,16 @@ new_connection(IP, Port, Sock, State) ->
     {ok, P} = dlink_tls_conn:setup(
                 undefined, 0, Sock,
                 dlink_tls_rpc,
-                handle_socket, [CompSpec]),
-    dlink_tls_conn:upgrade(P, server, CompSpec),
+                handle_socket, CompSpec),
+    dlink_tls_conn:async_upgrade(P, server, CompSpec),
     {ok, State}.
+
+
+ets_insert(Tab, Obj) ->
+    ets:insert(Tab, Obj).
+
+ets_delete(Tab, Key) ->
+    ets:delete(Tab, Key).
+
+ets_select(Tab, Pat) ->
+    ets:select(Tab, Pat).

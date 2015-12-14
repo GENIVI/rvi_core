@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -22,9 +22,6 @@
 
 start(_StartType, _StartArgs) ->
     dlink_bt_sup:start_link().
-
-start_phase(init, _, _) ->
-    dlink_bt_rpc:init_rvi_component();
 
 start_phase(json_rpc, _, _) ->
     dlink_bt_rpc:start_json_server(),

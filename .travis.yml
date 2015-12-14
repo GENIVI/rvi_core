@@ -1,9 +1,10 @@
 sudo: true
 language: erlang
-otp_release: R16B03-1
+otp_release: 18.1
 before_install:
-  - sudo apt-get install python-dev libffi-dev
-  - sudo apt-get install bluez libbluetooth-dev lynx
+  - sudo apt-get -y update
+  - sudo apt-get -y install python-dev libffi-dev
+  - sudo apt-get -y install bluez libbluetooth-dev lynx
 before_script:
   - export PATH=$HOME/.local/bin:$PATH
   - pip install -r requirements.txt --user `whoami`
@@ -14,4 +15,7 @@ after_failure:
   - "cat logs/raw.log"
   - "for f in `find logs/ct_run*/log*/ -type f`; do echo \"\n$f\n\" ; cat $f; done"
   - "for f in `ls -1 logs/ct_run*/*.rvi_core.logs/run*/rvi_core_suite*.html`; do echo \"\"; echo \"$f:\"; lynx -dump $f; done"
-  - "for f in `ls logs/ct_run*/*/log/erlang.log.*`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done"
+  - "for f in `ls logs/ct_run*/*/rvi/log/erlang.log.*`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done"
+  - "for f in `ls logs/ct_run*/*/rvi/log/lager/crash.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done"
+  - "for f in `ls logs/ct_run*/*/rvi/log/lager/error.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done"
+  - "for f in `ls logs/ct_run*/*/rvi/log/lager/rvi_log.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done"

@@ -19,21 +19,21 @@
 -behaviour(gen_server).
 
 %% API
--export([start/3, 
+-export([start/3,
 	 start_link/3]).
 
 %% gen_server callbacks
--export([init/1, 
-	 handle_call/3, 
-	 handle_cast/2, 
+-export([init/1,
+	 handle_call/3,
+	 handle_cast/2,
 	 handle_info/2,
-	 terminate/2, 
+	 terminate/2,
 	 code_change/3]).
 
--export([encode_reuse/2, 
+-export([encode_reuse/2,
 	 decode_reuse_config/1]).
 
--define(SERVER, ?MODULE). 
+-define(SERVER, ?MODULE).
 
 -record(state, {
 	  module,
@@ -90,6 +90,7 @@ start(XSocket, Module, Args) ->
 %% @end
 %%--------------------------------------------------------------------
 init([XSocket, Module, Args]) ->
+    ?debug("init(~p, ~p, ~p)", [XSocket, Module, Args]),
     {ok, #state{ socket=XSocket,
 		 module=Module,
 		 args=Args,
@@ -104,23 +105,23 @@ init([XSocket, Module, Args]) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec handle_call(Request::term(), 
-		  From::{pid(), Tag::term()}, 
+-spec handle_call(Request::term(),
+		  From::{pid(), Tag::term()},
 		  State::#state{}) ->
 			 {reply, Reply::term(), State::#state{}} |
 			 {noreply, State::#state{}} |
 			 {stop, Reason::atom(), Reply::term(), State::#state{}}.
 
 %% No 'local' handle_call
-handle_call(Request, From, 
+handle_call(Request, From,
 	    State=#state{module = M, state = MSt, socket = Socket}) ->
     ?dbg("handle_call: ~p", [Request]),
     try M:control(Socket, Request, From, MSt) of
-	Result -> 
+	Result ->
 	    ?dbg("handle_call: reply ~p", [Result]),
 	    mod_reply(Result, From, State)
     catch
-	error:_Error -> 
+	error:_Error ->
 	    ?dbg("handle_call: catch reason  ~p", [_Error]),
 	    ret({reply, {error, unknown_call}, State})
     end.
@@ -172,8 +173,117 @@ send_(Bin, From, #state{socket = S, pending = P} = State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({activate,Active}, State0) ->
+handle_cast({activate,Active}, #state{socket = XSocket0} = State0) ->
     ?dbg("activate~n", []),
+    case XSocket0 of
+	{#exo_socket{} = X, Fun} when is_function(Fun, 1) ->
+	    try Fun(X) of
+		{ok, XSocket} ->
+		    activate_(Active, State0#state{socket = XSocket});
+		{error, _} = Error ->
+		    ?debug("socket fun -> ~p", [Error]),
+		    {stop, Error, State0}
+	    catch
+		Cat:Exception ->
+		    ?debug("caught ~p:~p from socket fun", [Cat, Exception]),
+		    {stop, Exception, State0}
+	    end;
+	#exo_socket{}->
+	    activate_(Active, State0)
+    end;
+handle_cast(_Msg, State) ->
+    ret({noreply, State}).
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling all non call/cast messages
+%%
+%% @spec handle_info(Info, State) -> {noreply, State} |
+%%                                   {noreply, State, Timeout} |
+%%                                   {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_info(timeout, State) ->
+    exo_socket:shutdown(State#state.socket, write),
+    ?dbg("exo_socket_session: idle_timeout~p~n", [self()]),
+    {stop, normal, State};
+handle_info({Tag,Socket,Data0}, State) when
+      %% FIXME: put socket tag in State for correct matching
+      (Tag =:= tcp orelse Tag =:= ssl orelse Tag =:= http),
+      Socket =:= (State#state.socket)#exo_socket.socket ->
+    ?dbg("exo_socket_session: got data ~p\n", [{Tag,Socket,Data0}]),
+    try exo_socket:auth_incoming(State#state.socket, Data0) of
+	<<"reuse%", Rest/binary>> ->
+	    handle_reuse_data(Rest, State);
+	Data ->
+	    handle_socket_data(Data, State)
+    catch
+	error:_ ->
+	    exo_socket:shutdown(State#state.socket, write),
+	    ret({noreply, State})
+    end;
+handle_info({Tag,Socket}, State) when
+      (Tag =:= tcp_closed orelse Tag =:= ssl_closed),
+      Socket =:= (State#state.socket)#exo_socket.socket ->
+    ?dbg("exo_socket_session: got tag ~p\n", [{Tag,Socket}]),
+    CSt0 = State#state.state,
+    case apply(State#state.module, close, [State#state.socket,CSt0]) of
+	{ok,CSt1} ->
+	    {stop, normal, State#state { state = CSt1 }}
+    end;
+handle_info({Tag,Socket,Error}, State) when
+      (Tag =:= tcp_error orelse Tag =:= ssl_error),
+      Socket =:= (State#state.socket)#exo_socket.socket ->
+    ?dbg("exo_socket_session: got error ~p\n", [{Tag,Socket,Error}]),
+    CSt0 = State#state.state,
+    case apply(State#state.module, error, [State#state.socket,Error,CSt0]) of
+	{ok,CSt1} ->
+	    ret({noreply, State#state { state = CSt1 }});
+	{stop,Reason,CSt1} ->
+	    {stop, Reason, State#state { state = CSt1 }}
+    end;
+
+handle_info(_Info, State) ->
+    ?dbg("Got info: ~p\n", [_Info]),
+    ret({noreply, State}).
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any
+%% necessary cleaning up. When it returns, the gen_server terminates
+%% with Reason. The return value is ignored.
+%%
+%% @spec terminate(Reason, State) -> void()
+%% @end
+%%--------------------------------------------------------------------
+terminate(_Reason, State) ->
+    socket_close(State#state.socket),
+    ok.
+
+socket_close({#exo_socket{} = S, _}) ->
+    exo_socket:close(S);
+socket_close(#exo_socket{} = S) ->
+    exo_socket:close(S).
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Convert process state when code is changed
+%%
+%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% @end
+%%--------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+activate_(Active, State0) ->
     try exo_socket:authenticate(State0#state.socket) of
 	{ok, S} ->
 	    ?dbg("authentication done~n", []),
@@ -204,94 +314,8 @@ handle_cast({activate,Active}, State0) ->
     catch
 	error:Crash ->
 	    {stop, {auth_failure, Crash}, State0}
-    end;
+    end.
 
-handle_cast(_Msg, State) ->
-    ret({noreply, State}).
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling all non call/cast messages
-%%
-%% @spec handle_info(Info, State) -> {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
-handle_info(timeout, State) ->
-    exo_socket:shutdown(State#state.socket, write),
-    ?dbg("exo_socket_session: idle_timeout~p~n", [self()]),
-    {stop, normal, State};
-handle_info({Tag,Socket,Data0}, State) when 
-      %% FIXME: put socket tag in State for correct matching
-      (Tag =:= tcp orelse Tag =:= ssl orelse Tag =:= http), 
-      Socket =:= (State#state.socket)#exo_socket.socket ->
-    ?dbg("exo_socket_session: got data ~p\n", [{Tag,Socket,Data0}]),
-    try exo_socket:auth_incoming(State#state.socket, Data0) of
-	<<"reuse%", Rest/binary>> ->
-	    handle_reuse_data(Rest, State);
-	Data ->
-	    handle_socket_data(Data, State)
-    catch
-	error:_ ->
-	    exo_socket:shutdown(State#state.socket, write),
-	    ret({noreply, State})
-    end;
-handle_info({Tag,Socket}, State) when
-      (Tag =:= tcp_closed orelse Tag =:= ssl_closed),
-      Socket =:= (State#state.socket)#exo_socket.socket ->
-    ?dbg("exo_socket_session: got tag ~p\n", [{Tag,Socket}]),
-    CSt0 = State#state.state,
-    case apply(State#state.module, close, [State#state.socket,CSt0]) of
-	{ok,CSt1} ->
-	    {stop, normal, State#state { state = CSt1 }}
-    end;
-handle_info({Tag,Socket,Error}, State) when 
-      (Tag =:= tcp_error orelse Tag =:= ssl_error),
-      Socket =:= (State#state.socket)#exo_socket.socket ->
-    ?dbg("exo_socket_session: got error ~p\n", [{Tag,Socket,Error}]),
-    CSt0 = State#state.state,
-    case apply(State#state.module, error, [State#state.socket,Error,CSt0]) of
-	{ok,CSt1} ->
-	    ret({noreply, State#state { state = CSt1 }});
-	{stop,Reason,CSt1} ->
-	    {stop, Reason, State#state { state = CSt1 }}
-    end;
-    
-handle_info(_Info, State) ->
-    ?dbg("Got info: ~p\n", [_Info]),
-    ret({noreply, State}).
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any
-%% necessary cleaning up. When it returns, the gen_server terminates
-%% with Reason. The return value is ignored.
-%%
-%% @spec terminate(Reason, State) -> void()
-%% @end
-%%--------------------------------------------------------------------
-terminate(_Reason, State) ->
-    exo_socket:close(State#state.socket),
-    ok.
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Convert process state when code is changed
-%%
-%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% @end
-%%--------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
 
 ret({noreply, #state{idle_timeout = T} = S}) ->
     if T==undefined -> {noreply, S};
@@ -333,7 +357,7 @@ handle_reuse_data(Rest, #state{module = M, state = MSt} = State) ->
 
 handle_socket_data(Data, State) ->
     CSt0 = State#state.state,
-    ModResult = apply(State#state.module, data, 
+    ModResult = apply(State#state.module, data,
 		      [State#state.socket,Data,CSt0]),
     ?dbg("handle_socket_data: result ~p", [ModResult]),
     handle_module_result(ModResult, State).

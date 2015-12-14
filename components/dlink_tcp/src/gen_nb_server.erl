@@ -43,6 +43,7 @@
          terminate/2,
          code_change/3]).
 
+-include_lib("lager/include/log.hrl").
 -define(SERVER, ?MODULE).
 
 -record(state, {cb,
@@ -203,11 +204,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%       Result = {ok, port()} | {error, any()}
 listen_on(CallbackModule, IpAddr, Port) ->
     SockOpts = [{reuseaddr, true}, {ip, convert(IpAddr)}] ++ CallbackModule:sock_opts(),
+    ?debug("listen on ~p:~p, Opts = ~p", [IpAddr, Port, SockOpts]),
     case gen_tcp:listen(Port, SockOpts) of
         {ok, LSock} ->
             {ok, _Ref} = prim_inet:async_accept(LSock, -1),
             {ok, LSock};
         Err ->
+	    ?debug("listen error: ~p", [Err]),
             Err
     end.
 

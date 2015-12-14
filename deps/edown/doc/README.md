@@ -4,9 +4,7 @@
 
 Copyright (c) 2014 Ulf Wiger
 
-
 __Authors:__ [`ulf@wiger.net`](mailto:ulf@wiger.net).
-
 
 Status:
 ------
@@ -51,11 +49,11 @@ It is also possible to add the branch information specifically:
 `{top_level_readme, {File, BaseHref, Branch}}`, although this shouldn't be
 necessary as long as edown can derive the branch name from git.
 
-Using Atlassian Stash as target
--------------------------------
+Using Atlassian Stash or Gitlab as target
+-----------------------------------------
 
-The option `{edown_target, github | stash}` can be used to control which
-is the intended host repository. This affects how links are rewritten in
+The option `{edown_target, github | stash | gitlab}` can be used to control
+which is the intended host repository. This affects how links are rewritten in
 order to find related files and stay on the correct branch.
 
 The default value is `github`.
@@ -63,6 +61,7 @@ The default value is `github`.
 Note that at the moment, the
 [Markdown viewer plugin](https://bitbucket.org/atlassianlabs/stash-markdown-viewer-plugin) will be needed in order to render the generated documentation
 as Markdown on Stash.
+
 Github customizations
 =====================
 `pre` tags are converted into github "fenced" code blocks, i.e.
@@ -166,15 +165,4 @@ See [bin/MARKEDOC-README.md](bin/MARKEDOC-README.md).
 **FreeBSD, Mac OS X**`$ sed -E -f markedoc.sed <markdown file> > <edoc file>`
 
 **Linux**`$ sed -r -f markedoc.sed <markdown file> > <edoc file>`
-
-
-## Modules ##
-
-
-<table width="100%" border="0" summary="list of modules">
-<tr><td><a href="edown_doclet.md" class="module">edown_doclet</a></td></tr>
-<tr><td><a href="edown_layout.md" class="module">edown_layout</a></td></tr>
-<tr><td><a href="edown_lib.md" class="module">edown_lib</a></td></tr>
-<tr><td><a href="edown_make.md" class="module">edown_make</a></td></tr>
-<tr><td><a href="edown_xmerl.md" class="module">edown_xmerl</a></td></tr></table>
 

@@ -1,6 +1,9 @@
 -module(rvi_server).
 -behaviour(gen_server).
 
+-export([ensure_ready/1,
+	 ensure_ready/2]).
+
 -export([start_link/0,
 	 await/0,
 	 info/0,
@@ -17,17 +20,24 @@
 -include_lib("lager/include/log.hrl").
 
 -record(st, {wait_for = [],
+	     tref,
 	     ready = []}).
 
+ensure_ready(Timeout) ->
+    ensure_ready(rvi_core, Timeout).
+
+ensure_ready(App, Timeout) ->
+    gproc:await({n,l,App}, Timeout).
+
 start_link() ->
-    gen_server:start_link({local,?MODULE}, ?MODULE, [], [{debug,[trace]}]).
+    gen_server:start_link({local,?MODULE}, ?MODULE, [], []).
 
 init([]) ->
     WaitFor = lists:flatmap(
 		fun({_, Names}) ->
 			Names
 		end, setup:find_env_vars(rvi_core_await)),
-    {ok, #st{wait_for = WaitFor}}.
+    {ok, start_timer(#st{wait_for = WaitFor})}.
 
 await() ->
     call(await).
@@ -60,12 +70,22 @@ handle_cast(_, S) ->
 handle_info({gproc, _, registered, {Key, _, _}}, #st{wait_for = WF,
 						     ready = Ready} = S) ->
     WF1 = WF -- [Key],
+    S1 = S#st{ready = [Key | Ready], wait_for = WF1},
     if WF1 == [] andalso WF =/= [] ->
-	    rvi_common:announce({n, l, rvi_core});
+	    rvi_common:announce({n, l, rvi_core}),
+	    {noreply, cancel_timer(S1)};
        true ->
-	    ok
-    end,
-    {noreply, S#st{ready = [Key | Ready], wait_for = WF1}};
+	    {noreply, S1}
+    end;
+handle_info({timeout, TRef, timeout}, #st{tref = TRef,
+					  wait_for = WF} = S) ->
+    case WF of
+	[] ->
+	    {noreply, S#st{tref = undefined}};
+	[_|_] ->
+	    ?warning("Still waiting for ~p", [WF]),
+	    {noreply, start_timer(S)}
+    end;
 handle_info(_, S) ->
     {noreply, S}.
 
@@ -78,3 +98,13 @@ code_change(_FromVsn, S, _Extra) ->
 
 call(Req) ->
     gen_server:call(?MODULE, Req).
+
+start_timer(S) ->
+    TRef = erlang:start_timer(timer:seconds(10), self(), timeout),
+    S#st{tref = TRef}.
+
+cancel_timer(#st{tref = undefined} = S) ->
+    S;
+cancel_timer(#st{tref = TRef} = S) ->
+    erlang:cancel_timer(TRef),
+    S#st{tref = undefined}.

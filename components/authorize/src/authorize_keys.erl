@@ -2,24 +2,25 @@
 -behaviour(gen_server).
 
 -export([get_key_pair/0,
+	 get_device_key/0,
 	 get_key_pair_from_pem/2,
 	 get_pub_key/1,
-	 authorize_jwt/0,
 	 provisioning_key/0,
 	 signed_public_key/2,
 	 save_keys/2,
-	 save_cert/4]).
--export([get_certificates/0,
-	 get_certificates/1]).
+	 save_cred/5]).
+-export([get_credentials/0,
+	 get_credentials/1]).
 -export([validate_message/2,
 	 validate_service_call/2]).
 -export([filter_by_service/2,
-	 find_cert_by_service/1]).
+	 find_cred_by_service/1]).
 -export([public_key_to_json/1,
 	 json_to_public_key/1]).
 
 -export([self_signed_public_key/0]).  % just temporary
 -export([pp_key/1,
+	 abbrev/1,
 	 abbrev_bin/1,
 	 abbrev_payload/1,
 	 abbrev_jwt/1]).
@@ -36,20 +37,28 @@
 -include_lib("public_key/include/public_key.hrl").
 
 -record(st, {provisioning_key,
-	     cert_dir,
-	     authorize_jwt}).
+	     dev_cert,
+	     cred_dir}).
 
--record(cert, {id,
-	       register = [],
-	       invoke = [],
+%% -record(cert, {id,
+%% 	       register = [],
+%% 	       invoke = [],
+%% 	       validity = [],
+%% 	       jwt,
+%% 	       cert}).
+
+-record(cred, {id,
+	       right_to_register = [],
+	       right_to_invoke = [],
 	       validity = [],
+	       device_cert,
 	       jwt,
-	       cert}).
+	       cred}).
 
 -record(key, {id,
 	      key}).
 
--define(CERTS, authorize_certs).
+-define(CREDS, authorize_creds).
 -define(KEYS,  authorize_keys).
 
 public_key_to_json(#'RSAPublicKey'{modulus = N, publicExponent = E}) ->
@@ -101,8 +110,15 @@ get_key_pair() ->
 	    get_key_pair_from_pem(openssl, Pem)
     end.
 
-authorize_jwt() ->
-    gen_server:call(?MODULE, authorize_jwt).
+get_device_key() ->
+    case get_env(device_key) of
+	undefined ->
+	    {undefined, undefined};
+	[_|_] = File ->
+	    get_key_pair_from_pem(openssl, File);
+	{openssl_pem, Pem} ->
+	    get_key_pair_from_pem(openssl, Pem)
+    end.
 
 validate_message(JWT, Conn) ->
     gen_server:call(?MODULE, {validate_message, JWT, Conn}).
@@ -110,17 +126,17 @@ validate_message(JWT, Conn) ->
 validate_service_call(Service, Conn) ->
     gen_server:call(?MODULE, {validate_service_call, Service, Conn}).
 
-get_certificates() ->
-    get_certificates(local).
+get_credentials() ->
+    get_credentials(local).
 
-get_certificates(Conn) ->
-    gen_server:call(?MODULE, {get_certificates, Conn}).
+get_credentials(Conn) ->
+    gen_server:call(?MODULE, {get_credentials, Conn}).
 
 filter_by_service(Services, Conn) ->
     gen_server:call(?MODULE, {filter_by_service, Services, Conn}).
 
-find_cert_by_service(Service) ->
-    gen_server:call(?MODULE, {find_cert_by_service, Service}).
+find_cred_by_service(Service) ->
+    gen_server:call(?MODULE, {find_cred_by_service, Service}).
 
 provisioning_key() ->
     gen_server:call(?MODULE, provisioning_key).
@@ -128,8 +144,8 @@ provisioning_key() ->
 save_keys(Keys, Conn) ->
     gen_server:call(?MODULE, {save_keys, Keys, Conn}).
 
-save_cert(Cert, JWT, Conn, LogId) ->
-    gen_server:call(?MODULE, {save_cert, Cert, JWT, Conn, LogId}).
+save_cred(Cred, JWT, Conn, PeerCert, LogId) ->
+    gen_server:call(?MODULE, {save_cred, Cred, JWT, Conn, PeerCert, LogId}).
 
 %% Gen_server functions
 
@@ -137,7 +153,7 @@ start_link() ->
     create_ets(),
     case gen_server:start_link({local, ?MODULE}, ?MODULE, [], []) of
 	{ok, Pid} = Ok ->
-	    ets:give_away(?CERTS, Pid, undefined),
+	    ets:give_away(?CREDS, Pid, undefined),
 	    ets:give_away(?KEYS, Pid, undefined),
 	    Ok;
 	Other ->
@@ -145,18 +161,19 @@ start_link() ->
     end.
 
 init([]) ->
-    ProvisioningKey = get_pub_key(get_env(provisioning_key)),
+    ProvisioningKey = get_pub_key_from_cert(get_env(root_cert)),
     ?debug("ProvisioningKey = ~s~n", [pp_key(ProvisioningKey)]),
-    CertDir = setup:verify_dir(get_env(cert_dir)),
-    {ok, AuthJwt0} = file:read_file(get_env(authorize_jwt)),
-    AuthJwt = strip_nl(AuthJwt0),
-    ?debug("CertDir = ~p~n", [CertDir]),
-    Certs = scan_certs(CertDir, ProvisioningKey),
-    ?debug("scan_certs found ~p certificates~n", [length(Certs)]),
-    [ets:insert(?CERTS, {{local, C#cert.id}, C}) || C <- Certs],
+    {ok, DevCertBin} = file:read_file(get_env(device_cert)),
+    DevCert = strip_pem_begin_end(DevCertBin),
+    ?debug("Own DevCert = ~w", [abbrev_bin(DevCert)]),
+    CredDir = setup:verify_dir(get_env(cred_dir)),
+    ?debug("CredDir = ~p~n", [CredDir]),
+    Creds = scan_creds(CredDir, ProvisioningKey, DevCert),
+    ?debug("scan_creds found ~p credentials~n", [length(Creds)]),
+    [ets:insert(?CREDS, {{local, C#cred.id}, C}) || C <- Creds],
     {ok, #st{provisioning_key = ProvisioningKey,
-	     cert_dir = CertDir,
-	     authorize_jwt = AuthJwt}}.
+	     dev_cert = DevCert,
+	     cred_dir = CredDir}}.
 
 handle_call(Req, From, S) ->
     try handle_call_(Req, From, S)
@@ -167,13 +184,11 @@ handle_call(Req, From, S) ->
 	    {reply, error, S}
     end.
 
-handle_call_(authorize_jwt, _, S) ->
-    {reply, S#st.authorize_jwt, S};
 handle_call_(provisioning_key, _, S) ->
     {reply, S#st.provisioning_key, S};
-handle_call_({get_certificates, Conn}, _, S) ->
-    Certs = certs_by_conn(Conn),
-    {reply, Certs, S};
+handle_call_({get_credentials, Conn}, _, S) ->
+    Creds = creds_by_conn(Conn),
+    {reply, Creds, S};
 handle_call_({save_keys, Keys, Conn}, _, S) ->
     ?debug("save_keys: Keys=~p, Conn=~p~n", [abbrev_k(Keys), Conn]),
     save_keys_(Keys, Conn),
@@ -182,14 +197,16 @@ handle_call_({validate_message, JWT, Conn}, _, S) ->
     {reply, validate_message_(JWT, Conn), S};
 handle_call_({validate_service_call, Svc, Conn}, _, S) ->
     {reply, validate_service_call_(Svc, Conn), S};
-handle_call_({save_cert, Cert, JWT, {IP, Port} = Conn, LogId}, _, S) ->
-    case process_cert_struct(Cert, JWT) of
+handle_call_({save_cred, Cred, JWT, {IP, Port} = Conn0, PeerCert, LogId}, _, S) ->
+    Conn = normalize_conn(Conn0),
+    ?debug("save_cred: ~p (Conn=~p, PeerCert=~p)", [Cred, Conn, abbrev(PeerCert)]),
+    case process_cred_struct(Cred, JWT, PeerCert) of
 	invalid ->
-	    log(LogId, "cert INVALID Conn=~s:~w", [IP, Port]),
+	    log(LogId, warning, "cred INVALID Conn=~s:~w", [IP, Port]),
 	    {reply, {error, invalid}, S};
-	#cert{} = C ->
-	    ets:insert(?CERTS, {{Conn, C#cert.id}, C}),
-	    log(LogId, "cert stored ~s Conn=~s:~w", [abbrev_bin(C#cert.id), IP, Port]),
+	#cred{} = C ->
+	    ets:insert(?CREDS, {{Conn, C#cred.id}, C}),
+	    log(LogId, result, "cred stored ~s Conn=~p", [abbrev_bin(C#cred.id), Conn]),
 	    {reply, ok, S}
     end;
 handle_call_({filter_by_service, Services, Conn} =R, _From, State) ->
@@ -197,9 +214,9 @@ handle_call_({filter_by_service, Services, Conn} =R, _From, State) ->
     Filtered = filter_by_service_(Services, Conn),
     ?debug("Filtered = ~p~n", [Filtered]),
     {reply, Filtered, State};
-handle_call_({find_cert_by_service, Service} = R, _From, State) ->
+handle_call_({find_cred_by_service, Service} = R, _From, State) ->
     ?debug("authorize_keys:handle_call(~p,...)~n", [R]),
-    Res = find_cert_by_service_(Service),
+    Res = find_cred_by_service_(Service),
     ?debug("Res = ~p~n", [case Res of {ok,{A,B}} -> {ok,{A,abbrev_bin(B)}}; _ -> Res end]),
     {reply, Res, State};
 handle_call_(_, _, S) ->
@@ -219,28 +236,40 @@ code_change(_FromVsn, S, _Extra) ->
 
 %% Local functions
 
-certs_by_conn(Conn) ->
-    ?debug("certs_by_conn(~p)~n", [Conn]),
+creds_by_conn(Conn) ->
+    ?debug("creds_by_conn(~p)~n", [Conn]),
     UTC = rvi_common:utc_timestamp(),
-    Certs = ets:select(?CERTS, [{ {{Conn,'_'}, #cert{jwt = '$1',
+    Creds = ets:select(?CREDS, [{ {{Conn,'_'}, #cred{jwt = '$1',
 						     validity = '$2',
 						     _='_'}},
 				  [], [{{'$1', '$2'}}] }]),
-    ?debug("rough selection: ~p~n", [[{abbrev_bin(C),I} || {C,I} <- Certs]]),
-    [C || {C,V} <- Certs, check_validity(V, UTC)].
+    ?debug("rough selection: ~p~n", [[{abbrev_bin(C),I} || {C,I} <- Creds]]),
+    [C || {C,V} <- Creds, check_validity(V, UTC)].
 
-cert_recs_by_conn(Conn) ->
-    ?debug("cert_recs_by_conn(~p)~n", [Conn]),
+cred_recs_by_conn(Conn0) ->
+    Conn = normalize_conn(Conn0),
+    ?debug("cred_recs_by_conn(~p)~nAll = ~p", [Conn, abbrev(ets:tab2list(?CREDS))]),
     UTC = rvi_common:utc_timestamp(),
-    Certs = ets:select(?CERTS, [{ {{Conn,'_'}, '$1'},
+    Creds = ets:select(?CREDS, [{ {{Conn,'_'}, '$1'},
 				  [], ['$1'] }]),
-    ?debug("rough selection: ~p~n", [[abbrev_bin(C#cert.id) || C <- Certs]]),
-    [C || C <- Certs, check_validity(C#cert.validity, UTC)].
+    ?debug("rough selection: ~p~n", [[abbrev_bin(C#cred.id) || C <- Creds]]),
+    [C || C <- Creds, check_validity(C#cred.validity, UTC)].
+
+normalize_conn(local) ->
+    local;
+normalize_conn({IP, Port} = Conn) when is_binary(IP), is_binary(Port) ->
+    Conn;
+normalize_conn({IP, Port}) ->
+    {to_bin(IP), to_bin(Port)}.
+
+to_bin(B) when is_binary(B) -> B;
+to_bin(L) when is_list(L) -> iolist_to_binary(L);
+to_bin(I) when is_integer(I) -> integer_to_binary(I).
 
 filter_by_service_(Services, Conn) ->
-    ?debug("Filter: certs = ~p", [ets:tab2list(?CERTS)]),
-    Invoke = ets:select(?CERTS, [{ {{Conn,'_'}, #cert{invoke = '$1',
-						     _ = '_'}},
+    ?debug("Filter: creds = ~p", [[{K,abbrev_payload(V)} || {K,V} <- ets:tab2list(?CREDS)]]),
+    Invoke = ets:select(?CREDS, [{ {{Conn,'_'}, #cred{right_to_invoke = '$1',
+						      _ = '_'}},
 				  [], ['$1'] }]),
     ?debug("Services by conn (~p) -> ~p~n", [Conn, Invoke]),
     filter_svcs_(Services, Invoke).
@@ -260,25 +289,25 @@ filter_svcs_([S|Svcs], Invoke) ->
 filter_svcs_([], _) ->
     [].
 
-find_cert_by_service_(Service) ->
+find_cred_by_service_(Service) ->
     SvcParts = split_path(strip_prot(Service)),
-    LocalCerts = ets:select(?CERTS, [{ {{local,'_'}, '$1'}, [], ['$1'] }]),
-    ?debug("find_cert_by_service(~p~nLocalCerts = ~p~n",
-	   [Service, [{Id,Reg,Inv} || #cert{id = Id,
-					    invoke = Inv,
-					    register = Reg} <- LocalCerts]]),
+    LocalCreds = ets:select(?CREDS, [{ {{local,'_'}, '$1'}, [], ['$1'] }]),
+    ?debug("find_creds_by_service(~p~nLocalCreds = ~p~n",
+	   [Service, [{Id,Reg,Inv} || #cred{id = Id,
+					    right_to_invoke = Inv,
+					    right_to_register = Reg} <- LocalCreds]]),
     case lists:foldl(
-	   fun(#cert{register = Register} = C, {Max, _} = Acc) ->
+	   fun(#cred{right_to_register = Register} = C, {Max, _} = Acc) ->
 		   case match_length(Register, SvcParts) of
 		       L when L > Max ->
 			   {L, C};
 		       _ ->
 			   Acc
 		   end
-	   end, {0, none}, LocalCerts) of
+	   end, {0, none}, LocalCreds) of
 	{0, none} ->
 	    {error, not_found};
-	{_, #cert{id = Id, jwt = JWT}} ->
+	{_, #cred{id = Id, jwt = JWT}} ->
 	    {ok, {Id, JWT}}
     end.
 
@@ -329,7 +358,7 @@ match_svc_(_, _) ->
     false.
 
 get_env(K) ->
-    Res = case application:get_env(rvi_core, K) of
+    Res = case setup:get_env(rvi_core, K) of
 	      {ok, V} -> V;
 	      _       -> undefined
 	  end,
@@ -382,8 +411,32 @@ get_openssl_pub_key(File) ->
 	    undefined
     end.
 
+get_pub_key_from_cert(File) ->
+    case file:read_file(File) of
+	{ok, Bin} ->
+	    get_pub_key_from_cert_rec(
+	      public_key:pem_entry_decode(hd(public_key:pem_decode(Bin))));
+	Error ->
+	    error({cannot_read_cert, [Error, {file, File}]})
+    end.
+
+get_pub_key_from_cert_rec(#'Certificate'{
+			     tbsCertificate =
+				 #'TBSCertificate'{
+				    subjectPublicKeyInfo =
+					#'SubjectPublicKeyInfo'{
+					   algorithm =
+					       #'AlgorithmIdentifier'{
+						  algorithm = Algo},
+					   subjectPublicKey = Key}}}) ->
+    'RSAPublicKey' = KeyAlg = pubkey_cert_records:supportedPublicKeyAlgorithms(Algo),
+    public_key:der_decode(KeyAlg, Key).
+
+
+
+
 create_ets() ->
-    create_ets(?CERTS, #cert.id),
+    create_ets(?CREDS, #cred.id),
     create_ets(?KEYS, #key.id).
 
 create_ets(Tab, KeyPos) ->
@@ -396,42 +449,46 @@ create_ets(Tab, KeyPos) ->
 	    true
     end.
 
-scan_certs(Dir, Key) ->
-    UTC = rvi_common:utc_timestamp(),
-    case file:list_dir(Dir) of
-	{ok, Fs} ->
-	    lists:foldl(
+scan_creds(Dir, Key, Cert) ->
+    case filelib:is_dir(Dir) of
+	true ->
+	    UTC = rvi_common:utc_timestamp(),
+	    filelib:fold_files(
+	      Dir,
+	      _FileRegexp = "\\.jwt$",
+	      _Recursive = false,
 	      fun(F, Acc) ->
-		      process_cert(filename:join(Dir, F), Key, UTC, Acc)
-	      end, [], Fs);
-	Error ->
-	    ?warning("Cannot read certs (~p): ~p~n", [Dir, Error]),
-	    ok
+		      process_cred(F, Key, Cert, UTC, Acc)
+	      end,
+	      []);
+	false ->
+	    ?warning("Cannot read creads: ~p not a directory", [Dir]),
+	    []
     end.
 
-process_cert(F, Key, UTC, Acc) ->
+process_cred(F, Key, Cert, UTC, Acc) ->
     case file:read_file(F) of
 	{ok, Bin} ->
 	    try authorize_sig:decode_jwt(strip_nl(Bin), Key) of
-		{_, Cert} ->
-		    ?info("Unpacked Cert ~p:~n~p~n", [F, abbrev_payload(Cert)]),
-		    case process_cert_struct(Cert, Bin, UTC) of
+		{_, Cred} ->
+		    ?info("Unpacked Cred ~p:~n~p~n", [F, abbrev_payload(Cred)]),
+		    case process_cred_struct(Cred, Bin, UTC, Cert) of
 			invalid ->
 			    Acc;
-			#cert{} = C ->
+			#cred{} = C ->
 			    [C|Acc]
 		    end;
 		invalid ->
-		    ?warning("Invalid cert: ~p~n", [F]),
+		    ?warning("Invalid cred: ~p~n", [F]),
 		    Acc
 	    catch
 		error:Exception ->
-		    ?warning("Cert validation failure (~p): ~p~n",
+		    ?warning("Cred validation failure (~p): ~p~n",
 			     [F, Exception]),
 		    Acc
 	    end;
 	Error ->
-	    ?warning("Cannot read cert ~p: ~p~n", [F, Error]),
+	    ?warning("Cannot read cred ~p: ~p~n", [F, Error]),
 	    Acc
     end.
 
@@ -441,52 +498,76 @@ strip_nl(Bin) ->
 	_ -> Bin
     end.
 
-process_cert_struct(Cert, Bin) ->
-    process_cert_struct(Cert, Bin, rvi_common:utc_timestamp()).
+strip_pem_begin_end(<<"-----BEGIN CERTIFICATE-----\n", Bin/binary>>) ->
+    re:replace(hd(re:split(Bin, <<"-----END CERTIFICATE-----">>, [])),
+	       <<"\\v">>, <<>>, [global,{return,binary}]);
+strip_pem_begin_end(Bin) ->
+    Bin.
 
-process_cert_struct(Cert, Bin, UTC) ->
-    try process_cert_struct_(Cert, Bin, UTC)
+
+process_cred_struct(Cred, Bin, Cert) ->
+    process_cred_struct(Cred, Bin, rvi_common:utc_timestamp(), to_pem(Cert)).
+
+to_pem(Cert) when is_binary(Cert) ->
+    %% The Peer cert is assumed to be DER encoded.
+    %%  The cert in the cred is PEM-encoded
+    PEMCert = public_key:pem_encode([{'Certificate', Cert, not_encrypted}]),
+    strip_pem_begin_end(PEMCert);
+to_pem(Other) ->
+    Other.
+
+
+process_cred_struct(Cred, Bin, UTC, Cert) ->
+    try process_cred_struct_(Cred, Bin, UTC, Cert)
     catch
 	error:Err ->
-	    ?warning("Failure processing Cert ~p~n~p",
-		     [Cert, {Err, erlang:get_stacktrace()}]),
+	    ?warning("Failure processing Cred ~p~n~p",
+		     [Cred, {Err, erlang:get_stacktrace()}]),
 	    invalid
     end.
 
-process_cert_struct_(Cert, Bin, UTC) ->
-    ID = cert_id(Cert),
+process_cred_struct_(Cred, Bin, UTC, DevCert) ->
+    ID = cred_id(Cred),
     {ok, Register} = rvi_common:get_json_element(
-		      [{'OR', ["sources", "register"]}], Cert),
+		      [{'OR', ["right_to_register", "sources", "register"]}], Cred),
     {ok, Invoke} = rvi_common:get_json_element(
-		    [{'OR', ["destinations", "invoke"]}], Cert),
+		    [{'OR', ["right_to_invoke", "destinations", "invoke"]}], Cred),
     {ok, Start} = rvi_common:get_json_element(
-		    ["validity", "start"], Cert),
+		    ["validity", "start"], Cred),
     {ok, Stop}  = rvi_common:get_json_element(
-		    ["validity", "stop"], Cert),
+		    ["validity", "stop"], Cred),
+    {ok, Cert} = rvi_common:get_json_element(["device_cert"], Cred),
+    case DevCert == undefined orelse Cert == DevCert of
+	false ->
+	    ?warning("Wrong device_cert in cred~n~p~n~p", [Cert, DevCert]),
+	    invalid;
+	true ->
+	    ok
+    end,
     ?debug("Start = ~p; Stop = ~p~n", [Start, Stop]),
     Validity = {Start, Stop},
     case check_validity(Start, Stop, UTC) of
 	true ->
-	    #cert{id = ID,
-		  register = Register,
-		  invoke = Invoke,
+	    #cred{id = ID,
+		  right_to_register = Register,
+		  right_to_invoke = Invoke,
 		  validity = Validity,
 		  jwt = Bin,
-		  cert = Cert};
+		  cred = Cred};
 	false ->
-	    %% Cert outdated
-	    ?warning("Outdated cert: Validity = ~p; UTC = ~p~n",
+	    %% Cred outdated
+	    ?warning("Outdated cred: Validity = ~p; UTC = ~p~n",
 		     [Validity, UTC]),
 	    invalid
     end.
 
-cert_id(Cert) ->
-    case rvi_common:get_json_element(["id"], Cert) of
+cred_id(Cred) ->
+    case rvi_common:get_json_element(["id"], Cred) of
 	{ok, Id} ->
 	    Id;
 	{error, undefined} ->
-	    ?warning("Cert has no ID: ~p~n", [Cert]),
-	    erlang:now()
+	    ?warning("Cred has no ID: ~p~n", [Cred]),
+	    erlang:unique_integer([positive,monotonic])
     end.
 
 check_validity({Start, Stop}, UTC) ->
@@ -539,14 +620,14 @@ validate_message_1([], _) ->
     error(invalid).
 
 validate_service_call_(Svc, Conn) ->
-    case lists:filter(fun(C) -> can_invoke(Svc, C) end, cert_recs_by_conn(Conn)) of
+    case lists:filter(fun(C) -> can_invoke(Svc, C) end, cred_recs_by_conn(Conn)) of
 	[] ->
 	    invalid;
-	[#cert{id = ID}|_] ->
+	[#cred{id = ID}|_] ->
 	    {ok, ID}
     end.
 
-can_invoke(Svc, #cert{invoke = In}) ->
+can_invoke(Svc, #cred{right_to_invoke = In}) ->
     lists:any(fun(I) -> match_svc(I, Svc) end, In).
 
 pp_key(#'RSAPrivateKey'{modulus = Mod, publicExponent = Pub}) ->
@@ -559,6 +640,11 @@ pp_key(#'RSAPublicKey'{modulus = Mod, publicExponent = Pub}) ->
     M = integer_to_binary(Mod),
     <<"#{'RSAPublicKey'{modulus = ", (abbrev_bin(M))/binary,
       ", publicExponent = ", P/binary, ", _ = ...}">>.
+
+abbrev(B) when is_binary(B) ->
+    abbrev_bin(B);
+abbrev(X) ->
+    abbrev_payload(X).
 
 abbrev_bin(B) ->
     abbrev_bin(B, 20, 6).
@@ -574,28 +660,57 @@ abbrev_bin(B, Len, Part) ->
 	end
     catch error:_ -> B end.
 
-abbrev_payload(Payload) ->
+abbrev_payload(Payload) when is_list(Payload) ->
     try lists:map(fun abbrev_pl/1, Payload)
-    catch error:_ -> Payload end.
+    catch error:_ -> Payload end;
+abbrev_payload(PL) ->
+    try abbrev_pl(PL)
+    catch error:_ -> PL end.
 
 abbrev_jwt({Hdr, Body} = X) ->
     try {Hdr, abbrev_payload(Body)}
     catch error:_ -> X end.
 
+abbrev_pl(#cred{} = Payload) ->
+    list_to_tuple(lists:map(fun(B) when is_binary(B) -> abbrev_bin(B);
+			       ([{_,_}|_]=L) -> abbrev_payload(L);
+			       (A) -> A
+			    end, tuple_to_list(Payload)));
+abbrev_pl(#'RSAPublicKey'{} = Key) ->
+    pp_key(Key);
+abbrev_pl(#'RSAPrivateKey'{} = Key) ->
+    pp_key(Key);
+abbrev_pl(#'OTPCertificate'{} = Cert) ->
+    abbrev_deep_tuple(Cert);
+abbrev_pl(#'OTPTBSCertificate'{} = Cert) ->
+    abbrev_deep_tuple(Cert);
 abbrev_pl({<<"keys">> = K, Ks}) ->
     {K, [abbrev_k(Ky) || Ky <- Ks]};
-abbrev_pl({<<"certs">> = C, Cs}) ->
-    {C, [abbrev_bin(Cert) || Cert <- Cs]};
+abbrev_pl({<<"creds">> = C, Cs}) ->
+    {C, [abbrev_bin(Cred) || Cred <- Cs]};
 abbrev_pl({<<"certificate">> = K, C}) ->
+    {K, abbrev_bin(C)};
+abbrev_pl({<<"device_cert">> = K, C}) ->
+    {K, abbrev_bin(C)};
+abbrev_pl({<<"credential">> = K, C}) ->
     {K, abbrev_bin(C)};
 abbrev_pl({<<"sign">> = K, S}) when is_binary(S) ->
     {K, abbrev_bin(S)};
+abbrev_pl({K, B}) when is_atom(K), is_binary(B), byte_size(B) > 50 ->
+    {K, abbrev_bin(B)};
+abbrev_pl({K,[{_,_}|_]=L}) ->
+    {K, abbrev_pl(L)};
 abbrev_pl(B) when is_binary(B) ->
     abbrev_bin(B, 40, 10);
 abbrev_pl(L) when is_list(L) ->
     abbrev_payload(L);
+abbrev_pl(T) when is_tuple(T), tuple_size(T) > 2 ->
+    abbrev_deep_tuple(T);
 abbrev_pl(X) ->
     X.
+
+abbrev_deep_tuple(T) when is_tuple(T) ->
+    list_to_tuple([abbrev_pl(E) || E <- tuple_to_list(T)]).
 
 abbrev_k(K) ->
     try lists:map(fun abbrev_elem/1, K)
@@ -606,7 +721,7 @@ abbrev_elem({<<"n">>, Bin}) ->
 abbrev_elem(X) ->
     X.
 
-log([ID], Fmt, Args) ->
-    rvi_log:log(ID, <<"authorize">>, rvi_log:format(Fmt, Args));
-log(_, _, _) ->
+log([ID], L, Fmt, Args) ->
+    rvi_log:log(ID, L, <<"authorize">>, rvi_log:format(Fmt, Args));
+log(_, _, _, _) ->
     ok.
