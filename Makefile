@@ -12,8 +12,29 @@
 
 .PHONY:	all deps compile clean rpm rpmclean test xref ci escript
 
+
 SCRIPTS=scripts/setup_gen \
 	scripts/author
+
+SRC_LIST=BUILD.md \
+	CONFIGURE.md \
+	doc \
+	LICENSE \
+	Makefile \
+	README.md \
+	rebar \
+	rebar.config \
+	rel \
+	RELEASE.md \
+	scripts/setup_gen \
+	scripts/rvi.service \
+	scripts/rvi_ctl \
+	scripts/rvi_install.sh \
+	python/*.py \
+	components \
+	ebin \
+	src \
+	TODO 
 
 VERSION=0.5.0
 
@@ -30,6 +51,7 @@ escript: compile ${SCRIPTS}
 recomp:
 	./rebar  compile skip_deps=true
 
+
 scripts/setup_gen: deps/setup/setup_gen
 	cp deps/setup/setup_gen scripts/
 
@@ -42,7 +64,10 @@ components/authorize/author:
 clean:   rpmclean
 	./rebar clean
 
-rpmclean:
+ubuntu_clean:
+	rm -rf ./ubuntu_build
+
+rpm_clean:
 	rm -rf ./rpm/BUILD/* \
 		./rpm/BUILDROOT/* \
 		./rpm/RPMS/* \
@@ -64,15 +89,30 @@ rpm_tarball: rpmclean clean
 		RELEASE.md rpm scripts/setup_gen scripts/rvi \
 		scripts/rvi.service scripts/rvi.sh \
 		components priv/config/rvi_sample.config scripts/rvi_instball.sh src \
-		TODO 
-	mv /tmp/rvi-$(VERSION).tgz ./rpm/SOURCES/
 
+# Create an ubuntu 14.04 tarball
+ubuntu_package: clean ubuntu_clean
+	install --mode=0755 -d ./ubuntu_build
+# Pack up all relevant files, and debian/,  necessary for a build.
+# Add rvi-$(VERSION) at the beginning of each file so
+# that theu get packed up into a correctly named subdirectory
+# 
+	tar czf ./ubuntu_build/rvi_$(VERSION).orig.tar.gz \
+		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
+		$(SRC_LIST) \
+		debian \
+		rvi_ubuntu.config \
+		scripts/rvi.init.ubuntu
+# Unpack the created tar file
+	(cd ./ubuntu_build; tar xf rvi_$(VERSION).orig.tar.gz)
+# Descend into the unpacked directory and build.
+	(cd ./ubuntu_build/rvi-$(VERSION); debuild -uc -us)
 
-rpm:	rpm_tarball
+rpm:	rpmclean rpm_tarball 
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
-install: # deps compile
-	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi
+install: deps compile
+	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi $(DESTDIR)/opt/rvi $(DESTDIR)/var/opt/log/rvi
 	install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
 	install --mode=0644 priv/config/rvi_sample.config $(DESTDIR)/etc/opt/rvi/rvi_sample.config
 	install --mode=0644 priv/config/rvi_common.config $(DESTDIR)/opt/rvi/rvi_core/rvi_common.config

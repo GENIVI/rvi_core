@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+# -*- makefile --*
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	./scripts/rvi_install.sh ./debian/rvi/usr/bin ./debian/rvi/usr/lib/rvi ./debian/rvi/var/log/rvi ./debian/rvi
+# Install default config
+	install -D --mode=0644 ./rvi_ubuntu.config ./debian/rvi/etc/rvi/rvi.config
+# Install start/stop scripts
+	install -D --mode=0755 ./scripts/rvi.init.ubuntu ./debian/rvi/etc/init.d/rvi
