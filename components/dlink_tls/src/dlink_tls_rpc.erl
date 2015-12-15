@@ -44,7 +44,7 @@
 -define(DEFAULT_TCP_ADDRESS, "0.0.0.0").
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
 -define(SERVER, ?MODULE).
--define(DLINK_TLS_VERSION, "1.0").
+-define(DLINK_TLS_VERSION, <<"1.0">>).
 
 -define(CONNECTION_TABLE, rvi_dlink_tls_connections).
 -define(SERVICE_TABLE, rvi_dlink_tls_services).
@@ -565,7 +565,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     case dlink_tls_conn:is_connection_up(Pid) of
 	true ->
 	    ?info("dlink_tls:ping(): Pinging: ~p:~p", [Address, Port]),
- 	    dlink_tls_conn:send(Pid, term_to_json({ struct, [{ ?DLINK_ARG_CMD, ?DLINK_CMD_PING }]})),
+ 	    dlink_tls_conn:send(Pid, [{ ?DLINK_ARG_CMD, ?DLINK_CMD_PING }]),
 	    erlang:send_after(Timeout, self(),
 			      { rvi_ping, Pid, Address, Port, Timeout });
 
@@ -689,7 +689,7 @@ send_authorize(Pid, CompSpec) ->
 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE},
 				{?DLINK_ARG_VERSION, ?DLINK_TLS_VERSION},
 				{?DLINK_ARG_ADDRESS, LocalIP},
-				{?DLINK_ARG_PORT, integer_to_list(LocalPort)},
+				{?DLINK_ARG_PORT, LocalPort},
 				{?DLINK_ARG_CREDENTIALS, Creds}], CompSpec)).
     %% dlink_tls_conn:send(Pid,
     %% 			term_to_json(

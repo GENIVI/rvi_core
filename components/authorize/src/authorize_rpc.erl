@@ -238,7 +238,7 @@ handle_call({rvi, validate_message, [JWT, Conn | LogId]}, _, State) ->
 	    log(LogId, error, "validation FAILED", []),
 	    {reply, [not_found], State}
     end;
-handle_call({rvi, get_credentials, [_LogId]}, _From, State) ->
+handle_call({rvi, get_credentials, _Args}, _From, State) ->
     {reply, [ ok, authorize_keys:get_credentials() ], State};
 
 handle_call({rvi, validate_authorization, [JWT, Conn | [_] = LogId]}, _From, State) ->
@@ -369,7 +369,7 @@ get_json_element(Path, JSON, Default) ->
     end.
 
 store_cred(CredJWT, Conn, PeerCert, LogId) ->
-    case authorize_sig:decode_jwt(CredJWT, authorize_keys:provisioning_key()) of
+    case authorize_sig:decode_jwt(authorize_keys:strip_nl(CredJWT), authorize_keys:provisioning_key()) of
 	{_CHeader, CredStruct} ->
 	    case authorize_keys:save_cred(CredStruct, CredJWT, Conn, PeerCert, LogId) of
 		ok ->

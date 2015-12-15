@@ -19,6 +19,7 @@
 	 json_to_public_key/1]).
 
 -export([self_signed_public_key/0]).  % just temporary
+-export([strip_nl/1]).
 -export([pp_key/1,
 	 abbrev/1,
 	 abbrev_bin/1,
@@ -669,7 +670,10 @@ abbrev_payload(PL) ->
 
 abbrev_jwt({Hdr, Body} = X) ->
     try {Hdr, abbrev_payload(Body)}
-    catch error:_ -> X end.
+    catch error:_ -> X end;
+abbrev_jwt(X) ->
+    X.
+
 
 abbrev_pl(#cred{} = Payload) ->
     list_to_tuple(lists:map(fun(B) when is_binary(B) -> abbrev_bin(B);
