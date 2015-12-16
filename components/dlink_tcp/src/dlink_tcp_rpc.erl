@@ -550,7 +550,7 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
  	    Res = connection:send(ConnPid,
 				  [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
 				    { ?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE },
-				    { ?DLINK_ARG_MODULE, atom_to_list(ProtoMod) },
+				    { ?DLINK_ARG_MODULE, atom_to_binary(ProtoMod, latin1) },
 				    { ?DLINK_ARG_DATA, Data }
 				  ]),
 	    { reply, [ Res ], St}
@@ -727,7 +727,7 @@ connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
 process_data(_FromPid, RemoteIP, RemotePort, ProtocolMod, Data, CompSpec) ->
     ?debug("dlink_tcp:receive_data(): RemoteAddr: {~p, ~p}", [ RemoteIP, RemotePort ]),
     ?debug("dlink_tcp:receive_data(): ~p:receive_message(~p)", [ ProtocolMod, Data ]),
-    Proto = list_to_existing_atom(ProtocolMod),
+    Proto = binary_to_existing_atom(ProtocolMod, latin1),
     Proto:receive_message(CompSpec, {RemoteIP, RemotePort}, Data).
 
 process_announce(Avail, Services, FromPid, IP, Port, CompSpec) ->
