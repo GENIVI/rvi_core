@@ -124,7 +124,7 @@ json_argument([], [], Acc) ->
     lists:reverse(Acc);
 
 json_argument([Arg | AT], [Spec | ST], Acc) when is_atom(Arg)->
-    json_argument(AT, ST, [ { Spec, atom_to_list(Arg) } | Acc]);
+    json_argument(AT, ST, [ { Spec, atom_to_binary(Arg, latin1) } | Acc]);
 
 json_argument([Arg | AT], [Spec | ST], Acc) ->
     json_argument(AT, ST, [ { Spec, Arg } | Acc]).
@@ -162,7 +162,7 @@ request(Component,
 	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),
 
 	    case get_request_result(
-		   send_json_request(URL, atom_to_list(Function),  JSONArg)
+		   send_json_request(URL, atom_to_binary(Function, latin1),  JSONArg)
 		  ) of
 
 		{ ok, JSONBody} ->
@@ -330,7 +330,7 @@ get_json_element_([], JSON) ->
 %% All proplist keys in JSON are strings.
 %% Convert atomically provided path elements to strings
 get_json_element_([Elem | T], JSON ) when is_atom(Elem) ->
-    get_json_element_([atom_to_list(Elem) | T], JSON);
+    get_json_element_([atom_to_binary(Elem, latin1) | T], JSON);
 
 get_json_element_(Path, {Type, JSON}) when Type==array;
 					   Type==struct ->

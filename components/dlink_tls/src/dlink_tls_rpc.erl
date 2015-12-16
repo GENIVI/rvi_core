@@ -44,7 +44,7 @@
 -define(DEFAULT_TCP_ADDRESS, "0.0.0.0").
 -define(DEFAULT_PING_INTERVAL, 300000).  %% Five minutes
 -define(SERVER, ?MODULE).
--define(DLINK_TLS_VERSION, "1.0").
+-define(DLINK_TLS_VERSION, <<"1.0">>).
 
 -define(CONNECTION_TABLE, rvi_dlink_tls_connections).
 -define(SERVICE_TABLE, rvi_dlink_tls_services).
@@ -532,7 +532,7 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]},
  	    Res = dlink_tls_conn:send(
 		    ConnPid, [{?DLINK_ARG_TRANSACTION_ID, Tid},
 			      {?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE},
-			      {?DLINK_ARG_MODULE, atom_to_list(ProtoMod)},
+			      {?DLINK_ARG_MODULE, atom_to_binary(ProtoMod, latin1)},
 			      {?DLINK_ARG_DATA, Data}]),
 	    {reply, [Res], St#st{tid = Tid + 1}}
     end;
@@ -565,7 +565,7 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     case dlink_tls_conn:is_connection_up(Pid) of
 	true ->
 	    ?info("dlink_tls:ping(): Pinging: ~p:~p", [Address, Port]),
- 	    dlink_tls_conn:send(Pid, term_to_json({ struct, [{ ?DLINK_ARG_CMD, ?DLINK_CMD_PING }]})),
+ 	    dlink_tls_conn:send(Pid, [{ ?DLINK_ARG_CMD, ?DLINK_CMD_PING }]),
 	    erlang:send_after(Timeout, self(),
 			      { rvi_ping, Pid, Address, Port, Timeout });
 
@@ -672,15 +672,6 @@ process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress,
     authorize_rpc:store_creds(CompSpec, Credentials, Conn, PeerCert),
     connection_authorized(FromPid, Conn, CompSpec).
 
-%% send_creds(Pid, CompSpec) ->
-%%     ?debug("send_creds (Pid = ~p)", [Pid]),
-%%     {LocalIP, LocalPort} = rvi_common:node_address_tuple(),
-%%     dlink_tls_conn:send(Pid, rvi_common:pass_log_id(
-%% 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_CRED_EXCHANGE},
-%% 				{?DLINK_ARG_ADDRESS, LocalIP},
-%% 				{?DLINK_ARG_PORT, integer_to_list(LocalPort)},
-%% 				{?DLINK_ARG_CREDENTIALS, [get_credentials(CompSpec)]}], CompSpec)).
-
 send_authorize(Pid, CompSpec) ->
     ?debug("send_authorize() Pid = ~p; CompSpec = ~p", [Pid, abbrev(CompSpec)]),
     {LocalIP, LocalPort} = rvi_common:node_address_tuple(),
@@ -689,18 +680,8 @@ send_authorize(Pid, CompSpec) ->
 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE},
 				{?DLINK_ARG_VERSION, ?DLINK_TLS_VERSION},
 				{?DLINK_ARG_ADDRESS, LocalIP},
-				{?DLINK_ARG_PORT, integer_to_list(LocalPort)},
+				{?DLINK_ARG_PORT, LocalPort},
 				{?DLINK_ARG_CREDENTIALS, Creds}], CompSpec)).
-    %% dlink_tls_conn:send(Pid,
-    %% 			term_to_json(
-    %% 			  {struct,
-    %% 			   [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
-    %% 			     { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
-    %% 			     { ?DLINK_ARG_ADDRESS, LocalIP },
-    %% 			     { ?DLINK_ARG_PORT,  integer_to_list(LocalPort) },
-    %% 			     { ?DLINK_ARG_VERSION, ?DLINK_TLS_VERSION },
-    %% 			     { ?DLINK_ARG_CERTIFICATES, {array, get_certificates(CompSpec)} },
-    %% 			     { ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) } ]})).
 
 connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
     %% If FromPid (the genserver managing the socket) is not yet registered
@@ -744,7 +725,7 @@ connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
 process_data(_FromPid, RemoteIP, RemotePort, ProtocolMod, Data, CompSpec) ->
     ?debug("dlink_tls:receive_data(): RemoteAddr: {~p, ~p}", [ RemoteIP, RemotePort ]),
     ?debug("dlink_tls:receive_data(): ~p:receive_message(~p)", [ ProtocolMod, Data ]),
-    Proto = list_to_existing_atom(ProtocolMod),
+    Proto = binary_to_existing_atom(ProtocolMod, latin1),
     Proto:receive_message(CompSpec, {RemoteIP, RemotePort}, Data).
 
 process_announce(Avail, Svcs, FromPid, IP, Port, CompSpec) ->

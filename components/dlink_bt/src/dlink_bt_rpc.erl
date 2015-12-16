@@ -303,7 +303,7 @@ announce_local_service_(CompSpec, Service, Availability) ->
 process_data(_FromPid, RemoteBTAddr, RemoteChannel, ProtocolMod, Data, CompSpec) ->
     ?debug("dlink_bt:receive_data(): SetupAddress: {~p, ~p}", [ RemoteBTAddr, RemoteChannel ]),
     ?debug("dlink_bt:receive_data(): ~p:receive_message(~p)", [ ProtocolMod, Data ]),
-    Proto = list_to_existing_atom(ProtocolMod),
+    Proto = binary_to_existing_atom(ProtocolMod, latin1),
     Proto:receive_message(CompSpec, {RemoteBTAddr, RemoteChannel}, Data),
 
     ok.
@@ -593,7 +593,7 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 		    ConnPid,
 		    [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
 		      { ?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE },
-		      { ?DLINK_ARG_MODULE, atom_to_list(ProtoMod) },
+		      { ?DLINK_ARG_MODULE, atom_to_binary(ProtoMod, latin1) },
 		      { ?DLINK_ARG_DATA,  Data }
 		    ]),
 	    { reply, [ Res ], St}
