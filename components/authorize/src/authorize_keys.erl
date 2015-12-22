@@ -273,7 +273,8 @@ to_bin(B) when is_binary(B) -> B;
 to_bin(L) when is_list(L) -> iolist_to_binary(L);
 to_bin(I) when is_integer(I) -> integer_to_binary(I).
 
-filter_by_service_(Services, Conn) ->
+filter_by_service_(Services, Conn0) ->
+    Conn = normalize_conn(Conn0),
     ?debug("Filter: creds = ~p", [[{K,abbrev_payload(V)} || {K,V} <- ets:tab2list(?CREDS)]]),
     Invoke = ets:select(?CREDS, [{ {{Conn,'_'}, #cred{right_to_invoke = '$1',
 						      _ = '_'}},

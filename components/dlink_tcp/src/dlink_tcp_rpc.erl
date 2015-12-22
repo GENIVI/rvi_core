@@ -667,7 +667,7 @@ process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress,
     ?debug("dlink_tcp:authorize(): Credentials:   ~p", [ [authorize_keys:abbrev_bin(C) || C <- Credentials] ]),
     {NRemoteAddress, NRemotePort} = Conn =
         case { RemoteAddress, RemotePort } of
-            { "0.0.0.0", 0 } ->
+            { <<"0.0.0.0">>, 0 } ->
 
                 ?info("dlink_tcp:authorize(): Remote is behind firewall. Will use ~p:~p",
                       [ PeerIP, PeerPort]),
