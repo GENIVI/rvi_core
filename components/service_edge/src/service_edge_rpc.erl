@@ -603,7 +603,7 @@ json_rpc_notification(Method, Parameters) ->
       ]).
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_available,
-			  [{services, Services}] ) ->
+			  [{<<"services">>, Services}] ) ->
     ?info("service_edge:dispatch_to_local_service(service_available, websock, ~p): ~p",
 	  [ WSPidStr,  Services]),
     wse_server:send(list_to_pid(WSPidStr),
@@ -633,7 +633,8 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
 %%     ok;
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
-			 [{ service_name, SvcName}, { parameters,[Args]}]) ->
+			 [{ <<"service_name">>, SvcName},
+			  { <<"parameters">>, [Args]}]) ->
     ?info("service_edge:dispatch_to_local_service(message/alt, websock): ~p", [Args]),
     wse_server:send(list_to_pid(WSPidStr),
 	     json_rpc_notification(<<"message">>,
