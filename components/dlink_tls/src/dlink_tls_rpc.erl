@@ -118,7 +118,7 @@ start_connection_manager() ->
     setup_persistent_connections_(PersistentConnections, CompSpec),
     ok.
 
-setup_initial_listeners([], CompSpec) ->
+setup_initial_listeners([], _CompSpec) ->
     ?debug("no initial listeners", []);
 setup_initial_listeners([_|_] = TlsOpts, CompSpec) ->
     IP = proplists:get_value(ip, TlsOpts, ?DEFAULT_TCP_ADDRESS),
@@ -605,16 +605,22 @@ get_services_by_connection(ConnPid) ->
 
 
 get_connections_by_service(Service) ->
+    ?debug("get_connections_by_service(~p,~n~p)",
+	   [Service, ets:tab2list(?SERVICE_TABLE)]),
     case ets:lookup(?SERVICE_TABLE, Service) of
 	[ #service_entry { connections = Connections } ] ->
+	    ?debug("~p found; ~p", [Service, Connections]),
 	    Connections;
-	[] -> []
+	[] ->
+	    ?debug("~p not found", [Service]),
+	    []
     end.
 
 
 add_services(SvcNameList, ConnPid) ->
     %% Create or replace existing connection table entry
     %% with the sum of new and old services.
+    ?debug("add_services(~p, ~p)", [SvcNameList, ConnPid]),
     ets:insert(?CONNECTION_TABLE,
 	       #connection_entry {
 		  connection = ConnPid,
@@ -800,8 +806,8 @@ get_credentials(CompSpec) ->
 %% 	    false
 %%     end.
 
-term_to_json(Term) ->
-    binary_to_list(iolist_to_binary(exo_json:encode(Term))).
+%% term_to_json(Term) ->
+%%     binary_to_list(iolist_to_binary(exo_json:encode(Term))).
 
 opt(K, L, Def) ->
     case lists:keyfind(K, 1, L) of
