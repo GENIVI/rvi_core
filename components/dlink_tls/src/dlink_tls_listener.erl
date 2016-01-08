@@ -93,7 +93,7 @@ terminate(_Reason, _State) ->
     ok.
 
 sock_opts() ->
-    [{mode, binary}, {active, once}, {packet, 0}].
+    [{mode, binary}, {active, false}, {packet, 0}].
 
 new_connection(IP, Port, Sock, State) ->
     ?debug("new_connection(): Peer IP:    ~p (ignored)", [IP]),

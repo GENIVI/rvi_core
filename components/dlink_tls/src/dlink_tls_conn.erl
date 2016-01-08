@@ -68,7 +68,7 @@ setup(IP, Port, Sock, Mod, Fun, CompSpec) ->
     case gen_server:start_link(?MODULE, Params ,[]) of
 	{ ok, GenSrvPid } = Res ->
 	    gen_tcp:controlling_process(Sock, GenSrvPid),
-	    gen_server:cast(GenSrvPid, {activate_socket, Sock}),
+	    %% gen_server:cast(GenSrvPid, {activate_socket, Sock}),
 	    Res;
 
 	Err ->
@@ -342,12 +342,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 handle_upgrade(Role, CompSpec, #st{sock = S} = St) ->
-    {ok, [{active, Last}]} = inet:getopts(S, [active]),
+    %% {ok, [{active, Last}]} = inet:getopts(S, [active]),
     inet:setopts(S, [{active, false}]),
     case do_upgrade(S, Role, CompSpec) of
 	{ok, NewS} ->
 	    ?debug("upgrade to TLS succcessful~n", []),
-            ssl:setopts(NewS, [{active, Last}]),
+            ssl:setopts(NewS, [{active, once}]),
             {ok, {IP, Port}} = ssl:peername(NewS),
             {ok, PeerCert} = ssl:peercert(NewS),
             ?debug("SSL PeerCert=~w", [abbrev(PeerCert)]),
