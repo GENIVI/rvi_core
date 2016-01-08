@@ -602,7 +602,7 @@ json_rpc_notification(Method, Parameters) ->
        {<<"params">>, Parameters}
       ]).
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_available,
+dispatch_to_local_service("ws:" ++ WSPidStr, services_available,
 			  [{<<"services">>, Services}] ) ->
     ?info("service_edge:dispatch_to_local_service(service_available, websock, ~p): ~p",
 	  [ WSPidStr,  Services]),
@@ -612,8 +612,8 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_available,
     %% No reply
     ok;
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
-			  [{services, Services}] ) ->
+dispatch_to_local_service("ws:" ++ WSPidStr, services_unavailable,
+			  [{<<"services">>, Services}] ) ->
     ?info("service_edge:dispatch_to_local_service(service_unavailable, websock, ~p): ~p",
 	  [ WSPidStr, Services]),
 
@@ -632,7 +632,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
 %%     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
 %%     ok;
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
+dispatch_to_local_service("ws:" ++ WSPidStr, message,
 			 [{ <<"service_name">>, SvcName},
 			  { <<"parameters">>, Args}]) ->
     ?info("service_edge:dispatch_to_local_service(message/alt, websock): ~p", [Args]),
@@ -644,7 +644,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
     ok;
 
-dispatch_to_local_service([ $w, $s, $: | _WSPidStr], message, Other) ->
+dispatch_to_local_service("ws:" ++ _WSPidStr, message, Other) ->
     ?warning("service_edge:dispatch_to_local_service(message/alt, websock): UNKNOWN: ~p", [Other]),
     ok;
 
