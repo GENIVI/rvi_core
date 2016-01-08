@@ -188,15 +188,18 @@ handle_call(Req, From, S) ->
 handle_call_(provisioning_key, _, S) ->
     {reply, S#st.provisioning_key, S};
 handle_call_({get_credentials, Conn}, _, S) ->
-    Creds = creds_by_conn(Conn),
+    Creds = creds_by_conn(normalize_conn(Conn)),
     {reply, Creds, S};
-handle_call_({save_keys, Keys, Conn}, _, S) ->
+handle_call_({save_keys, Keys, Conn0}, _, S) ->
+    Conn = normalize_conn(Conn0),
     ?debug("save_keys: Keys=~p, Conn=~p~n", [abbrev_k(Keys), Conn]),
     save_keys_(Keys, Conn),
     {reply, ok, S};
-handle_call_({validate_message, JWT, Conn}, _, S) ->
+handle_call_({validate_message, JWT, Conn0}, _, S) ->
+    Conn = normalize_conn(Conn0),
     {reply, validate_message_(JWT, Conn), S};
-handle_call_({validate_service_call, Svc, Conn}, _, S) ->
+handle_call_({validate_service_call, Svc, Conn0}, _, S) ->
+    Conn = normalize_conn(Conn0),
     {reply, validate_service_call_(Svc, Conn), S};
 handle_call_({save_cred, Cred, JWT, {IP, Port} = Conn0, PeerCert, LogId}, _, S) ->
     Conn = normalize_conn(Conn0),
@@ -210,8 +213,9 @@ handle_call_({save_cred, Cred, JWT, {IP, Port} = Conn0, PeerCert, LogId}, _, S) 
 	    log(LogId, result, "cred stored ~s Conn=~p", [abbrev_bin(C#cred.id), Conn]),
 	    {reply, ok, S}
     end;
-handle_call_({filter_by_service, Services, Conn} =R, _From, State) ->
+handle_call_({filter_by_service, Services, Conn0} =R, _From, State) ->
     ?debug("authorize_keys:handle_call(~p,...)~n", [R]),
+    Conn = normalize_conn(Conn0),
     Filtered = filter_by_service_(Services, Conn),
     ?debug("Filtered = ~p~n", [Filtered]),
     {reply, Filtered, State};
