@@ -444,7 +444,7 @@ handle_call({rvi, get_available_services, []}, _From, St) ->
 %% 13:48:12.943 [debug] service_edge_rpc:local_msg: parameters:      [{struct,[{"a","b"}]}]
 
 handle_call({ rvi, handle_local_message,
-	      [SvcName, TimeoutArg, Parameters | Tail] }, _From, St) ->
+	      [SvcName, TimeoutArg, Parameters | Tail] = Args }, _From, St) ->
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [SvcName]),
     ?debug("service_edge_rpc:local_msg: timeout:         ~p", [TimeoutArg]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
@@ -455,59 +455,17 @@ handle_call({ rvi, handle_local_message,
     %% the messaage to its locally connected service_name service.
     %%
     ?debug("CS = ~p", [lager:pr(CS, rvi_common)]),
-    [ok] =
-	authorize_rpc:authorize_local_message(
-	  CS, SvcName, [{service_name, SvcName},
-			{timeout, TimeoutArg},
-			%% {parameters, Parameters},
-			{parameters,  Parameters}
-		       ]),
-
-    %%
-    %% Slick but ugly.
-    %% If the timeout is more than 24 hrs old when parsed as unix time,
-    %% then we are looking at a relative msec timeout. Convert accordingly
-    %%
-    { Mega, Sec, _Micro } = os:timestamp(),
-    Now = Mega * 1000000 + Sec,
-
-    Timeout =
-	case TimeoutArg - Now < -86400 of
-	    true -> %% Relative timeout arg. Convert to unix time msec
-		?debug("service_edge_rpc:local_msg(): Timeout ~p is relative.",
-		       [TimeoutArg]),
-		(Now * 1000) + TimeoutArg;
-
-	    false -> %% Absolute timoeut. Convert to unix time msec
-		TimeoutArg * 1000
-	end,
-    %%
-    %% Check if this is a local service by trying to resolve its service name.
-    %% If successful, just forward it to its service_name.
-    %%
-    LookupRes = ets:lookup(?SERVICE_TABLE, SvcName),
-    ?debug("Service LookupRes = ~p", [LookupRes]),
-    case LookupRes of
-	[ #service_entry { url = URL } ]  -> %% SvcName is local. Forward message
-	    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
-	    log("dispatch to ~s", [URL], CS),
-	    Res = forward_message_to_local_service(URL,
-						   SvcName,
-						   Parameters,
-						   CS),
-	    { reply, Res , St};
-
-	_ -> %% SvcName is remote
-	    %% Ask Schedule the request to resolve the network address
-	    ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
-	    log("schedule message (~s)", [SvcName], CS),
-	    [ _, TID ] = schedule_rpc:schedule_message(CS,
-						       SvcName,
-						       Timeout,
-						       Parameters),
-	    { reply, [ok, TID ], St}
+    case authorize_rpc:authorize_local_message(
+	   CS, SvcName, [{service_name, SvcName},
+			 {timeout, TimeoutArg},
+			 %% {parameters, Parameters},
+			 {parameters,  Parameters}
+			]) of
+	[ok] ->
+	    handle_local_message_(Args, CS, St);
+	[not_found] ->
+	    {reply, [not_found], St}
     end;
-
 
 handle_call(Other, _From, St) ->
     ?warning("service_edge_rpc:handle_call(~p): unknown", [ Other ]),
@@ -594,6 +552,51 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
+handle_local_message_([SvcName, TimeoutArg, Parameters | Tail], CS, St) ->
+    %%
+    %% Slick but ugly.
+    %% If the timeout is more than 24 hrs old when parsed as unix time,
+    %% then we are looking at a relative msec timeout. Convert accordingly
+    %%
+    { Mega, Sec, _Micro } = os:timestamp(),
+    Now = Mega * 1000000 + Sec,
+
+    Timeout =
+	case TimeoutArg - Now < -86400 of
+	    true -> %% Relative timeout arg. Convert to unix time msec
+		?debug("service_edge_rpc:local_msg(): Timeout ~p is relative.",
+		       [TimeoutArg]),
+		(Now * 1000) + TimeoutArg;
+
+	    false -> %% Absolute timoeut. Convert to unix time msec
+		TimeoutArg * 1000
+	end,
+    %%
+    %% Check if this is a local service by trying to resolve its service name.
+    %% If successful, just forward it to its service_name.
+    %%
+    LookupRes = ets:lookup(?SERVICE_TABLE, SvcName),
+    ?debug("Service LookupRes = ~p", [LookupRes]),
+    case LookupRes of
+	[ #service_entry { url = URL } ]  -> %% SvcName is local. Forward message
+	    ?debug("service_edge_rpc:local_msg(): Service is local. Forwarding."),
+	    log("dispatch to ~s", [URL], CS),
+	    Res = forward_message_to_local_service(URL,
+						   SvcName,
+						   Parameters,
+						   CS),
+	    { reply, Res , St};
+
+	_ -> %% SvcName is remote
+	    %% Ask Schedule the request to resolve the network address
+	    ?debug("service_edge_rpc:local_msg(): Service is remote. Scheduling."),
+	    log("schedule message (~s)", [SvcName], CS),
+	    [ _, TID ] = schedule_rpc:schedule_message(CS,
+						       SvcName,
+						       Timeout,
+						       Parameters),
+	    { reply, [ok, TID ], St}
+    end.
 
 json_rpc_notification(Method, Parameters) ->
     jsx:encode(
