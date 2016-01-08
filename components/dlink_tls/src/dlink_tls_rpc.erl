@@ -656,11 +656,11 @@ status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
 process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress,
 		  RemotePort, Credentials, CompSpec) ->
     ?info("dlink_tls:authorize(): Peer Address:   ~s:~p", [PeerIP, PeerPort ]),
-    ?info("dlink_tls:authorize(): Remote Address: ~s:~s", [ RemoteAddress, RemotePort ]),
+    ?info("dlink_tls:authorize(): Remote Address: ~s:~p", [ RemoteAddress, RemotePort ]),
 
     { NRemoteAddress, NRemotePort} = Conn =
         case { RemoteAddress, RemotePort } of
-            { "0.0.0.0", 0 } ->
+            { <<"0.0.0.0">>, 0 } ->
 
                 ?info("dlink_tls:authorize(): Remote is behind firewall. Will use ~p:~p",
                       [ PeerIP, PeerPort]),
