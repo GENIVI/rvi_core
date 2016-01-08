@@ -172,6 +172,7 @@ init([]) ->
     Creds = scan_creds(CredDir, ProvisioningKey, DevCert),
     ?debug("scan_creds found ~p credentials~n", [length(Creds)]),
     [ets:insert(?CREDS, {{local, C#cred.id}, C}) || C <- Creds],
+    ?debug("CREDS = ~p", [ets:tab2list(?CREDS)]),
     {ok, #st{provisioning_key = ProvisioningKey,
 	     dev_cert = DevCert,
 	     cred_dir = CredDir}}.
@@ -244,6 +245,7 @@ code_change(_FromVsn, S, _Extra) ->
 creds_by_conn(Conn) ->
     ?debug("creds_by_conn(~p)~n", [Conn]),
     UTC = rvi_common:utc_timestamp(),
+    ?debug("all creds = ~p", [ets:tab2list(?CREDS)]),
     Creds = ets:select(?CREDS, [{ {{Conn,'_'}, #cred{jwt = '$1',
 						     validity = '$2',
 						     _='_'}},
