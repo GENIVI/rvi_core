@@ -443,7 +443,7 @@ get_pub_key_from_cert_rec(#'Certificate'{
 
 
 create_ets() ->
-    create_ets(?CREDS, #cred.id),
+    create_ets(?CREDS, 1),
     create_ets(?KEYS, #key.id).
 
 create_ets(Tab, KeyPos) ->
