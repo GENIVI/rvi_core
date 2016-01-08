@@ -634,7 +634,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
 
 dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
 			 [{ <<"service_name">>, SvcName},
-			  { <<"parameters">>, [Args]}]) ->
+			  { <<"parameters">>, Args}]) ->
     ?info("service_edge:dispatch_to_local_service(message/alt, websock): ~p", [Args]),
     wse_server:send(list_to_pid(WSPidStr),
 	     json_rpc_notification(<<"message">>,
