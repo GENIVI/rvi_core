@@ -335,7 +335,7 @@ handle_socket(_FromPid, SetupIP, SetupPort, error, _CS) ->
 handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
 
     ?debug("PeerIP = ~p, PeerPort = ~p", [PeerIP, PeerPort]),
-    ?debug("data(): Elems ~p~nCS = ~p", [abbrev(Elems), abbrev(CompSpec)]),
+    ?debug("data(): Elems ~p", [abbrev(Elems)]),
 
     CS = rvi_common:pick_up_json_log_id(Elems, CompSpec),
 
@@ -816,10 +816,7 @@ opt(K, L, Def) ->
     end.
 
 opts(Keys, Elems, Def) ->
-    Res = [ opt(K, Elems, Def) || K <- Keys],
-    ?debug("opts(~p) -> ~p", [Keys, abbrev(Elems)]),
-    Res.
-
+    [ opt(K, Elems, Def) || K <- Keys].
 
 log_orphan(Pfx, Fmt, Args) ->
     start_log(Pfx, Fmt, Args, #component_spec{}).

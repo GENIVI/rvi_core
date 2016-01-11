@@ -233,9 +233,11 @@ handle_websocket(WSock, Mesg, Arg) ->
 
 %% Websocket interface
 handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
-    { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
+    { ok, SvcName0 } = rvi_common:get_json_element(["service_name"], Params),
     { ok, Timeout } = rvi_common:get_json_element(["timeout"], Params),
-    { ok, Parameters } = rvi_common:get_json_element(["parameters"], Params),
+    { ok, Parameters0 } = rvi_common:get_json_element(["parameters"], Params),
+    SvcName = iolist_to_binary(SvcName0),
+    Parameters = parse_ws_params(Parameters0),
     LogId = log_id_json_tail(Params ++ Parameters),
     ?debug("service_edge_rpc:handle_websocket(~p) params!:      ~p", [ WSock, Params ]),
     ?debug("service_edge_rpc:handle_websocket(~p) service:      ~p", [ WSock, SvcName ]),
@@ -280,6 +282,11 @@ handle_ws_json_rpc(_Ws , "get_available_services", _Params, _Arg ) ->
 	    { services, Services},
 	    { method, <<"get_available_services">>}] }.
 
+parse_ws_params([{K, V}|T]) ->
+    [{iolist_to_binary(K), jsx:decode(iolist_to_binary(V))}
+     | parse_ws_params(T)];
+parse_ws_params([]) ->
+    [].
 
 %% Invoked by locally connected services.
 %% Will always be routed as JSON-RPC since that, and websocket,
@@ -552,7 +559,7 @@ terminate(_Reason, _St) ->
 code_change(_OldVsn, St, _Extra) ->
     {ok, St}.
 
-handle_local_message_([SvcName, TimeoutArg, Parameters | Tail], CS, St) ->
+handle_local_message_([SvcName, TimeoutArg, Parameters | _Tail], CS, St) ->
     %%
     %% Slick but ugly.
     %% If the timeout is more than 24 hrs old when parsed as unix time,
@@ -735,7 +742,6 @@ announce_service_availability(Available, SvcName) ->
       fun(#service_entry { url = URL }, Acc) ->
 	      %% If the URL is not on the blackout
 	      %% list, send a notification
-	      ?debug("  URL: ~p - Acc : ~p ", [ URL, Acc]),
 	      case lists:member(URL, Acc) of
 		  false ->
 		      ?debug("DISPATCH: ~p: ~p", [ URL, Cmd]),
@@ -751,7 +757,7 @@ announce_service_availability(Available, SvcName) ->
       end, BlockURLs, ?SERVICE_TABLE).
 
 start_log(Info, Fmt, Args, CS) ->
-    ?debug("start_log(~p,~p,~p,~p)", [Info,Fmt,Args,CS]),
+    ?debug("start_log(~p,~p,~p,CS)", [Info,Fmt,Args]),
     case rvi_common:get_json_element([<<"rvi_log_id">>], Info) of
 	{ok, ID} ->
 	    start_log_(ID, Fmt, Args, CS);

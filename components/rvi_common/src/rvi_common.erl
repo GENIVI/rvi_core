@@ -186,25 +186,21 @@ notification(Component,
     InArg = [ Val || { _Key, Val } <- InArgPropList ],
     InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
     %% Figure out how we are to invoke this MFA.
-    ?debug("~p:notification(", [?MODULE]),
-    ?debug("      Component : ~p", [Component]),
-    ?debug("         Module : ~p", [Module]),
-    ?debug("       Function : ~p", [Function]),
-    ?debug("  InArgPropList : ~p", [InArgPropList]),
+    ?debug("notify [~w]~w:~w - ~p", [Component, Module, Function,
+				     InArgPropList]),
 
     case get_module_type(Component, Module, CompSpec) of
 	%% We have a gen_server
 	{ ok, gen_server } ->
-	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),
+	    ?debug("via gen_server (~p)", [Module]),
 	    gen_server:cast(Module, { rvi, Function, InArg}),
 	    ok;
 
 	%% We have a JSON-RPC server
 	{ ok,  json_rpc } ->
 	    URL = get_module_json_rpc_url(Component, Module, CompSpec),
-	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, URL]),
+	    ?debug("Sending via URL=~p", [URL]),
 	    JSONArg = json_argument(InArg, InArgSpec),
-	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),
 	    send_json_notification(URL, atom_to_binary(Function, latin1),  JSONArg),
 	    ok;
 	{ error, _ } = Error ->
