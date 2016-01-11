@@ -225,7 +225,7 @@ handle_websocket(WSock, Mesg, Arg) ->
 	{ok, Reply} ->
 	    EncReply = rvi_common:term_to_json([{id, ID} |Reply]),
 	    ?debug("service_edge_rpc:handle_websocket(~p/~p) reply:      ~s", [ WSock, ID, EncReply]),
-	    wse_server:send(WSock, list_to_binary(EncReply))
+	    wse_server:send(WSock, iolist_to_binary(EncReply))
     end,
     ok.
 
