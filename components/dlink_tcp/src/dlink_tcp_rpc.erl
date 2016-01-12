@@ -466,8 +466,10 @@ handle_cast({handle_socket, FromPid, IP, Port, Event, Arg}, St) ->
     ?debug("handle_socket, Arg (CS) = ~p", [Arg]),
     try handle_socket_(FromPid, IP, Port, Event, Arg)
     catch
+	exit:deconflict ->
+	    {stop, St};
 	C:E ->
-	    ?debug("Caught ~p:~p; ~p", [C, E, erlang:get_stacktrace()]),
+	    ?error("Caught ~p:~p; ~p", [C, E, erlang:get_stacktrace()]),
 	    error("Caught ~p:~p", [C, E]),
 	    ok
     end,
@@ -476,8 +478,10 @@ handle_cast({handle_socket, FromPid, IP, Port, Event, Arg}, St) ->
 handle_cast({handle_socket, FromPid, IP, Port, Event, Payload, Arg}, St) ->
     try handle_socket_(FromPid, IP, Port, Event, Payload, Arg)
     catch
+	exit:deconflict ->
+	    {stop, St};
 	C:E ->
-	    ?debug("Caught ~p:~p; ~p", [C, E, erlang:get_stacktrace()]),
+	    ?error("Caught ~p:~p; ~p", [C, E, erlang:get_stacktrace()]),
 	    ok
     end,
     {noreply, St};
@@ -676,12 +680,16 @@ process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress,
 				   RemotePort, ProtoVersion, Credentials, CompSpec)
 	end,
     case connection_manager:find_connection_by_address(PeerIP, PeerPort) of
-	not_found -> F();
-	BPid ->
+	not_found ->
+	    F();
+	{ok, FromPid} ->
+	    F();
+	{ok, BPid} ->
 	    deconflict_conns(FromPid, BPid, CompSpec, F)
     end.
 
 deconflict_conns(APid, BPid, CsA, F) ->
+    ?debug("deconflict_conns(~p, ~p, ...)", [APid, BPid]),
     {_, _} = ASrc = rvi_common:get_value(source_address, undefined, CsA),
     case connection:get_source_address(BPid) of
 	undefined ->
@@ -693,8 +701,8 @@ deconflict_conns(APid, BPid, CsA, F) ->
 	    exit(BPid, deconflict),
 	    F();
 	BSrc ->
-	    ?debug("Deconflict - kill APid (~p - self): ASrc = ~p, BSrc = ~p", [APid, ASrc, BSrc]),
-	    exit(deconflict)
+	    ?debug("Deconflict - kill APid (~p): ASrc = ~p, BSrc = ~p", [APid, ASrc, BSrc]),
+	    exit(APid, deconflict)
     end.
 
 

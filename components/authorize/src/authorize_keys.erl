@@ -245,7 +245,7 @@ code_change(_FromVsn, S, _Extra) ->
 creds_by_conn(Conn) ->
     ?debug("creds_by_conn(~p)~n", [Conn]),
     UTC = rvi_common:utc_timestamp(),
-    ?debug("all creds = ~p", [ets:tab2list(?CREDS)]),
+    ?debug("all creds = ~p", [abbrev(ets:tab2list(?CREDS))]),
     Creds = ets:select(?CREDS, [{ {{Conn,'_'}, #cred{jwt = '$1',
 						     validity = '$2',
 						     _='_'}},
@@ -683,6 +683,8 @@ abbrev_jwt({Hdr, Body} = X) ->
 abbrev_jwt(X) ->
     X.
 
+abbrev_pl({K, #cred{} = C}) ->
+    {abbrev_pl(K), abbrev_pl(C)};
 abbrev_pl(#cred{} = Payload) ->
     list_to_tuple(lists:map(fun(B) when is_binary(B) -> abbrev_bin(B);
 			       ([{_,_}|_]=L) -> abbrev_payload(L);

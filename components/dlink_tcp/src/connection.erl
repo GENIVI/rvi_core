@@ -266,7 +266,7 @@ handle_info({tcp, Sock, Data},
     case dlink_data:decode(Data, fun(Elems) ->
 					 got_msg(Elems, State)
 				 end, DSt, ?MODULE, FragOpts) of
-	{ok, DSt1} = Ok ->
+	{ok, DSt1} ->
 	    inet:setopts(Sock, [{active, once}]),
 	    {noreply, State#st{decode_st = DSt1}};
 	{error, Reason} ->

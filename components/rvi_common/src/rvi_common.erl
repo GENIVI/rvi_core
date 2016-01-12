@@ -844,7 +844,7 @@ start_msgpack_rpc_client(Component, Module, Opts, XOpts) ->
     rvi_msgpack_rpc:start_link([{gproc, {n,l,Name}}|XOpts] ++ Opts).
 
 start_msgpack_rpc_server(Component, Module, Opts, XOpts) ->
-    Name = {msgpack_rpc_server, Component, Module},
+    %% Name = {msgpack_rpc_server, Component, Module},
     [Callback, Rest] = take([{callback, fun() -> msgpack_rpc_cb(Module) end}],
 			    XOpts ++ Opts),
     rvi_msgpack_rpc_server:start_link([{callback, Callback} | Rest]).
@@ -1023,9 +1023,11 @@ take([], Opts) ->
 
 save_source_address(client, Socket, CS) ->
     {ok, {_, _} = Addr} = inet:peername(Socket),
+    ?debug("save_source_address (client: ~p): ~p", [self(), Addr]),
     set_value(source_address, Addr, CS);
 save_source_address(server, Socket, CS) ->
     {ok, {_, _} = Addr} = inet:sockname(Socket),
+    ?debug("save_source_address (server: ~p): ~p", [self(), Addr]),
     set_value(source_address, Addr, CS).
 
 get_source_address(CS) ->
