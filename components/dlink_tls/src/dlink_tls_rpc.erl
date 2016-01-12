@@ -121,11 +121,33 @@ start_connection_manager() ->
 setup_initial_listeners([], _CompSpec) ->
     ?debug("no initial listeners", []);
 setup_initial_listeners([_|_] = TlsOpts, CompSpec) ->
+    case lists:keytake(ports, 1, TlsOpts) of
+	{value, {_, Ports}, Rest} ->
+	    setup_initial_listeners_(Rest, CompSpec),
+	    [setup_initial_listeners_(
+	       [{port,P}|inherit_opts([ip], TlsOpts, POpts)], CompSpec)
+	     || {P, POpts} <- Ports];
+	false ->
+	    setup_initial_listeners_(TlsOpts, CompSpec)
+    end.
+
+inherit_opts(Keys, From, To) ->
+    Pick = [{K,V} || {K, V} <- From,
+		     lists:member(K, Keys),
+		     not lists:keymember(K, 1, To)],
+    Pick ++ To.
+
+setup_initial_listeners_([], _CompSpec) ->
+    ok;
+setup_initial_listeners_([_|_] = TlsOpts, CompSpec) ->
     IP = proplists:get_value(ip, TlsOpts, ?DEFAULT_TCP_ADDRESS),
     Port = proplists:get_value(port, TlsOpts, ?DEFAULT_TCP_PORT),
+    setup_listener(IP, Port, TlsOpts, CompSpec).
+
+setup_listener(IP, Port, Opts, CompSpec) ->
     %% Add listener port.
     ?info("dlink_tls:init_rvi_component(): Adding listener ~p:~p", [ IP, Port ]),
-    case dlink_tls_listener:add_listener(IP, Port, CompSpec) of
+    case dlink_tls_listener:add_listener(IP, Port, Opts, CompSpec) of
 	ok ->
 	    ?notice("---- RVI Node External Address: ~s",
 		    [ application:get_env(rvi_core, node_address, undefined)]);
@@ -204,15 +226,16 @@ connect_remote(IP, Port, CompSpec) ->
 	    ?info("dlink_tls:connect_remote(): Connecting ~p:~p (TO=~p",
 		  [IP, Port, Timeout]),
 	    log("new connection", [], CompSpec),
-	    case gen_tcp:connect(IP, Port, dlink_tls_listener:sock_opts(), Timeout) of
+	    case gen_tcp:connect(IP, Port, dlink_tls_listener:sock_opts(),
+				 Timeout) of
 		{ ok, Sock } ->
 		    ?info("dlink_tls:connect_remote(): Connected ~p:~p",
 			   [IP, Port]),
 
 		    %% Setup a genserver around the new connection.
-		    {ok, Pid } = dlink_tls_conn:setup(IP, Port, Sock,
+		    {ok, Pid } = dlink_tls_conn:setup(client, IP, Port, Sock,
 						      ?MODULE, handle_socket, CompSpec),
-		    try dlink_tls_conn:upgrade(Pid, client, CompSpec) of
+		    try dlink_tls_conn:upgrade(Pid, client) of
 			ok ->
 			    ?debug("Upgrade result = ~p", [ok]),
 			    %% Send authorize
@@ -520,8 +543,9 @@ handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
     { reply, [ Res ], St };
 
 
-handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]},
+handle_call({rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts] = Args},
 	    _From, #st{tid = Tid} = St) ->
+    ?debug("send_data: Args = ~p", [Args]),
     %% Resolve connection pid from service
     case get_connections_by_service(Service) of
 	[] ->
@@ -533,7 +557,8 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]},
 		    ConnPid, [{?DLINK_ARG_TRANSACTION_ID, Tid},
 			      {?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE},
 			      {?DLINK_ARG_MODULE, atom_to_binary(ProtoMod, latin1)},
-			      {?DLINK_ARG_DATA, Data}]),
+			      {?DLINK_ARG_DATA, Data}],
+		    DataLinkOpts),
 	    {reply, [Res], St#st{tid = Tid + 1}}
     end;
 
@@ -685,9 +710,12 @@ send_authorize(Pid, CompSpec) ->
     dlink_tls_conn:send(Pid, rvi_common:pass_log_id(
 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE},
 				{?DLINK_ARG_VERSION, ?DLINK_TLS_VERSION},
-				{?DLINK_ARG_ADDRESS, LocalIP},
+				{?DLINK_ARG_ADDRESS, bin(LocalIP)},
 				{?DLINK_ARG_PORT, LocalPort},
 				{?DLINK_ARG_CREDENTIALS, Creds}], CompSpec)).
+
+bin(S) ->
+    iolist_to_binary(S).
 
 connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
     %% If FromPid (the genserver managing the socket) is not yet registered
@@ -780,15 +808,6 @@ get_connections() ->
     get_connections(ets:first(?CONNECTION_TABLE), []).
 
 
-%% get_authorize_jwt(CompSpec) ->
-%%     case authorize_rpc:get_authorize_jwt(CompSpec) of
-%% 	[ok, JWT] ->
-%% 	    JWT;
-%% 	[not_found] ->
-%% 	    ?error("No authorize JWT~n", []),
-%% 	    error(cannot_authorize)
-%%     end.
-
 get_credentials(CompSpec) ->
     case authorize_rpc:get_credentials(CompSpec) of
 	[ok, Creds] ->
@@ -797,17 +816,6 @@ get_credentials(CompSpec) ->
 	    ?error("No credentials found~n", []),
 	    error(no_credentials_found)
     end.
-
-%% validate_auth_jwt(JWT, Conn, CompSpec) ->
-%%     case authorize_rpc:validate_authorization(CompSpec, JWT, Conn) of
-%% 	[ok] ->
-%% 	    true;
-%% 	[not_found] ->
-%% 	    false
-%%     end.
-
-%% term_to_json(Term) ->
-%%     binary_to_list(iolist_to_binary(exo_json:encode(Term))).
 
 opt(K, L, Def) ->
     case lists:keyfind(K, 1, L) of

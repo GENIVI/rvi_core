@@ -33,10 +33,15 @@
     t_start_tlsj_backend/1,
     t_start_tlsj_sample/1,
     t_register_lock_service/1,
+    t_register_sota_service/1,
     t_call_lock_service/1,
+    t_call_sota_service/1,
     t_remote_call_lock_service/1,
+    t_check_rvi_log/1,
     t_no_errors/1
    ]).
+
+-export([handle_body/4]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -76,7 +81,9 @@ groups() ->
        t_start_basic_backend,
        t_start_basic_sample,
        t_register_lock_service,
+       t_register_sota_service,
        t_call_lock_service,
+       t_call_sota_service,
        t_remote_call_lock_service,
        t_no_errors
       ]},
@@ -85,8 +92,11 @@ groups() ->
        t_start_tls_backend,
        t_start_tls_sample,
        t_register_lock_service,
+       t_register_sota_service,
        t_call_lock_service,
        t_remote_call_lock_service,
+       t_call_sota_service,
+       t_check_rvi_log,
        t_no_errors
       ]},
      {test_run_tlsj, [],
@@ -94,7 +104,9 @@ groups() ->
        t_start_tlsj_backend,
        t_start_tlsj_sample,
        t_register_lock_service,
+       t_register_sota_service,
        t_call_lock_service,
+       t_call_sota_service,
        t_remote_call_lock_service,
        t_no_errors
       ]},
@@ -103,7 +115,9 @@ groups() ->
        t_start_bt_backend,
        t_start_bt_sample,
        t_register_lock_service,
+       t_register_sota_service,
        t_call_lock_service,
+       t_call_sota_service,
        t_remote_call_lock_service,
        t_no_errors
       ]}
@@ -144,6 +158,7 @@ end_per_group(test_install, _) ->
     ok;
 end_per_group(_, _) ->
     stop_nodes(),
+    stop_services(),
     ok.
 
 init_per_testcase(Case, Config) ->
@@ -166,13 +181,17 @@ t_backend_keys_and_cert(Config) ->
 	 " -key ", RootKeyDir, "/root_key.pem",
 	 " -days 365 -out ", RootKeyDir, "/root_cert.crt"]),
     Dir = ensure_dir("basic_backend_keys"),
+    CredDir = ensure_dir("basic_backend_creds"),
     generate_device_keys(Dir, Config),
-    generate_cred(backend, Dir, ensure_dir("basic_backend_creds"), Config).
+    generate_cred(backend, Dir, CredDir, Config),
+    generate_sota_cred(backend, Dir, CredDir, Config).
 
 t_sample_keys_and_cert(Config) ->
     Dir = ensure_dir("basic_sample_keys"),
     generate_device_keys(Dir, Config),
-    generate_cred(sample, Dir, ensure_dir("basic_sample_creds"), Config).
+    CredDir = ensure_dir("basic_sample_creds"),
+    generate_cred(sample, Dir, CredDir, Config),
+    generate_sota_cred(sample, Dir, CredDir, Config).
 
 t_install_backend_node(_Config) ->
     install_rvi_node("basic_backend", env(),
@@ -255,6 +274,41 @@ t_register_lock_service(_Config) ->
     save({service, lock}, Pid),
     timer:sleep(2000).
 
+t_register_sota_service(_Config) ->
+    Pid = start_json_rpc_server(9987),
+    reg_service_request("sample", <<"sota">>, <<"http://localhost:9987">>),
+    save({service, sota}, Pid),
+    timer:sleep(2000).
+
+t_call_sota_service(_Config) ->
+    {Mega, Secs, _} = os:timestamp(),
+    Timeout = Mega * 1000000 + Secs + 60,
+    register(sota_client, self()),
+    Data = sota_bin(),
+    json_rpc_request(service_edge("backend"),
+		     <<"message">>,
+		     [
+		      {<<"service_name">>, <<"jlr.com/vin/abc/sota">>},
+		      {<<"timeout">>, Timeout},
+		      {<<"parameters">>,
+		       [
+			{<<"data">>, Data},
+			{<<"sendto">>, <<"sota_client">>},
+			{<<"rvi.max_msg_size">>, 100}
+		       ]}
+		     ]),
+    receive
+	{message, [{service_name, <<"/sota">>},
+		   {data, Data}]} = Res ->
+	    ct:log("got json_rpc_result: ~p", [Res]),
+	    ok;
+	{message, Other} ->
+	    ct:log("wrong message: ~p", [Other]),
+	    error({unmatched, Other})
+    after 10000 ->
+	    error(timeout)
+    end.
+
 t_call_lock_service(_Config) ->
     CallPid = spawn_cmd(
 		[python(),
@@ -283,6 +337,100 @@ t_remote_call_lock_service(_Config) ->
     CallRes = fetch(CallPid),
     verify_call_res(join_stdout_msgs(CallRes)),
     ct:log("CallRes = ~p~n", [CallRes]).
+
+t_check_rvi_log(_Config) ->
+    [URLb, URLs] = [rvi_log_addr(Node) || Node <- ["backend", "sample"]],
+    {Method, Args} = {<<"fetch">>, [{<<"tid">>, <<".*">>}]},
+    Logs =
+	[{URL, unwrap_log(
+		 json_rpc_request(URL, Method, Args))}
+	 || URL <- [URLb, URLs]],
+    ct:log("Logs = ~p", [Logs]),
+    ok.
+
+unwrap_log(Res) ->
+    {_, R} = lists:keyfind(<<"result">>, 1, Res),
+    {_, 0} = lists:keyfind(<<"status">>, 1, R),
+    {_, L} = lists:keyfind(<<"log">>, 1, R),
+    lists:flatmap(
+      fun({Id, Es}) ->
+	      [unwrap_event(Id, E) || E <- Es]
+      end, L).
+
+unwrap_event(Id, [{<<"ts">>,T},{<<"lvl">>,L},{<<"cmp">>,C},{<<"evt">>,E}]) ->
+    {Id, T, binary_to_integer(L), C, E}.
+
+json_rpc_request(URL, Method, Args) ->
+    Req = jsx:encode([{<<"jsonrpc">>, <<"2.0">>},
+		      {<<"id">>, 1},
+		      {<<"method">>, Method},
+		      {<<"params">>, Args}]),
+    Hdrs = [{'Content-Type', "application/json"}],
+    json_result(exo_http:wpost(URL, {1, 1}, Hdrs, Req, 1000)).
+
+reg_service_request(Node, Svc, URL) ->
+    check_reg_svc_response(
+      json_rpc_request(service_edge(Node),
+		       <<"register_service">>,
+		       [{<<"service">>, Svc},
+			{<<"network_address">>, URL}])).
+
+check_reg_svc_response(JSON) ->
+    ct:log("check_reg_svc: ~p", [JSON]),
+    {_, Res} = lists:keyfind(<<"result">>, 1, JSON),
+    {_, 0} = lists:keyfind(<<"status">>, 1, Res),
+    ok.
+
+sota_bin() ->
+    <<"11111111111111111111111111111111111111111111111111"
+      "22222222222222222222222222222222222222222222222222"
+      "33333333333333333333333333333333333333333333333333"
+      "44444444444444444444444444444444444444444444444444"
+      "55555555555555555555555555555555555555555555555555"
+      "66666666666666666666666666666666666666666666666666"
+      "77777777777777777777777777777777777777777777777777"
+      "88888888888888888888888888888888888888888888888888"
+      "99999999999999999999999999999999999999999999999999"
+      "00000000000000000000000000000000000000000000000000">>.
+
+json_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSON}) ->
+    jsx:decode(JSON).
+
+start_json_rpc_server(Port) ->
+    {ok, Pid} = exo_http_server:start(Port, [{request_handler,
+					      {?MODULE, handle_body, [foo]}}]),
+    save({server,Port}, Pid),
+    Pid.
+
+handle_body(Socket, Request, Body, St) ->
+    JSON = jsx:decode(Body),
+    ct:log("Got JSON Req: ~p", [JSON]),
+    case JSON of
+	[{<<"jsonrpc">>, <<"2.0">>},
+	 {<<"id">>, ID},
+	 {<<"method">>, <<"message">>},
+	 {<<"params">>,
+	  [{<<"service_name">>, SvcName},
+	   {<<"parameters">>,
+	    [ {<<"data">>, Data},
+	      {<<"sendto">>, SendTo},
+	      {<<"rvi.max_msg_size">>, _}]}
+	  ]}] ->
+	    binary_to_existing_atom(SendTo, latin1)
+		! {message, [{service_name, SvcName},
+			     {data, Data}]},
+	    Reply = [{<<"jsonrpc">>, <<"2.0">>},
+		     {<<"id">>, ID},
+		     {<<"result">>, <<"ok">>}],
+	    exo_http_server:response(
+	      Socket, undefined, 200, "OK",
+	      jsx:encode(Reply),
+	      [{'content_type', "application/json"}]);
+	Other ->
+	    exo_http_server:response(
+	      Socket, undefined, 501, "Internal Error", "Internal Error"),
+	    error({unrecognized, Other})
+    end.
 
 verify_service_res(Bin) ->
     {match,_} =
@@ -433,6 +581,39 @@ generate_cred(backend, KeyDir, CertDir, _Config) ->
 	 " --cred_out=", KeyDir, "/backend_cred.json"]),
     ok.
 
+generate_sota_cred(sample, KeyDir, CredDir, _Config) ->
+    %% Don't put sota_cred.json in the certs directory, since rvi_core
+    %% will report a parse failure for it.
+    UUID = uuid(),
+    {Start, Stop} = start_stop(),
+    cmd([scripts(), "/rvi_create_credential.py"
+	 " --id=", UUID,
+	 " --issuer=GENIVI"
+	 " --device_cert=", KeyDir, "/device_cert.crt",
+	 " --start='", Start, "'"
+	 " --stop='", Stop, "'"
+	 " --root_key=", root_keys(), "/root_key.pem"
+	 " --register='jlr.com/vin/abc/store'"
+	 " --invoke='jlr.com/backend/set_state'"
+	 " --jwt_out=", CredDir, "/sota_cred.jwt"
+	 " --cred_out=", KeyDir, "/sota_cred.json"]),
+    ok;
+generate_sota_cred(backend, KeyDir, CertDir, _Config) ->
+    UUID = uuid(),
+    {Start, Stop} = start_stop(),
+    cmd([scripts(), "/rvi_create_credential.py"
+	 " --id=", UUID,
+	 " --issuer=GENIVI"
+	 " --device_cert=", KeyDir, "/device_cert.crt",
+	 " --start='", Start, "'"
+	 " --stop='", Stop, "'"
+	 " --root_key=", root_keys(), "/root_key.pem"
+	 " --register='jlr.com'"
+	 " --invoke='jlr.com'"
+	 " --jwt_out=", CertDir, "/sota_backend_cred.jwt"
+	 " --cred_out=", KeyDir, "/sota_backend_cred.json"]),
+    ok.
+
 subj() ->
     "/C=US/ST=OR/O=JLR/localityName=Portland/organizationalUnitName=Ostc".
 
@@ -472,6 +653,9 @@ root_keys() ->
 
 service_edge("backend") -> "http://localhost:8801";
 service_edge("sample" ) -> "http://localhost:9001".
+
+rvi_log_addr("backend") -> "http://localhost:8809";
+rvi_log_addr("sample" ) -> "http://localhost:9009".
 
 install_rvi_node(Name, Env, _ConfigF) ->
     Root = code:lib_dir(rvi_core),
@@ -581,6 +765,14 @@ stop_nodes() ->
     rpc:multicall([N || {N,_} <- Nodes], init, stop, []),
     [verify_killed(cmd_(["kill -9 ", P], [])) || {_,P} <- Nodes],
     [delete_node(N) || {N,_} <- Nodes].
+
+stop_services() ->
+    Services =
+	ets:select(?DATA, [{ {{service,'_'},'_'}, [], ['$_'] },
+			   { {{server,'_'},'_'}, [], ['$_'] }]),
+    ct:log("Stopping services: ~p~n", [Services]),
+    [exit(Pid, shutdown) || {_, Pid} <- Services],
+    ok.
 
 delete_node(N) ->
     ct:log("delete_node(~p)", [N]),

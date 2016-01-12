@@ -14,7 +14,7 @@
 -include_lib("lager/include/log.hrl").
 
 -export([start_link/0,
-         add_listener/3,
+         add_listener/4,
          remove_listener/2]).
 
 -export([init/2, handle_call/3, handle_cast/2, handle_info/2]).
@@ -28,8 +28,8 @@ start_link() ->
     create_tabs(),
     gen_nb_server:start_link({local, ?MODULE}, ?MODULE, []).
 
-add_listener(IpAddr, Port, CompSpec) ->
-    gen_server:call(?MODULE, {add_listener, IpAddr, Port, CompSpec}).
+add_listener(IpAddr, Port, Opts, CompSpec) ->
+    gen_server:call(?MODULE, {add_listener, IpAddr, Port, Opts, CompSpec}).
 
 remove_listener(IpAddr, Port) ->
     gen_server:call(?MODULE, {remove_listener, IpAddr, Port}).
@@ -37,10 +37,11 @@ remove_listener(IpAddr, Port) ->
 init([], State) ->
     State1 =
         lists:foldl(
-          fun({{_,_}} = Addr, Acc) ->
+          fun({{{_,_} = Addr, Opts}}, Acc) ->
+                  ?debug("Addr = ~p", [Addr]),
                   case gen_nb_server:add_listen_socket(Addr, Acc) of
                       {ok, Acc1} ->
-                          ets_insert(?TAB, {Addr}),
+                          ets_insert(?TAB, {Addr, Opts}),
                           Acc1;
                       _Error ->
                           ets_delete(?TAB, Addr),
@@ -60,11 +61,12 @@ create_tabs() ->
             ?TAB
     end.
 
-handle_call({add_listener, IpAddr, Port, CompSpec}, _From, State) ->
+handle_call({add_listener, IpAddr, Port, Opts, CompSpec}, _From, State) ->
+    ?debug("add_listener: IpAddr=~p, Port=~p", [IpAddr, Port]),
     ets_insert(?TAB, {cs, CompSpec}),
     case gen_nb_server:add_listen_socket({IpAddr, Port}, State) of
         {ok, State1} ->
-            ets_insert(?TAB, {{IpAddr, Port}}),
+            ets_insert(?TAB, {{IpAddr, Port}, Opts}),
             {reply, ok, gen_nb_server:store_cb_state( CompSpec, State1 )};
 
         Error ->
@@ -104,16 +106,21 @@ new_connection(IP, Port, Sock, State) ->
     %% first data.
     %% Provide component spec as extra arg.
     CompSpec = gen_nb_server:get_cb_state(State),
+    [{_, Opts}] = ets_lookup(?TAB, {IP, Port}),
+    CS = rvi_common:set_value(tls_opts, Opts, CompSpec),
     {ok, P} = dlink_tls_conn:setup(
-                undefined, 0, Sock,
+                server, undefined, 0, Sock,
                 dlink_tls_rpc,
-                handle_socket, CompSpec),
-    dlink_tls_conn:async_upgrade(P, server, CompSpec),
+                handle_socket, CS),
+    dlink_tls_conn:async_upgrade(P, server),
     {ok, State}.
 
 
 ets_insert(Tab, Obj) ->
     ets:insert(Tab, Obj).
+
+ets_lookup(Tab, Key) ->
+    ets:lookup(Tab, Key).
 
 ets_delete(Tab, Key) ->
     ets:delete(Tab, Key).

@@ -360,6 +360,8 @@ match_svc_([H|T], [H|T1]) ->
     match_svc_(T, T1);
 match_svc_(["+"|T], [_|T1]) ->
     match_svc_(T, T1);
+match_svc_([[]], _) ->
+    true;
 match_svc_([], _) ->
     true;
 match_svc_(_, _) ->
@@ -680,7 +682,6 @@ abbrev_jwt({Hdr, Body} = X) ->
     catch error:_ -> X end;
 abbrev_jwt(X) ->
     X.
-
 
 abbrev_pl(#cred{} = Payload) ->
     list_to_tuple(lists:map(fun(B) when is_binary(B) -> abbrev_bin(B);

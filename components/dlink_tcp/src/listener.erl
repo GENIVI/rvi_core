@@ -101,7 +101,7 @@ new_connection(IP, Port, Sock, State) ->
     %% IP and Port are garbage. We'll grab peername when we get our
     %% first data.
     %% Provide component spec as extra arg.
-    {ok, _P} = connection:setup(undefined, 0, Sock,
+    {ok, _P} = connection:setup(server, undefined, 0, Sock,
 				dlink_tcp_rpc,
 				handle_socket, gen_nb_server:get_cb_state(State)),
     {ok, State}.
