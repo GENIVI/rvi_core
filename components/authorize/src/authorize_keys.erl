@@ -334,6 +334,8 @@ match_length_([H|T], [H|T1], L) ->
     match_length_(T, T1, L+1);
 match_length_(["+"|T], [_|T1], L) ->
     match_length_(T, T1, L+1);
+match_length_([[]], _, L) ->
+    L;
 match_length_([H|_], [H1|_], _) when H =/= H1 ->
     0;
 match_length_([_|_], [], _) ->
