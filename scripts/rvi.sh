@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2014, Jaguar Land Rover
 #
-# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License, version 2.0.  The full text of the
 # Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 #
 #
@@ -17,7 +17,7 @@ SELF_DIR=$(dirname $(readlink -f "$0"))
 ERL=${ERL:=erl}
 
 usage() {
-    echo "Usage: $0 -d config_dir -c config_file -l log_dir \\" 
+    echo "Usage: $0 -d config_dir -c config_file -l log_dir \\"
     echo "       start|stop|console|attach|ping"
     echo
     echo "  -c config_file  Configuration file to launch rvi node with. "
@@ -37,7 +37,7 @@ usage() {
     echo "                  is the base name of the configuration file."
     echo
     echo "  console [defaut]  Start an rvi in foreground mode."
-    echo 
+    echo
     echo "  start             Start an rvi node with the given configuration file."
     echo
     echo "  stop              Stop an rvi node previously started with 'start'."
@@ -136,7 +136,7 @@ then
 	echo "${CONFIG_FILE} cannot be opened for reading."
 	usage
     fi
-    # 
+    #
     # Generate a config file that will end up as
     # /tmp/rvi/sys.config
     #
@@ -153,7 +153,7 @@ then
 	exit "$?"
     fi
 fi
-   
+
 TMP_DIR=/tmp/rvi/$(basename ${CONFIG_FILE} .config)
 LOG_DIR=${LOG_DIR:=${TMP_DIR}/rvi/log}
 
@@ -162,7 +162,7 @@ then
     LOG_DIR=${PWD}/${LOG_DIR}
 fi
 
-LAUNCH="${ERL} -boot ${CONFIG_DIR}/rvi/start -sname ${SNAME} -config ${CONFIG_DIR}/rvi/sys -setcookie ${COOKIE}"
+LAUNCH="${ERL} +A 128 -boot ${CONFIG_DIR}/rvi/start -sname ${SNAME} -config ${CONFIG_DIR}/rvi/sys -setcookie ${COOKIE}"
 
 case "${CMD}" in
    start)
@@ -185,9 +185,8 @@ case "${CMD}" in
        exec ${SELF_DIR}/scripts/nodetool -sname ${SNAME} -setcookie ${COOKIE} ping
        ;;
 
-   attach) 
+   attach)
        exec to_erl ${TMP_DIR}
        ;;
 
-esac 
-
+esac
