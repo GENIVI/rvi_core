@@ -36,6 +36,7 @@
     t_register_sota_service/1,
     t_call_lock_service/1,
     t_call_sota_service/1,
+    t_multicall_sota_service/1,
     t_remote_call_lock_service/1,
     t_check_rvi_log/1,
     t_no_errors/1
@@ -84,6 +85,7 @@ groups() ->
        t_register_sota_service,
        t_call_lock_service,
        t_call_sota_service,
+       t_multicall_sota_service,
        t_remote_call_lock_service,
        t_no_errors
       ]},
@@ -96,6 +98,7 @@ groups() ->
        t_call_lock_service,
        t_remote_call_lock_service,
        t_call_sota_service,
+       t_multicall_sota_service,
        t_check_rvi_log,
        t_no_errors
       ]},
@@ -107,6 +110,7 @@ groups() ->
        t_register_sota_service,
        t_call_lock_service,
        t_call_sota_service,
+       t_multicall_sota_service,
        t_remote_call_lock_service,
        t_no_errors
       ]},
@@ -118,6 +122,7 @@ groups() ->
        t_register_sota_service,
        t_call_lock_service,
        t_call_sota_service,
+       t_multicall_sota_service,
        t_remote_call_lock_service,
        t_no_errors
       ]}
@@ -281,10 +286,38 @@ t_register_sota_service(_Config) ->
     timer:sleep(2000).
 
 t_call_sota_service(_Config) ->
+    call_sota_service_(sota_client, sota_bin()).
+
+t_multicall_sota_service(_Config) ->
+    Data = <<"abc">>,
+    Pids = [spawn_monitor(fun() ->
+				  exit({ok, call_sota_service_(N, Data)})
+			  end)
+	    || N <- [client1,
+		     client2,
+		     client3,
+		     client4,
+		     client5]],
+    collect(Pids).
+
+collect([{Pid, Ref} | T]) ->
+    receive
+	{'DOWN', Ref, _, _, {ok, ok}} ->
+	    collect(T);
+	{'DOWN', Ref, _, _, Reason} ->
+	    [exit(P, kill) || {P,_} <- T],
+	    error(Reason)
+    after 30000 ->
+	    error(timeout)
+    end;
+collect([]) ->
+    ok.
+
+
+call_sota_service_(RegName, Data) ->
     {Mega, Secs, _} = os:timestamp(),
     Timeout = Mega * 1000000 + Secs + 60,
-    register(sota_client, self()),
-    Data = sota_bin(),
+    register(RegName, self()),
     json_rpc_request(service_edge("backend"),
 		     <<"message">>,
 		     [
@@ -293,7 +326,7 @@ t_call_sota_service(_Config) ->
 		      {<<"parameters">>,
 		       [
 			{<<"data">>, Data},
-			{<<"sendto">>, <<"sota_client">>},
+			{<<"sendto">>, atom_to_binary(RegName, latin1)},
 			{<<"rvi.max_msg_size">>, 100}
 		       ]}
 		     ]),
@@ -305,7 +338,7 @@ t_call_sota_service(_Config) ->
 	{message, Other} ->
 	    ct:log("wrong message: ~p", [Other]),
 	    error({unmatched, Other})
-    after 10000 ->
+    after 30000 ->
 	    error(timeout)
     end.
 
