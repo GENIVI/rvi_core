@@ -708,14 +708,15 @@ deconflict_conns(APid, BPid, CsA, F) ->
 
 process_authorize_(FromPid, PeerIP, PeerPort, RemoteAddress, RemotePort,
 		   _ProtoVersion, Credentials, CompSpec) ->
-    {NRemoteAddress, NRemotePort} = Conn =
-	case { RemoteAddress, RemotePort } of
-	    { "0.0.0.0", 0 } ->
-		?info("dlink_tcp:authorize(): Remote is behind firewall. Will use ~p:~p",
-		      [ PeerIP, PeerPort]),
-		{ PeerIP, PeerPort };
-	    _ -> { RemoteAddress, RemotePort}
-	end,
+    {NRemoteAddress, NRemotePort} = Conn = {PeerIP, PeerPort},
+    %% {NRemoteAddress, NRemotePort} = Conn =
+    %% 	case { RemoteAddress, RemotePort } of
+    %% 	    { "0.0.0.0", 0 } ->
+    %% 		?info("dlink_tcp:authorize(): Remote is behind firewall. Will use ~p:~p",
+    %% 		      [ PeerIP, PeerPort]),
+    %% 		{ PeerIP, PeerPort };
+    %% 	    _ -> { RemoteAddress, RemotePort}
+    %% 	end,
     log(result, "auth ~s:~w", [NRemoteAddress, NRemotePort], CompSpec),
     authorize_rpc:store_creds(CompSpec, Credentials, Conn),
     connection_authorized(FromPid, Conn, CompSpec).

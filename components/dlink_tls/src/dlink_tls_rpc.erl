@@ -689,15 +689,16 @@ process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress,
     ?info("dlink_tls:authorize(): Peer Address:   ~s:~p", [PeerIP, PeerPort ]),
     ?info("dlink_tls:authorize(): Remote Address: ~s:~p", [ RemoteAddress, RemotePort ]),
 
-    { NRemoteAddress, NRemotePort} = Conn =
-        case { RemoteAddress, RemotePort } of
-            { <<"0.0.0.0">>, 0 } ->
+    {NRemoteAddress, NRemotePort} = Conn = {PeerIP, PeerPort},
+    %% { NRemoteAddress, NRemotePort} = Conn =
+    %%     case { RemoteAddress, RemotePort } of
+    %%         { <<"0.0.0.0">>, 0 } ->
 
-                ?info("dlink_tls:authorize(): Remote is behind firewall. Will use ~p:~p",
-                      [ PeerIP, PeerPort]),
-                { PeerIP, PeerPort };
-            _ -> { RemoteAddress, RemotePort}
-        end,
+    %%             ?info("dlink_tls:authorize(): Remote is behind firewall. Will use ~p:~p",
+    %%                   [ PeerIP, PeerPort]),
+    %%             { PeerIP, PeerPort };
+    %%         _ -> { RemoteAddress, RemotePort}
+    %%     end,
     log("auth ~s:~w", [NRemoteAddress, NRemotePort], CompSpec),
     PeerCert = rvi_common:get_value(dlink_tls_peer_cert, not_found, CompSpec),
     authorize_rpc:store_creds(CompSpec, Credentials, Conn, PeerCert),

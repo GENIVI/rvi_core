@@ -343,8 +343,9 @@ process_authorize(FromPid, PeerBTAddr, PeerBTChannel,
     %% from the client. We should respond with our own authorize followed by
     %% a service announce
 
-    Conn = {RemoteAddress, RemoteChannel},
-    log(result, "auth ~s:~w", [RemoteAddress, RemoteChannel], CompSpec),
+    %% Conn = {RemoteAddress, RemoteChannel},
+    {NRemoteAddress, NRemoteChannel} = Conn = {PeerBTAddr, PeerBTChannel},
+    log(result, "auth ~s:~w", [NRemoteAddress, NRemoteChannel], CompSpec),
     authorize_rpc:store_creds(CompSpec, Credentials, Conn),
     connection_authorized(FromPid, Conn, CompSpec).
 
