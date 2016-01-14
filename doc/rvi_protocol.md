@@ -172,7 +172,73 @@ The connection is terminated regardless of its current protocol
 session state.
 
 ## Chunking of large messages
-TBD: Ulf Wiger
+
+RVI Core is able to split large messages into fragments and deliver them
+reliably to the receiver; if the receiving end is an RVI node, re-assembly
+is performed automatically. The fragmentation logic is called at the data link
+level, so all messages, including RVI Core handshake messages, can be
+fragmented.
+
+The protocol is as follows:
+
+<img src="rvi_protocol_frag1.png" alt="RVI Core fragmentation Sequence Diagram" style="width:800">
+
+### Enabling fragmentation
+
+Fragmentation can be turned on either per data link type, or per message.
+
+The two options that affect fragmentation are
+
+* "reliable" (true | false): One fragment containing the whole message is
+sent, and acknowledged with a "frg-end" message. This effectively enables
+reliable message delivery.
+
+* "max_msg_size" (Bytes): this specifies a maximum window size. RVI Core will
+try to stay within the window size including the framing overhead, but this
+will currently be unreliable when using JSON encoding, due to escaping of
+binary data.
+
+When including these options in the "parameters" list of a message invocation,
+the names can be prefixed with "rvi.", e.g. "rvi.max_msg_size".
+
+**TODO**: Introduce timers. Currently there are none.
+
+### Re-assembly
+
+The receiving side is responsible for re-assembling the message and detect
+holes (missing fragments). The sending side will only the first
+fragment (with a starting offset of 1), and then wait for the receiving side
+to request more fragments using "frg-get" messages. When the sending side
+receives a "frg-end" message, it will forget about the message.
+
+### Encoding
+
+By default, the fragmentation logic will use the same encoding as the
+data link layer, but this is configurable. RVI Core currently supports
+JSON and msgpack encoding. Of these two, msgpack is more efficient and
+predictable for encoding binary data.
+
+The RVI Core data link layers detect the encoding on a per-message basis.
+This is possible, as all RVI Core messages are either structs (JSON) or
+maps (msgpack), and these encodings are distinguishable on the first
+non-whitespace byte.
+
+Configuring fragmentation encoding in RVI Core is done for the specific
+data link module, e.g.
+
+```
+	{ data_link,
+	  [ { dlink_tcp_rpc, gen_server,
+	      [
+                { frag_opts, {rvi_data_msgpack, []} },
+		{ json_rpc_address, { 192.168.1.32, 8806 } },
+		{ server_opts, [ { port, 8807 }]},
+		{ persistent_connections, [ "192.168.1.10:8807" ]}
+	      ]
+	    }
+	  ]
+	}
+```
 
 # PROTOCOL DEFINITION
 This chapter describes the protocol message formats and how the various fields are used.

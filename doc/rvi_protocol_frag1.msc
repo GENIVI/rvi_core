@@ -1,0 +1,23 @@
+#
+#
+# Sequence diagram description
+#
+# The sequence diagram description below is translated to
+# a PNG image by mscgen (http://www.mcternan.me.uk/mscgen/)
+#
+# Recompile updated diagrams to a png image with:
+#
+#   mscgen -T png rvi_protocol_frag1.msc
+#
+
+msc {
+  width="400";
+  "Client",  "Server";
+  "Client" -> "Server" [ label = "{frg, [ID, Size, Offs1, Bin1]}" ];
+  "Client" <- "Server" [ label = "{frg-get, [ID, Offs2, Bytes2]}" ];
+  "Client" -> "Server" [ label = "{frg, [ID, Size, Offs2, Bin2]}" ];
+  "Client" <- "Server" [ label = "{frg-get, [ID, Offs3, Bytes3]}" ];
+  "Client" -> "Server" [ label = "{frg, [ID, Size, Offs3, Bin3]}" ];
+  "Client" <- "Server" [ label = "{frg-end, [ID, ResultCode]}" ];
+  "Client" abox "Server" [ label = "Message complete" ] ;
+}
