@@ -106,11 +106,11 @@ timestamp() ->
 -define(ELEM(A), {element, #evt.A, '$_'}).
 -define(PROD, {{'$1', ?ELEM(level), ?ELEM(component), ?ELEM(event)}}).
 
-fetch(Tids) ->
-    fetch(Tids, []).
+fetch(Tid) ->
+    fetch(Tid, []).
 
-fetch(Tids, Args) ->
-    TidSet = select_ids(Tids),
+fetch(TidPat, Args) ->
+    TidSet = select_ids(TidPat),
     lists:foldr(
       fun(Tid, Acc) ->
 	      case match_events(
@@ -267,6 +267,7 @@ handle_rpc(<<"log">>, Args) ->
     {ok, [{status, rvi_common:json_rpc_status(ok)}]};
 handle_rpc(<<"fetch">>, Args) ->
     TIDs = get_json_ids(Args),
+    ?debug("fetch: TIDs = ~p", [TIDs]),
     Res = [{TID, fetch(TID)} || TID <- TIDs],
     {ok, [{status, rvi_common:json_rpc_status(ok)},
 	  {<<"log">>, format_result(Res)}]};
@@ -383,30 +384,39 @@ valid_id_pat(TP) ->
 	    false
     end.
 
-select_ids(TIDs) ->
+select_ids(TidPat) ->
     ets:foldr(
       fun({Tid}, Acc) ->
-	      case match_id(Tid, TIDs) of
+	      case match_id(Tid, TidPat) of
 		  true -> [Tid|Acc];
 		  false -> Acc
 	      end
       end, [], ?IDS).
 
-match_id(Tid, [Pat|Pats]) ->
+match_id(Tid, Pat) ->
     case re:run(Tid, Pat, []) of
 	{match, _} -> true;
-	nomatch -> match_id(Tid, Pats)
-    end;
-match_id(_, []) ->
-    false.
+	nomatch -> false
+    end.
 
 format_result(Log) ->
-    [{TID, format_events(Es)} || {TID, Es} <- Log].
+    ?debug("format_result(~p)", [Log]),
+    Events = lists:foldl(
+	       fun({_Pat, Matches}, Acc) ->
+		       lists:foldl(
+			 fun({Id,Es}, D) ->
+				 orddict:store(Id, Es, D)
+			 end, Acc, Matches)
+	       end, orddict:new(), Log),
+    ?debug("Events = ~p", [Events]),
+    [{TID, format_events(Es)} || {TID, Es} <- Events].
 
-format_events([{TS, Comp, Evt}|Es]) ->
-    [[{<<"ts">>, rvi_common:utc_timestamp(TS)},
+format_events([{TS, Level, Comp, Evt} = E|Es]) ->
+    ?debug("format_events(), E = ~p", [E]),
+    [[{<<"ts">>, utc_hr_timestamp(TS)},
+      {<<"lvl">>, bin(Level)},
       {<<"cmp">>, bin(Comp)},
-      {<<"evt">>, bin(Evt)}] || format_events(Es)];
+      {<<"evt">>, bin(Evt)}] | format_events(Es)];
 format_events([]) ->
     [].
 
@@ -415,3 +425,11 @@ bin(B) when is_binary(B) -> B;
 bin(L) when is_list(L)   -> iolist_to_binary(L);
 bin(Other) ->
     iolist_to_binary(io_lib:fwrite("~w", [Other])).
+
+
+utc_hr_timestamp({_,_,US} = TS) ->
+    %% The 'rem' op is just a precaution; a properly generated 'now' TS
+    %% should not have US > 1000000, but a derived TS could (since just
+    %% about all operations on such timestamps will work anyway).
+    Secs = rvi_common:utc_timestamp(TS),
+    Secs + (US rem 1000000)/1000000.

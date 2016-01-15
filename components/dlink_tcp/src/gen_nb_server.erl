@@ -90,7 +90,8 @@ store_cb_state(CBState, State) when is_record(State, state) ->
 %% @doc Adds a new listener socket to be managed by gen_nb_server
 %%      NOTE: Should only be called by the submodule
 -spec add_listen_socket({string(), integer()}, #state{}) -> {ok, #state{}} | {error, any()}.
-add_listen_socket({IpAddr, Port}, #state{cb=Callback, addrs=Addrs, socks=Socks}=State) ->
+add_listen_socket({IpAddr0, Port}, #state{cb=Callback, addrs=Addrs, socks=Socks}=State) ->
+    IpAddr = str(IpAddr0),
     Key = {IpAddr, Port},
     case dict:find(Key, Socks) of
         {ok, _} ->
@@ -108,7 +109,8 @@ add_listen_socket({IpAddr, Port}, #state{cb=Callback, addrs=Addrs, socks=Socks}=
 %% @doc Removes a new listener socket to be managed by gen_nb_server
 %%      NOTE: Should only be called by the submodule
 -spec remove_listen_socket({string(), integer()}, #state{}) -> {error, not_listening} | {ok, #state{}}.
-remove_listen_socket({IpAddr, Port}, #state{socks=Socks, addrs=Addrs}=State) ->
+remove_listen_socket({IpAddr0, Port}, #state{socks=Socks, addrs=Addrs}=State) ->
+    IpAddr = str(IpAddr0),
     Key = {IpAddr, Port},
     case dict:find(Key, Socks) of
         error ->
@@ -118,6 +120,11 @@ remove_listen_socket({IpAddr, Port}, #state{socks=Socks, addrs=Addrs}=State) ->
             {ok, State#state{socks=dict:erase(Key, Socks),
                              addrs=dict:erase(Sock, Addrs)}}
     end.
+
+str(Addr) when is_list(Addr) ->
+    Addr;
+str(Addr) when is_binary(Addr) ->
+    binary_to_list(Addr).
 
 %% @doc Returns the callback module's state
 -spec init([atom()|any()]) -> {ok, #state{}} | {error, bad_init_state} | {error, any()}.

@@ -91,20 +91,14 @@ get_modules_by_service(CompSpec, Service) ->
 
 
 register_services(CompSpec, Services, DataLinkModule) ->
-    ?debug("~p:register_services()", [?MODULE]),
-    ?debug("     CompSpec : ~p", [authorize_keys:abbrev(CompSpec)]),
-    ?debug("     Services : ~p", [Services]),
-    ?debug("  DataLinkMod : ~p", [DataLinkModule]),
+    ?debug("register_services(Mod=~p): ~p", [DataLinkModule, Services]),
     rvi_common:notification(service_discovery, ?MODULE, register_services,
 			    [{ services, Services },
 			     { data_link_module, DataLinkModule }],
 			    CompSpec).
 
 unregister_services(CompSpec, Services, DataLinkModule) ->
-    ?debug("~p:unregister_services()", [?MODULE]),
-    ?debug("     CompSpec : ", [CompSpec]),
-    ?debug("     Services : ", [Services]),
-    ?debug("  DataLinkMod : ", [DataLinkModule]),
+    ?debug("unregister_services(Mod=~p): ~p", [DataLinkModule, Services]),
     rvi_common:notification(service_discovery, ?MODULE, unregister_services,
 			    [{ services,  Services },
 			     { data_link_module, DataLinkModule}],
@@ -302,9 +296,6 @@ code_change(_OldVsn, St, _Extra) ->
 
 
 register_single_service_(Service, DataLinkModule) ->
-    ?info("svc_disc:register_single_service_(~p:~p)",
-	  [DataLinkModule,Service]),
-
     %% Delete any previous instances of the given entry, in case
     %% the service registers multiple times
     ets:match_delete(?MODULE_TABLE,
@@ -337,10 +328,6 @@ register_single_service_(Service, DataLinkModule) ->
 
 
 unregister_single_service_(Service, DataLinkModule) ->
-    ?info("svc_disc:unregister_single_service_(): ~p:~p",
-	  [DataLinkModule, Service]),
-
-
     %% Delete any service table entries with a matching Service.
     ets:match_delete(?SERVICE_TABLE,
 		     #service_entry {

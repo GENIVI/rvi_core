@@ -172,6 +172,7 @@ init([]) ->
     Creds = scan_creds(CredDir, ProvisioningKey, DevCert),
     ?debug("scan_creds found ~p credentials~n", [length(Creds)]),
     [ets:insert(?CREDS, {{local, C#cred.id}, C}) || C <- Creds],
+    ?debug("CREDS = ~p", [ets:tab2list(?CREDS)]),
     {ok, #st{provisioning_key = ProvisioningKey,
 	     dev_cert = DevCert,
 	     cred_dir = CredDir}}.
@@ -188,15 +189,18 @@ handle_call(Req, From, S) ->
 handle_call_(provisioning_key, _, S) ->
     {reply, S#st.provisioning_key, S};
 handle_call_({get_credentials, Conn}, _, S) ->
-    Creds = creds_by_conn(Conn),
+    Creds = creds_by_conn(normalize_conn(Conn)),
     {reply, Creds, S};
-handle_call_({save_keys, Keys, Conn}, _, S) ->
+handle_call_({save_keys, Keys, Conn0}, _, S) ->
+    Conn = normalize_conn(Conn0),
     ?debug("save_keys: Keys=~p, Conn=~p~n", [abbrev_k(Keys), Conn]),
     save_keys_(Keys, Conn),
     {reply, ok, S};
-handle_call_({validate_message, JWT, Conn}, _, S) ->
+handle_call_({validate_message, JWT, Conn0}, _, S) ->
+    Conn = normalize_conn(Conn0),
     {reply, validate_message_(JWT, Conn), S};
-handle_call_({validate_service_call, Svc, Conn}, _, S) ->
+handle_call_({validate_service_call, Svc, Conn0}, _, S) ->
+    Conn = normalize_conn(Conn0),
     {reply, validate_service_call_(Svc, Conn), S};
 handle_call_({save_cred, Cred, JWT, {IP, Port} = Conn0, PeerCert, LogId}, _, S) ->
     Conn = normalize_conn(Conn0),
@@ -210,8 +214,9 @@ handle_call_({save_cred, Cred, JWT, {IP, Port} = Conn0, PeerCert, LogId}, _, S) 
 	    log(LogId, result, "cred stored ~s Conn=~p", [abbrev_bin(C#cred.id), Conn]),
 	    {reply, ok, S}
     end;
-handle_call_({filter_by_service, Services, Conn} =R, _From, State) ->
+handle_call_({filter_by_service, Services, Conn0} =R, _From, State) ->
     ?debug("authorize_keys:handle_call(~p,...)~n", [R]),
+    Conn = normalize_conn(Conn0),
     Filtered = filter_by_service_(Services, Conn),
     ?debug("Filtered = ~p~n", [Filtered]),
     {reply, Filtered, State};
@@ -240,6 +245,7 @@ code_change(_FromVsn, S, _Extra) ->
 creds_by_conn(Conn) ->
     ?debug("creds_by_conn(~p)~n", [Conn]),
     UTC = rvi_common:utc_timestamp(),
+    ?debug("all creds = ~p", [abbrev(ets:tab2list(?CREDS))]),
     Creds = ets:select(?CREDS, [{ {{Conn,'_'}, #cred{jwt = '$1',
 						     validity = '$2',
 						     _='_'}},
@@ -267,7 +273,8 @@ to_bin(B) when is_binary(B) -> B;
 to_bin(L) when is_list(L) -> iolist_to_binary(L);
 to_bin(I) when is_integer(I) -> integer_to_binary(I).
 
-filter_by_service_(Services, Conn) ->
+filter_by_service_(Services, Conn0) ->
+    Conn = normalize_conn(Conn0),
     ?debug("Filter: creds = ~p", [[{K,abbrev_payload(V)} || {K,V} <- ets:tab2list(?CREDS)]]),
     Invoke = ets:select(?CREDS, [{ {{Conn,'_'}, #cred{right_to_invoke = '$1',
 						      _ = '_'}},
@@ -327,6 +334,8 @@ match_length_([H|T], [H|T1], L) ->
     match_length_(T, T1, L+1);
 match_length_(["+"|T], [_|T1], L) ->
     match_length_(T, T1, L+1);
+match_length_([[]], _, L) ->
+    L;
 match_length_([H|_], [H1|_], _) when H =/= H1 ->
     0;
 match_length_([_|_], [], _) ->
@@ -353,6 +362,8 @@ match_svc_([H|T], [H|T1]) ->
     match_svc_(T, T1);
 match_svc_(["+"|T], [_|T1]) ->
     match_svc_(T, T1);
+match_svc_([[]], _) ->
+    true;
 match_svc_([], _) ->
     true;
 match_svc_(_, _) ->
@@ -437,7 +448,7 @@ get_pub_key_from_cert_rec(#'Certificate'{
 
 
 create_ets() ->
-    create_ets(?CREDS, #cred.id),
+    create_ets(?CREDS, 1),
     create_ets(?KEYS, #key.id).
 
 create_ets(Tab, KeyPos) ->
@@ -674,7 +685,8 @@ abbrev_jwt({Hdr, Body} = X) ->
 abbrev_jwt(X) ->
     X.
 
-
+abbrev_pl({K, #cred{} = C}) ->
+    {abbrev_pl(K), abbrev_pl(C)};
 abbrev_pl(#cred{} = Payload) ->
     list_to_tuple(lists:map(fun(B) when is_binary(B) -> abbrev_bin(B);
 			       ([{_,_}|_]=L) -> abbrev_payload(L);
