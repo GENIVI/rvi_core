@@ -375,7 +375,6 @@ handle_socket_(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
                          ProtoMod, Data, CompSpec);
 
         ?DLINK_CMD_PING ->
-            ?info("dlink_tcp:ping(): Pinged from: ~p:~p", [ PeerIP, PeerPort ]),
             ok;
 
         undefined ->
@@ -574,7 +573,6 @@ handle_info({ rvi_ping, Pid, Address, Port, Timeout},  St) ->
     %% Check that connection is up
     case connection:is_connection_up(Pid) of
 	true ->
-	    ?info("dlink_tcp:ping(): Pinging: ~p:~p", [Address, Port]),
  	    connection:send(Pid, [{?DLINK_ARG_CMD, ?DLINK_CMD_PING}]),
 	    erlang:send_after(Timeout, self(),
 			      { rvi_ping, Pid, Address, Port, Timeout });

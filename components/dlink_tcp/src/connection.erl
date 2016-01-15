@@ -46,7 +46,6 @@
 	  sock = undefined,
 	  mod = undefined,
 	  func = undefined,
-	  args = undefined,
 	  packet_mod = ?PACKET_MOD,
 	  packet_st = [],
 	  decode_st = <<>>,
@@ -289,9 +288,9 @@ handle_info({tcp_closed, Sock},
 		  port = Port,
 		  mod = Mod,
 		  func = Fun,
-		  args = Arg } = State) ->
+		  cs = CS } = State) ->
     ?debug("handle_info(tcp_closed): Address: ~p:~p ", [IP, Port]),
-    Mod:Fun(self(), IP, Port, closed, Arg),
+    Mod:Fun(self(), IP, Port, closed, CS),
     gen_tcp:close(Sock),
     connection_manager:delete_connection_by_pid(self()),
     {stop, normal, State};
@@ -302,10 +301,10 @@ handle_info({tcp_error, _Sock},
 		  port = Port,
 		  mod = Mod,
 		  func = Fun,
-		  args = Arg} = State) ->
+		  cs = CS} = State) ->
 
     ?debug("handle_info(tcp_error): Address: ~p:~p ", [IP, Port]),
-    Mod:Fun(self(), IP, Port, error, Arg),
+    Mod:Fun(self(), IP, Port, error, CS),
     connection_manager:delete_connection_by_pid(self()),
     {stop, normal, State};
 
