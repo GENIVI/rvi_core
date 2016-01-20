@@ -102,7 +102,11 @@ status_values() ->
      {6, no_route},
      {7, unauthorized}].
 
-get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
+get_request_result(R) ->
+    ?debug("get_request_result(~p)", [R]),
+    get_request_result_(R).
+
+get_request_result_({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
     ?debug("JSONBody = ~p", [JSONBody]),
     case get_json_element(["result", "status"], JSONBody) of
 	{ok, Value} ->
@@ -112,16 +116,16 @@ get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}
 	    {ok, undefined }
     end;
 
-get_request_result({ok, {http_response, {_V1, _V2}, Status, Reason, _Hdr}, _JSONBody}) ->
+get_request_result_({ok, {http_response, {_V1, _V2}, Status, Reason, _Hdr}, _JSONBody}) ->
     {error, {http, Status, Reason}};
 
-get_request_result({error, Reason})->
+get_request_result_({error, Reason})->
     { error, Reason};
 
-get_request_result(ok)->
+get_request_result_(ok)->
     { ok, ok, "{}"};
 
-get_request_result(Other)->
+get_request_result_(Other)->
     ?error("get_request_result(): Unhandled result: ~p", [Other]),
     { error, format }.
 
@@ -306,22 +310,31 @@ get_json_element(_, []) ->
 get_json_element(ElemPath, JSON) when is_atom(ElemPath) ->
     get_json_element([ElemPath], JSON);
 
-get_json_element(ElemPath, JSON) when is_binary(JSON) ->
-    get_json_element(ElemPath, binary_to_list(JSON));
+%% get_json_element(ElemPath, JSON) when is_binary(JSON) ->
+%%     get_json_element(ElemPath, binary_to_list(JSON));
+
+get_json_element(ElemPath, [H|_] = JSON) when is_integer(H) ->
+    get_json_element(ElemPath, iolist_to_binary(JSON));
 
 get_json_element(ElemPath, JSON) when is_tuple(JSON) ->
     get_json_element_(ElemPath, JSON);
 
 get_json_element(ElemPath, [T|_] = JSON) when is_tuple(T) ->
     get_json_element_(ElemPath, JSON);
-get_json_element(ElemPath, [H|_] = JSON) when is_integer(H) ->
-    case  exo_json:decode_string(JSON) of
-	{ok,  Data } ->
-	    get_json_element_(ElemPath, Data);
-
-	Err ->
-	    Err
+get_json_element(ElemPath, JSON) when is_binary(JSON) ->
+    try jsx:decode(JSON) of
+	Decoded ->
+	    get_json_element_(ElemPath, Decoded)
+    catch error:Err ->
+	    {error, Err}
     end;
+    %% case  exo_json:decode_string(JSON) of
+    %% 	{ok,  Data } ->
+    %% 	    get_json_element_(ElemPath, Data);
+
+    %% 	Err ->
+    %% 	    Err
+    %% end;
 
 get_json_element(P, J) ->
     ?warning("get_json_element(): Unknown call structure; Path: ~p | JSON: ~p",

@@ -215,10 +215,20 @@ handle_local_timeout(CompSpec, SvcName, TransID) ->
 
 
 handle_websocket(WSock, Mesg, Arg) ->
+    Decoded = try jsx:decode(Mesg)
+	      catch error:E0 ->
+		      ?debug("Failed decode of ~p: ~p", [Mesg, E0]),
+		      Mesg
+	      end,
+    ?debug("Decoded Mesg = ~p", [Decoded]),
     { ok, Method } = rvi_common:get_json_element(["method"], Mesg),
-    { ok, Params } = rvi_common:get_json_element(["params"], Mesg),
+    { ok, Params0 } = rvi_common:get_json_element(["params"], Mesg),
     { ok, ID } = rvi_common:get_json_element(["id"], Mesg),
-
+    Params = try jsx:decode(Params0)
+	     catch error:E ->
+		     ?debug("Failed decode of ~p:~p", [Params0, E]),
+		     Params0
+	     end,
     ?debug("service_edge_rpc:handle_websocket(~p/~p) method:      ~p", [ WSock, ID,Method ]),
 
     case handle_ws_json_rpc(WSock, Method, Params, Arg) of
@@ -233,12 +243,13 @@ handle_websocket(WSock, Mesg, Arg) ->
 
 
 %% Websocket interface
-handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
+handle_ws_json_rpc(WSock, <<"message">>, Params, _Arg ) ->
     { ok, SvcName0 } = rvi_common:get_json_element(["service_name"], Params),
     { ok, Timeout } = rvi_common:get_json_element(["timeout"], Params),
-    { ok, Parameters0 } = rvi_common:get_json_element(["parameters"], Params),
+    { ok, Parameters } = rvi_common:get_json_element(["parameters"], Params),
     SvcName = iolist_to_binary(SvcName0),
-    Parameters = parse_ws_params(Parameters0),
+    ?debug("WS Parameters: ~p", [Parameters]),
+    %% Parameters = parse_ws_params(Parameters0),
     LogId = log_id_json_tail(Params ++ Parameters),
     ?debug("service_edge_rpc:handle_websocket(~p) params!:      ~p", [ WSock, Params ]),
     ?debug("service_edge_rpc:handle_websocket(~p) service:      ~p", [ WSock, SvcName ]),
@@ -257,7 +268,7 @@ handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
 		    { method, <<"message">>}] }
     end;
 
-handle_ws_json_rpc(WSock, "register_service", Params,_Arg ) ->
+handle_ws_json_rpc(WSock, <<"register_service">>, Params,_Arg ) ->
     { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
     ?debug("service_edge_rpc:websocket_register(~p) service:     ~p", [ WSock, SvcName ]),
     [ok, FullSvcName ] = gen_server:call(?SERVER,
@@ -270,24 +281,28 @@ handle_ws_json_rpc(WSock, "register_service", Params,_Arg ) ->
 	    { service, FullSvcName },
 	    { method, <<"register_service">>}]};
 
-handle_ws_json_rpc(WSock, "unregister_service", Params, _Arg ) ->
+handle_ws_json_rpc(WSock, <<"unregister_service">>, Params, _Arg ) ->
     { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
     ?debug("service_edge_rpc:websocket_unregister(~p) service:    ~p", [ WSock, SvcName ]),
     gen_server:call(?SERVER, { rvi, unregister_local_service, [ SvcName ]}),
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ]};
 
-handle_ws_json_rpc(_Ws , "get_available_services", _Params, _Arg ) ->
+handle_ws_json_rpc(_Ws , <<"get_available_services">>, _Params, _Arg ) ->
     ?debug("service_edge_rpc:websocket_get_available()"),
-    [ Services ] = gen_server:call(?SERVER, { rvi, get_available_services, []}),
+    [ ok, Services ] =
+	gen_server:call(?SERVER, { rvi, get_available_services, []}),
     { ok, [ { status, rvi_common:json_rpc_status(ok)},
 	    { services, Services},
 	    { method, <<"get_available_services">>}] }.
 
-parse_ws_params([{K, V}|T]) ->
-    [{iolist_to_binary(K), jsx:decode(iolist_to_binary(V))}
-     | parse_ws_params(T)];
-parse_ws_params([]) ->
-    [].
+%% parse_ws_params([{K, V}|T]) ->
+%%     K1 = iolist_to_binary(K),
+%%     V1 = iolist_to_binary(V),
+%%     ?debug("K1 = ~p, V1 = ~p", [K1, V1]),
+%%     [{K1, jsx:decode(iolist_to_binary(V1))}
+%%      | parse_ws_params(T)];
+%% parse_ws_params([]) ->
+%%     [].
 
 %% Invoked by locally connected services.
 %% Will always be routed as JSON-RPC since that, and websocket,
