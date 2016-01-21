@@ -50,12 +50,18 @@
 	 pass_log_id/2]).         %% (PropList, CompSpec)
 -export([utc_timestamp/0,
 	 utc_timestamp/1]).
--export([bin/1]).
+-export([bin/1,
+	 take/2]).
 -export([start_json_rpc_server/3,
 	 start_json_rpc_server/4]).
+-export([start_msgpack_rpc/2,
+	 start_msgpack_rpc/3]).
 -export([extract_json/2,
 	 normalize_json/1,
 	 term_to_json/1]).
+-export([rvi_options/1]).
+-export([save_source_address/3,
+	 get_source_address/1]).
 -export([announce/1]).
 
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
@@ -96,7 +102,11 @@ status_values() ->
      {6, no_route},
      {7, unauthorized}].
 
-get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
+get_request_result(R) ->
+    ?debug("get_request_result(~p)", [R]),
+    get_request_result_(R).
+
+get_request_result_({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}) ->
     ?debug("JSONBody = ~p", [JSONBody]),
     case get_json_element(["result", "status"], JSONBody) of
 	{ok, Value} ->
@@ -106,16 +116,16 @@ get_request_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSONBody}
 	    {ok, undefined }
     end;
 
-get_request_result({ok, {http_response, {_V1, _V2}, Status, Reason, _Hdr}, _JSONBody}) ->
+get_request_result_({ok, {http_response, {_V1, _V2}, Status, Reason, _Hdr}, _JSONBody}) ->
     {error, {http, Status, Reason}};
 
-get_request_result({error, Reason})->
+get_request_result_({error, Reason})->
     { error, Reason};
 
-get_request_result(ok)->
+get_request_result_(ok)->
     { ok, ok, "{}"};
 
-get_request_result(Other)->
+get_request_result_(Other)->
     ?error("get_request_result(): Unhandled result: ~p", [Other]),
     { error, format }.
 
@@ -186,25 +196,21 @@ notification(Component,
     InArg = [ Val || { _Key, Val } <- InArgPropList ],
     InArgSpec = [ Key || { Key, _Val } <- InArgPropList ],
     %% Figure out how we are to invoke this MFA.
-    ?debug("~p:notification(", [?MODULE]),
-    ?debug("      Component : ~p", [Component]),
-    ?debug("         Module : ~p", [Module]),
-    ?debug("       Function : ~p", [Function]),
-    ?debug("  InArgPropList : ~p", [InArgPropList]),
+    ?debug("notify [~w]~w:~w - ~p", [Component, Module, Function,
+				     InArgPropList]),
 
     case get_module_type(Component, Module, CompSpec) of
 	%% We have a gen_server
 	{ ok, gen_server } ->
-	    ?debug("Sending ~p - ~p:~p(~p)", [Component, Module, Function, InArg]),
+	    ?debug("via gen_server (~p)", [Module]),
 	    gen_server:cast(Module, { rvi, Function, InArg}),
 	    ok;
 
 	%% We have a JSON-RPC server
 	{ ok,  json_rpc } ->
 	    URL = get_module_json_rpc_url(Component, Module, CompSpec),
-	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, URL]),
+	    ?debug("Sending via URL=~p", [URL]),
 	    JSONArg = json_argument(InArg, InArgSpec),
-	    ?debug("Sending ~p:~p(~p) -> ~p.", [Module, Function, InArg, JSONArg]),
 	    send_json_notification(URL, atom_to_binary(Function, latin1),  JSONArg),
 	    ok;
 	{ error, _ } = Error ->
@@ -270,6 +276,18 @@ send_json_notification(Url,Method, Args) ->
             {error, internal}
     end.
 
+rvi_options(Opts) when is_list(Opts) ->
+    [{K,V} || {K,V} <- Opts,
+	      is_rvi_opt(K)].
+
+is_rvi_opt(K) ->
+    case re:run(K, <<"^rvi\\.">>, []) of
+	{match, _} ->
+	    true;
+	nomatch ->
+	    false
+    end.
+
 term_to_json(Term) ->
     jsx:encode(normalize_json(Term)).
 
@@ -292,22 +310,31 @@ get_json_element(_, []) ->
 get_json_element(ElemPath, JSON) when is_atom(ElemPath) ->
     get_json_element([ElemPath], JSON);
 
-get_json_element(ElemPath, JSON) when is_binary(JSON) ->
-    get_json_element(ElemPath, binary_to_list(JSON));
+%% get_json_element(ElemPath, JSON) when is_binary(JSON) ->
+%%     get_json_element(ElemPath, binary_to_list(JSON));
+
+get_json_element(ElemPath, [H|_] = JSON) when is_integer(H) ->
+    get_json_element(ElemPath, iolist_to_binary(JSON));
 
 get_json_element(ElemPath, JSON) when is_tuple(JSON) ->
     get_json_element_(ElemPath, JSON);
 
 get_json_element(ElemPath, [T|_] = JSON) when is_tuple(T) ->
     get_json_element_(ElemPath, JSON);
-get_json_element(ElemPath, [H|_] = JSON) when is_integer(H) ->
-    case  exo_json:decode_string(JSON) of
-	{ok,  Data } ->
-	    get_json_element_(ElemPath, Data);
-
-	Err ->
-	    Err
+get_json_element(ElemPath, JSON) when is_binary(JSON) ->
+    try jsx:decode(JSON) of
+	Decoded ->
+	    get_json_element_(ElemPath, Decoded)
+    catch error:Err ->
+	    {error, Err}
     end;
+    %% case  exo_json:decode_string(JSON) of
+    %% 	{ok,  Data } ->
+    %% 	    get_json_element_(ElemPath, Data);
+
+    %% 	Err ->
+    %% 	    Err
+    %% end;
 
 get_json_element(P, J) ->
     ?warning("get_json_element(): Unknown call structure; Path: ~p | JSON: ~p",
@@ -544,7 +571,10 @@ get_component_specification_() ->
 						 CompList),
 	       protocol =  get_component_config_(protocol,
 						 ?COMP_SPEC_PROTOCOL_DEFAULT,
-						 CompList)
+						 CompList),
+	       rvi_common = get_component_config_(rvi_common,
+						  ?COMP_SPEC_RVI_COMMON_DEFAULT,
+						  CompList)
 	      }
     end.
 
@@ -581,8 +611,8 @@ get_component_modules(_, _) ->
 get_module_specification(Component, Module, CompSpec) ->
     case get_component_modules(Component, CompSpec) of
 	undefined ->
-	    ?debug("get_module_specification(): Missing: rvi_core:component: ~p",
-		   [Component]),
+	    ?debug("get_module_specification(): Missing: rvi_core:component: ~p~nCS = ~p",
+		   [Component, CompSpec]),
 	    undefined;
 
 	Modules ->
@@ -691,45 +721,77 @@ get_module_type(Component, Module, CompSpec) ->
 
 get_module_json_rpc_address(Component, Module, CompSpec) ->
     %% Dig out the JSON RPC address
+    get_module_rpc_address(json, Component, Module, CompSpec).
+    %% case get_module_config(Component,
+    %% 			   Module,
+    %% 			   json_rpc_address,
+    %% 			   undefined,
+    %% 			   CompSpec) of
+    %% 	{ok, undefined } ->
+    %% 	    ?debug("get_module_json_rpc_address(): Missing component spec: "
+    %% 		   "rvi_core:component:~p:~p:json_rpc_address, {...}", [Component, Module]),
+    %% 	    {error, {not_found, Component, Module, json_rpc_address}};
+
+    %% 	{ok, { IP, Port }} ->
+    %% 	    ?debug("get_module_json_rpc_address(~p, ~p) -> ~p:~p",
+    %% 		   [ Component, Module, IP, Port]),
+    %% 	    {ok,  bin(IP), Port };
+
+    %% 	{ok, Port } ->
+    %% 	    ?debug("get_module_json_rpc_address(~p, ~p) -> 127.0.0.1:~p",
+    %% 		   [ Component, Module, Port]),
+    %% 	    {ok,   <<"127.0.0.1">>, Port}
+    %% end.
+
+
+get_module_rpc_address(Type, Component, Module, CompSpec)
+  when Type == json; Type == msgpack ->
+    %% Dig out the JSON/MsgPack RPC address
+    Key = case Type of
+	      json    -> json_rpc_address;
+	      msgpack -> msgpack_rpc_address
+	  end,
     case get_module_config(Component,
 			   Module,
-			   json_rpc_address,
+			   Key,
 			   undefined,
 			   CompSpec) of
 	{ok, undefined } ->
-	    ?debug("get_module_json_rpc_address(): Missing component spec: "
-		   "rvi_core:component:~p:~p:json_rpc_address, {...}", [Component, Module]),
-	    {error, {not_found, Component, Module, json_rpc_address}};
+	    ?debug("get_module_rpc_address(): Missing component spec: "
+		   "rvi_core:components:~p:~p:~s, {...}",
+		   [Component, Module, Key]),
+	    {error, {not_found, Component, Module, Key}};
 
 	{ok, { IP, Port }} ->
-	    ?debug("get_module_json_rpc_address(~p, ~p) -> ~p:~p",
-		   [ Component, Module, IP, Port]),
+	    ?debug("get_module_rpc_address(~p, ~p, ~p) -> ~p:~p",
+		   [Type, Component, Module, IP, Port]),
 	    {ok,  bin(IP), Port };
 
 	{ok, Port } ->
-	    ?debug("get_module_json_rpc_address(~p, ~p) -> 127.0.0.1:~p",
-		   [ Component, Module, Port]),
+	    ?debug("get_module_rpc_address(~p, ~p, ~p) -> 127.0.0.1:~p",
+		   [Type, Component, Module, Port]),
 	    {ok,   <<"127.0.0.1">>, Port}
     end.
 
 
 get_module_json_rpc_url(Component, Module, CompSpec) ->
-    case get_module_json_rpc_address(Component, Module, CompSpec) of
+    get_module_rpc_url(json, Component, Module, CompSpec).
+
+get_module_rpc_url(Type, Component, Module, CompSpec)
+  when Type == json; Type == msgpack ->
+    case get_module_rpc_address(Type, Component, Module, CompSpec) of
 	{ ok, IP, Port } when is_integer(Port)->
 	    Res = bin(["http://", IP, ":", integer_to_binary(Port)]),
-	    ?debug("get_module_json_rpc_url(~p, ~p) ->~p", [ Component, Module, Res ]),
+	    ?debug("get_module_rpc_url(~p, ~p, ~p) ->~p", [Type, Component, Module, Res ]),
 	    Res;
-
-
 	{ ok, IP, Port } when is_list(Port)->
 	    Res = bin(["http://", IP, ":", Port]),
-	    ?debug("get_module_json_rpc_url(~p, ~p) ->~p", [ Component, Module, Res ]),
+	    ?debug("get_module_rpc_url(~p, ~p, ~p) ->~p", [Type, Component, Module, Res ]),
 	    Res;
 	Err ->
-	    ?debug("get_module_json_rpc_url(~p, ~p) Failed: ~p", [ Component, Module, Err ]),
+	    ?debug("get_module_rpc_url(~p, ~p, ~p) Failed: ~p", [Type, Component, Module, Err ]),
 	    Err
     end.
-
 
 
 get_module_genserver_pid(Component, Module, CompSpec) ->
@@ -770,6 +832,39 @@ start_json_rpc_server(Component, Module, Supervisor, XOpts) ->
 		   [ Component, Module ]),
 	    Err
     end.
+
+start_msgpack_rpc(Component, Module) ->
+    start_msgpack_rpc(Component, Module, []).
+
+start_msgpack_rpc(Component, Module, XOpts) ->
+    ?debug("start_msgpack_rpc(~w, ~w, ~p)", [Component, Module, XOpts]),
+    case get_module_rpc_address(msgpack, Component, Module, get_component_specification()) of
+	{ok, {client, Opts}} ->
+	    ?debug("starting msgpack_rpc client: ~p", [Opts]),
+	    start_msgpack_rpc_client(Component, Module, Opts, XOpts);
+	{ok, {server, Opts}} ->
+	    ?debug("starting msgpack_rpc server: ~p", [Opts]),
+	    start_msgpack_rpc_server(Component, Module, Opts, XOpts);
+	{ok, {IP, Port}} ->
+	    start_msgpack_rpc_server(Component, Module, [{ip, IP}, {port, Port}], XOpts);
+	Error ->
+	    ?debug("no recognized msgpack config for ~w:~w (~p)",
+		   [Component, Module, Error])
+    end.
+
+start_msgpack_rpc_client(Component, Module, Opts, XOpts) ->
+    Name = {msgpack_rpc_client, Component, Module},
+    rvi_msgpack_rpc:start_link([{gproc, {n,l,Name}}|XOpts] ++ Opts).
+
+start_msgpack_rpc_server(Component, Module, Opts, XOpts) ->
+    %% Name = {msgpack_rpc_server, Component, Module},
+    [Callback, Rest] = take([{callback, fun() -> msgpack_rpc_cb(Module) end}],
+			    XOpts ++ Opts),
+    rvi_msgpack_rpc_server:start_link([{callback, Callback} | Rest]).
+
+msgpack_rpc_cb(Module) ->
+    binary_to_existing_atom(
+      <<(atom_to_binary(Module, latin1))/binary, "_msgpack">>, latin1).
 
 utc_timestamp() ->
     calendar:datetime_to_gregorian_seconds(
@@ -911,3 +1006,42 @@ announce(Name) ->
     ?debug("Announce ~p~n", [Name]),
     gproc:reg(Name),
     ok.
+
+%% inet_ip(IP) when is_binary(IP) ->
+%%     inet_ip(binary_to_list(IP));
+%% inet_ip(IP) ->
+%%     {ok, Addr} = inet:ip(IP),
+%%     Addr.
+
+
+%% take([ Key::atom() | {Key::atom(), Default} ], Opts) -> [Value | Rest]
+take([H|T], Opts) when is_atom(H) ->
+    case lists:keytake(H, 1, Opts) of
+        {value, {_, Value}, Rest} ->
+            [Value | take(T, Rest)];
+        false ->
+            error({required, H})
+    end;
+take([{H,Default}|T], Opts) ->
+    case lists:keytake(H, 1, Opts) of
+        {value, {_, Value}, Rest} ->
+            [Value | take(T, Rest)];
+	false when is_function(Default, 0) ->
+	    [Default() | take(T, Opts)];
+        false ->
+            [Default | take(T, Opts)]
+    end;
+take([], Opts) ->
+    [Opts].
+
+save_source_address(client, Socket, CS) ->
+    {ok, {_, _} = Addr} = inet:peername(Socket),
+    ?debug("save_source_address (client: ~p): ~p", [self(), Addr]),
+    set_value(source_address, Addr, CS);
+save_source_address(server, Socket, CS) ->
+    {ok, {_, _} = Addr} = inet:sockname(Socket),
+    ?debug("save_source_address (server: ~p): ~p", [self(), Addr]),
+    set_value(source_address, Addr, CS).
+
+get_source_address(CS) ->
+    get_value(source_address, undefined, CS).

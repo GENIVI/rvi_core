@@ -51,7 +51,8 @@
 
 -record(st, {
 	  %% Component specification
-	  cs = #component_spec{}
+	  cs = #component_spec{},
+	  pending = []
 	 }).
 
 -define(SERVICE_TABLE, rvi_local_services).
@@ -214,10 +215,20 @@ handle_local_timeout(CompSpec, SvcName, TransID) ->
 
 
 handle_websocket(WSock, Mesg, Arg) ->
+    Decoded = try jsx:decode(Mesg)
+	      catch error:E0 ->
+		      ?debug("Failed decode of ~p: ~p", [Mesg, E0]),
+		      Mesg
+	      end,
+    ?debug("Decoded Mesg = ~p", [Decoded]),
     { ok, Method } = rvi_common:get_json_element(["method"], Mesg),
-    { ok, Params } = rvi_common:get_json_element(["params"], Mesg),
+    { ok, Params0 } = rvi_common:get_json_element(["params"], Mesg),
     { ok, ID } = rvi_common:get_json_element(["id"], Mesg),
-
+    Params = try jsx:decode(Params0)
+	     catch error:E ->
+		     ?debug("Failed decode of ~p:~p", [Params0, E]),
+		     Params0
+	     end,
     ?debug("service_edge_rpc:handle_websocket(~p/~p) method:      ~p", [ WSock, ID,Method ]),
 
     case handle_ws_json_rpc(WSock, Method, Params, Arg) of
@@ -232,10 +243,13 @@ handle_websocket(WSock, Mesg, Arg) ->
 
 
 %% Websocket interface
-handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
-    { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
+handle_ws_json_rpc(WSock, <<"message">>, Params, _Arg ) ->
+    { ok, SvcName0 } = rvi_common:get_json_element(["service_name"], Params),
     { ok, Timeout } = rvi_common:get_json_element(["timeout"], Params),
     { ok, Parameters } = rvi_common:get_json_element(["parameters"], Params),
+    SvcName = iolist_to_binary(SvcName0),
+    ?debug("WS Parameters: ~p", [Parameters]),
+    %% Parameters = parse_ws_params(Parameters0),
     LogId = log_id_json_tail(Params ++ Parameters),
     ?debug("service_edge_rpc:handle_websocket(~p) params!:      ~p", [ WSock, Params ]),
     ?debug("service_edge_rpc:handle_websocket(~p) service:      ~p", [ WSock, SvcName ]),
@@ -254,7 +268,7 @@ handle_ws_json_rpc(WSock, "message", Params, _Arg ) ->
 		    { method, <<"message">>}] }
     end;
 
-handle_ws_json_rpc(WSock, "register_service", Params,_Arg ) ->
+handle_ws_json_rpc(WSock, <<"register_service">>, Params,_Arg ) ->
     { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
     ?debug("service_edge_rpc:websocket_register(~p) service:     ~p", [ WSock, SvcName ]),
     [ok, FullSvcName ] = gen_server:call(?SERVER,
@@ -267,19 +281,28 @@ handle_ws_json_rpc(WSock, "register_service", Params,_Arg ) ->
 	    { service, FullSvcName },
 	    { method, <<"register_service">>}]};
 
-handle_ws_json_rpc(WSock, "unregister_service", Params, _Arg ) ->
+handle_ws_json_rpc(WSock, <<"unregister_service">>, Params, _Arg ) ->
     { ok, SvcName } = rvi_common:get_json_element(["service_name"], Params),
     ?debug("service_edge_rpc:websocket_unregister(~p) service:    ~p", [ WSock, SvcName ]),
     gen_server:call(?SERVER, { rvi, unregister_local_service, [ SvcName ]}),
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ]};
 
-handle_ws_json_rpc(_Ws , "get_available_services", _Params, _Arg ) ->
+handle_ws_json_rpc(_Ws , <<"get_available_services">>, _Params, _Arg ) ->
     ?debug("service_edge_rpc:websocket_get_available()"),
-    [ Services ] = gen_server:call(?SERVER, { rvi, get_available_services, []}),
+    [ ok, Services ] =
+	gen_server:call(?SERVER, { rvi, get_available_services, []}),
     { ok, [ { status, rvi_common:json_rpc_status(ok)},
 	    { services, Services},
 	    { method, <<"get_available_services">>}] }.
 
+%% parse_ws_params([{K, V}|T]) ->
+%%     K1 = iolist_to_binary(K),
+%%     V1 = iolist_to_binary(V),
+%%     ?debug("K1 = ~p, V1 = ~p", [K1, V1]),
+%%     [{K1, jsx:decode(iolist_to_binary(V1))}
+%%      | parse_ws_params(T)];
+%% parse_ws_params([]) ->
+%%     [].
 
 %% Invoked by locally connected services.
 %% Will always be routed as JSON-RPC since that, and websocket,
@@ -444,7 +467,8 @@ handle_call({rvi, get_available_services, []}, _From, St) ->
 %% 13:48:12.943 [debug] service_edge_rpc:local_msg: parameters:      [{struct,[{"a","b"}]}]
 
 handle_call({ rvi, handle_local_message,
-	      [SvcName, TimeoutArg, Parameters | Tail] }, _From, St) ->
+	      [SvcName, TimeoutArg, Parameters | Tail] = Args }, From,
+	    #st{pending = Pend} = St) ->
     ?debug("service_edge_rpc:local_msg: service_name:    ~p", [SvcName]),
     ?debug("service_edge_rpc:local_msg: timeout:         ~p", [TimeoutArg]),
     ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
@@ -454,15 +478,132 @@ handle_call({ rvi, handle_local_message,
     %% that will be accepted by the receiving node that will deliver
     %% the messaage to its locally connected service_name service.
     %%
-    ?debug("CS = ~p", [lager:pr(CS, rvi_common)]),
-    [ok] =
-	authorize_rpc:authorize_local_message(
-	  CS, SvcName, [{service_name, SvcName},
-			{timeout, TimeoutArg},
-			%% {parameters, Parameters},
-			{parameters,  Parameters}
-		       ]),
+    {Pid, Ref} =
+	spawn_monitor(
+	  fun() ->
+		  exit({deferred_reply, handle_local_message_(Args, CS)})
+	  end),
+    {noreply, St#st{pending = [{Pid, Ref, From}|Pend]}};
 
+handle_call(Other, _From, St) ->
+    ?warning("service_edge_rpc:handle_call(~p): unknown", [ Other ]),
+    { reply, [ invalid_command ], St}.
+
+
+
+handle_cast({rvi, service_available, [SvcName, _DataLinkModule] }, St) ->
+    ?debug("service_edge_rpc: Service available: ~p", [ SvcName]),
+    start_log(<<"svc">>, "service_available: ~s", [SvcName], St#st.cs),
+    announce_service_availability(available, SvcName),
+    { noreply, St };
+
+
+handle_cast({rvi, service_unavailable, [SvcName, _DataLinkModule] }, St) ->
+    ?debug("service_edge_rpc: Service unavailable: ~p:", [ SvcName]),
+    start_log(<<"rsvc">>, "service_unavailable: ~s", [SvcName], St#st.cs),
+    announce_service_availability(unavailable, SvcName),
+    { noreply, St };
+
+
+
+handle_cast({rvi, handle_remote_message,
+	     [
+	      IP,
+	      Port,
+	      SvcName,
+	      Timeout,
+	      Parameters
+	     ] }, #st{cs = CS} = St) ->
+    spawn(fun() ->
+		  handle_remote_message_(
+		    IP, Port, SvcName, Timeout, Parameters, CS)
+	  end),
+    {noreply, St};
+
+handle_cast({ rvi, handle_local_timeout, [SvcName, TransactionID] }, St) ->
+    %% FIXME: Should be forwarded to service.
+    ?info("service_edge_rpc:handle_local_timeout(): service: ~p trans_id: ~p ",
+	  [SvcName, TransactionID]),
+
+    { noreply, St};
+
+handle_cast(Other, St) ->
+    ?warning("service_edge_rpc:handle_cast(~p): unknown", [ Other ]),
+    {noreply, St}.
+
+handle_info({'DOWN', Ref, _, _, {deferred_reply, Reply}},
+	     #st{pending = Pend} = St) ->
+    case lists:keyfind(Ref, 2, Pend) of
+	{_Pid, Ref, From} = P ->
+	    gen_server:reply(From, Reply),
+	    {noreply, St#st{pending = Pend -- [P]}};
+	false ->
+	    {noreply, St}
+    end;
+handle_info({'DOWN', Ref, _, _, Reason}, #st{pending = Pend} = St) ->
+    case lists:keyfind(Ref, 2, Pend) of
+	{Pid, _, From} = P ->
+	    ?error("~p died: ~p", [Pid, Reason]),
+	    gen_server:reply(From, [internal]),
+	    {noreply, St#st{pending = Pend -- [P]}};
+	false ->
+	    {noreply, St}
+    end;
+handle_info(_Info, St) ->
+    {noreply, St}.
+
+terminate(_Reason, _St) ->
+    ok.
+code_change(_OldVsn, St, _Extra) ->
+    {ok, St}.
+
+handle_remote_message_(IP, Port, SvcName, Timeout, Parameters, CS) ->
+    ?debug("service_edge:remote_msg(): remote_ip:       ~p", [IP]),
+    ?debug("service_edge:remote_msg(): remote_port:     ~p", [Port]),
+    ?debug("service_edge:remote_msg(): service_name:    ~p", [SvcName]),
+    ?debug("service_edge:remote_msg(): timeout:         ~p", [Timeout]),
+    ?debug("service_edge:remote_msg(): parameters:      ~p", [Parameters]),
+
+    %% Check if this is a local message.
+    case ets:lookup(?SERVICE_TABLE, SvcName) of
+	[ #service_entry { url = URL }] -> %% This is a local message
+	    Parameters1 = Parameters,
+	    case authorize_rpc:authorize_remote_message(
+		   CS,
+		   SvcName,
+		   [{remote_ip, IP},
+		    {remote_port, Port},
+		    {service_name, SvcName},
+		    {timeout, Timeout},
+		    {parameters, Parameters1}]) of
+		[ ok ] ->
+		    forward_message_to_local_service(
+		      URL, SvcName, Parameters, CS);
+		[ _Other ] ->
+		    ?warning("service_entry:remote_msg(): "
+			     "Failed to authenticate ~p (~p)",
+			     [SvcName, _Other])
+	    end;
+	[] ->
+	    ?notice("service_entry:remote_msg(): Service Disappeared ~p",
+		     [SvcName])
+    end.
+
+handle_local_message_([SvcName, TimeoutArg, Parameters | _] = Args, CS) ->
+    ?debug("CS = ~p", [lager:pr(CS, rvi_common)]),
+    case authorize_rpc:authorize_local_message(
+	   CS, SvcName, [{service_name, SvcName},
+			 {timeout, TimeoutArg},
+			 %% {parameters, Parameters},
+			 {parameters,  Parameters}
+			]) of
+	[ok] ->
+	    do_handle_local_message_(Args, CS);
+	[not_found] ->
+	    [not_found]
+    end.
+
+do_handle_local_message_([SvcName, TimeoutArg, Parameters | _Tail], CS) ->
     %%
     %% Slick but ugly.
     %% If the timeout is more than 24 hrs old when parsed as unix time,
@@ -495,7 +636,7 @@ handle_call({ rvi, handle_local_message,
 						   SvcName,
 						   Parameters,
 						   CS),
-	    { reply, Res , St};
+	    Res;
 
 	_ -> %% SvcName is remote
 	    %% Ask Schedule the request to resolve the network address
@@ -505,95 +646,8 @@ handle_call({ rvi, handle_local_message,
 						       SvcName,
 						       Timeout,
 						       Parameters),
-	    { reply, [ok, TID ], St}
-    end;
-
-
-handle_call(Other, _From, St) ->
-    ?warning("service_edge_rpc:handle_call(~p): unknown", [ Other ]),
-    { reply, [ invalid_command ], St}.
-
-
-
-handle_cast({rvi, service_available, [SvcName, _DataLinkModule] }, St) ->
-    ?debug("service_edge_rpc: Service available: ~p", [ SvcName]),
-    start_log(<<"svc">>, "service_available: ~s", [SvcName], St#st.cs),
-    announce_service_availability(available, SvcName),
-    { noreply, St };
-
-
-handle_cast({rvi, service_unavailable, [SvcName, _DataLinkModule] }, St) ->
-    ?debug("service_edge_rpc: Service unavailable: ~p:", [ SvcName]),
-    start_log(<<"rsvc">>, "service_unavailable: ~s", [SvcName], St#st.cs),
-    announce_service_availability(unavailable, SvcName),
-    { noreply, St };
-
-
-
-handle_cast({rvi, handle_remote_message,
-	     [
-	      IP,
-	      Port,
-	      SvcName,
-	      Timeout,
-	      Parameters
-	     ] }, St) ->
-
-    ?debug("service_edge:remote_msg(): remote_ip:       ~p", [IP]),
-    ?debug("service_edge:remote_msg(): remote_port:     ~p", [Port]),
-    ?debug("service_edge:remote_msg(): service_name:    ~p", [SvcName]),
-    ?debug("service_edge:remote_msg(): timeout:         ~p", [Timeout]),
-    ?debug("service_edge:remote_msg(): parameters:      ~p", [Parameters]),
-
-    %% Check if this is a local message.
-    case ets:lookup(?SERVICE_TABLE, SvcName) of
-	[ #service_entry { url = URL }] -> %% This is a local message
-	    Parameters1 = Parameters,
-	    case authorize_rpc:authorize_remote_message(
-		   St#st.cs,
-		   SvcName,
-		   [{remote_ip, IP},
-		    {remote_port, Port},
-		    {service_name, SvcName},
-		    {timeout, Timeout},
-		    {parameters, Parameters1}]) of
-		[ ok ] ->
-		    forward_message_to_local_service(URL, SvcName,
-						     Parameters, St#st.cs),
-		    { noreply, St};
-
-		[ _Other ] ->
-		    ?warning("service_entry:remote_msg(): Failed to authenticate ~p (~p)",
-			     [SvcName, _Other]),
-		    { noreply, St}
-		end;
-	[] ->
-	    ?notice("service_entry:remote_msg(): Service Disappeared ~p",
-		     [SvcName]),
-	    { noreply, St}
-
-    end;
-
-
-handle_cast({ rvi, handle_local_timeout, [SvcName, TransactionID] }, St) ->
-    %% FIXME: Should be forwarded to service.
-    ?info("service_edge_rpc:handle_local_timeout(): service: ~p trans_id: ~p ",
-	  [SvcName, TransactionID]),
-
-    { noreply, St};
-
-handle_cast(Other, St) ->
-    ?warning("service_edge_rpc:handle_cast(~p): unknown", [ Other ]),
-    {noreply, St}.
-
-handle_info(_Info, St) ->
-    {noreply, St}.
-
-terminate(_Reason, _St) ->
-    ok.
-code_change(_OldVsn, St, _Extra) ->
-    {ok, St}.
-
+	    [ok, TID ]
+    end.
 
 json_rpc_notification(Method, Parameters) ->
     jsx:encode(
@@ -602,8 +656,8 @@ json_rpc_notification(Method, Parameters) ->
        {<<"params">>, Parameters}
       ]).
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_available,
-			  [{services, Services}] ) ->
+dispatch_to_local_service("ws:" ++ WSPidStr, services_available,
+			  [{<<"services">>, Services}] ) ->
     ?info("service_edge:dispatch_to_local_service(service_available, websock, ~p): ~p",
 	  [ WSPidStr,  Services]),
     wse_server:send(list_to_pid(WSPidStr),
@@ -612,8 +666,8 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_available,
     %% No reply
     ok;
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
-			  [{services, Services}] ) ->
+dispatch_to_local_service("ws:" ++ WSPidStr, services_unavailable,
+			  [{<<"services">>, Services}] ) ->
     ?info("service_edge:dispatch_to_local_service(service_unavailable, websock, ~p): ~p",
 	  [ WSPidStr, Services]),
 
@@ -632,8 +686,9 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], services_unavailable,
 %%     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
 %%     ok;
 
-dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
-			 [{ service_name, SvcName}, { parameters,[Args]}]) ->
+dispatch_to_local_service("ws:" ++ WSPidStr, message,
+			 [{ <<"service_name">>, SvcName},
+			  { <<"parameters">>, Args}]) ->
     ?info("service_edge:dispatch_to_local_service(message/alt, websock): ~p", [Args]),
     wse_server:send(list_to_pid(WSPidStr),
 	     json_rpc_notification(<<"message">>,
@@ -643,7 +698,7 @@ dispatch_to_local_service([ $w, $s, $: | WSPidStr], message,
     ?debug("service_edge:dispatch_to_local_service(message, websock): Done"),
     ok;
 
-dispatch_to_local_service([ $w, $s, $: | _WSPidStr], message, Other) ->
+dispatch_to_local_service("ws:" ++ _WSPidStr, message, Other) ->
     ?warning("service_edge:dispatch_to_local_service(message/alt, websock): UNKNOWN: ~p", [Other]),
     ok;
 
@@ -731,7 +786,6 @@ announce_service_availability(Available, SvcName) ->
       fun(#service_entry { url = URL }, Acc) ->
 	      %% If the URL is not on the blackout
 	      %% list, send a notification
-	      ?debug("  URL: ~p - Acc : ~p ", [ URL, Acc]),
 	      case lists:member(URL, Acc) of
 		  false ->
 		      ?debug("DISPATCH: ~p: ~p", [ URL, Cmd]),
@@ -747,7 +801,7 @@ announce_service_availability(Available, SvcName) ->
       end, BlockURLs, ?SERVICE_TABLE).
 
 start_log(Info, Fmt, Args, CS) ->
-    ?debug("start_log(~p,~p,~p,~p)", [Info,Fmt,Args,CS]),
+    ?debug("start_log(~p,~p,~p,CS)", [Info,Fmt,Args]),
     case rvi_common:get_json_element([<<"rvi_log_id">>], Info) of
 	{ok, ID} ->
 	    start_log_(ID, Fmt, Args, CS);

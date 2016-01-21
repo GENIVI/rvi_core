@@ -6,7 +6,7 @@
 	 port_options/0]).
 
 
-init(_Opts) ->
+init(_) ->
     [].
 
 port_options() ->

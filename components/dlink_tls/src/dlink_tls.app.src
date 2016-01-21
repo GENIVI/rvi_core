@@ -16,7 +16,8 @@
                   kernel,
                   stdlib,
 		  rvi_common,
-                  dlink
+                  dlink,
+                  ssl
                  ]},
   {mod, { dlink_tls_app, []}},
   {start_phases, [{json_rpc, []}, {connection_manager, []}, {announce, []}]},

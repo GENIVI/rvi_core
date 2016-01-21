@@ -135,18 +135,10 @@ handle_call({rvi, send_message,
 		       { <<"timeout">>, Timeout },
 		       { <<"parameters">>, Parameters }
 		      ]),
-
-    case use_frag(Parameters, DataLinkOpts) of
-	{true, Window} ->
-	    {Res, St1} =
-		chunk_message(Window, TID, ServiceName, DataLinkMod,
-			      DataLinkOpts, iolist_to_binary(Data), St),
-	    {reply, Res, St1};
-	false ->
-	    Res = DataLinkMod:send_data(
-		    St#st.cs, ?MODULE, ServiceName, DataLinkOpts, Data),
-	    {reply, Res, St}
-    end;
+    RviOpts = rvi_common:rvi_options(Parameters),
+    Res = DataLinkMod:send_data(
+	    St#st.cs, ?MODULE, ServiceName, RviOpts ++ DataLinkOpts, Data),
+    {reply, Res, St};
 
 handle_call(Other, _From, St) ->
     ?warning("proto_json_rpc:handle_call(~p): unknown", [ Other ]),
@@ -157,27 +149,19 @@ handle_cast({rvi, receive_message, [Payload, IP, Port | _LogId]} = Msg, St) ->
     ?debug("~p:handle_cast(~p)", [?MODULE, Msg]),
     Elems = jsx:decode(iolist_to_binary(Payload)),
 
-    case Elems of
-	[{<<"frg">>, _}|_] ->
-	    St1 = handle_frag(Elems, IP, Port, St),
-	    {noreply, St1};
-	_ ->
-	    [ ServiceName, Timeout, Parameters ] =
-		opts([<<"service">>, <<"timeout">>, <<"parameters">>],
-		     Elems, undefined),
+    [ ServiceName, Timeout, Parameters ] =
+	opts([<<"service">>, <<"timeout">>, <<"parameters">>],
+	     Elems, undefined),
 
-	    ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
-	    ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
-	    ?debug("    protocol:rcv(): remote IP/Port:  ~p~n", [{IP, Port}]),
-
-	    service_edge_rpc:handle_remote_message(St#st.cs,
-						   {IP, Port},
-						   ServiceName,
-						   Timeout,
-						   Parameters),
-	    {noreply, St}
-    end;
-
+    ?debug("    protocol:rcv(): service name:    ~p~n", [ServiceName]),
+    ?debug("    protocol:rcv(): timeout:         ~p~n", [Timeout]),
+    ?debug("    protocol:rcv(): remote IP/Port:  ~p~n", [{IP, Port}]),
+    service_edge_rpc:handle_remote_message(St#st.cs,
+					   {IP, Port},
+					   ServiceName,
+					   Timeout,
+					   Parameters),
+    {noreply, St};
 
 handle_cast(Other, St) ->
     ?warning("proto_json_rpc:handle_cast(~p): unknown", [ Other ]),
@@ -199,44 +183,3 @@ opt(K, L, Def) ->
 
 opts(Keys, Elems, Def) ->
     [ opt(K, Elems, Def) || K <- Keys].
-
-use_frag(Params, DLinkOpts) ->
-    case p_reliable(Params) of
-	undefined ->
-	    d_reliable(DLinkOpts);
-	Other ->
-	    Other
-    end.
-
-%% We use reliable send (i.e. fragmentation support) if:
-%% - rvi.max_msg_size is set in the Params (overrides static config)
-%% - rvi.reliable = true in the Params
-%% - max_msg_size is set for the data link
-%% - {reliable, true} defined for the data link
-%%
-%% If {reliable, true} and no max_message_size, we send a single packet
-%% as one fragment (marking it as first and last fragment) and use the
-%% ack mechanism to acknowledge successful delivery.
-%%
-p_reliable([{"rvi.max_msg_size", Sz}|_]) -> {true, Sz};
-p_reliable([{"rvi.reliable", true}|_])   -> {true, infinity};
-p_reliable([{"rvi.reliable", false}|_])  -> false;
-p_reliable([_|T]) -> p_reliable(T);
-p_reliable([])    -> undefined.
-
-d_reliable([{max_msg_size, Sz}|_]) -> {true, Sz};
-d_reliable([{reliable, true}|_])   -> {true, infinity};
-d_reliable([{reliable, false}|_])  -> false;
-d_reliable([_|T]) -> d_reliable(T);
-d_reliable([])    -> false.
-
-chunk_message(Window, TID, _ServiceName, _DLinkMod, _DLinkOpts, Data, St) ->
-    _Frag = first_frag(Window, TID, Data),
-
-    {ok, St}.
-
-handle_frag(_Elems, _IP, _Port, _St) ->
-    error(nyi).
-
-first_frag(_Window, _TID, _Data) ->
-    error(nyi).

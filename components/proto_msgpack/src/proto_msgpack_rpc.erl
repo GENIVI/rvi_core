@@ -136,8 +136,9 @@ handle_call({rvi, send_message,
 			  { <<"service">>, ServiceName },
 			  { <<"timeout">>, Timeout },
 			  { <<"parameters">>, Parameters } ], St#st.pack_opts),
+    RviOpts = rvi_common:rvi_options(Parameters),
     Res = DataLinkMod:send_data(
-	    St#st.cs, ?MODULE, ServiceName, DataLinkOpts, Data),
+	    St#st.cs, ?MODULE, ServiceName, RviOpts ++ DataLinkOpts, Data),
     {reply, Res, St};
 
 handle_call(Other, _From, St) ->

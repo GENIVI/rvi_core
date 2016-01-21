@@ -45,7 +45,7 @@
 
 -define(CONNECTION_TABLE, rvi_dlink_bt_connections).
 -define(SERVICE_TABLE, rvi_dlink_bt_services).
--define(DLINK_BT_VER, "1.0").
+-define(DLINK_BT_VER, <<"1.0">>).
 
 %% Multiple registrations of the same service, each with a different connection,
 %% is possible.
@@ -343,8 +343,9 @@ process_authorize(FromPid, PeerBTAddr, PeerBTChannel,
     %% from the client. We should respond with our own authorize followed by
     %% a service announce
 
-    Conn = {RemoteAddress, RemoteChannel},
-    log(result, "auth ~s:~w", [RemoteAddress, RemoteChannel], CompSpec),
+    %% Conn = {RemoteAddress, RemoteChannel},
+    {NRemoteAddress, NRemoteChannel} = Conn = {PeerBTAddr, PeerBTChannel},
+    log(result, "auth ~s:~w", [NRemoteAddress, NRemoteChannel], CompSpec),
     authorize_rpc:store_creds(CompSpec, Credentials, Conn),
     connection_authorized(FromPid, Conn, CompSpec).
 
@@ -579,7 +580,7 @@ handle_call({rvi, disconnect_data_link, [NetworkAddress] }, _From, St) ->
     { reply, [ Res ], St };
 
 
-handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, St) ->
+handle_call({rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts]}, _From, St) ->
 
     %% Resolve connection pid from service
     case get_connections_by_service(Service) of
@@ -595,7 +596,7 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, _DataLinkOpts]}, _From, S
 		      { ?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE },
 		      { ?DLINK_ARG_MODULE, atom_to_binary(ProtoMod, latin1) },
 		      { ?DLINK_ARG_DATA,  Data }
-		    ]),
+		    ], DataLinkOpts),
 	    { reply, [ Res ], St}
     end;
 
@@ -652,7 +653,7 @@ code_change(_OldVsn, St, _Extra) ->
 
 send_authorize(Pid, SetupChannel, CompSpec) ->
     {Address, Channel} =
-	case Mode = get_mode(CompSpec) of
+	case get_mode(CompSpec) of
 	    bt ->
 		{ok,[{address, Addr}]} = bt_drv:local_info([address]),
 		{bt_address_to_string(Addr), SetupChannel};

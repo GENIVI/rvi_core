@@ -2,7 +2,7 @@
 %% Copyright (C) 2014, Jaguar Land Rover
 %%
 %% This program is licensed under the terms and conditions of the
-%% Mozilla Public License, version 2.0.  The full text of the 
+%% Mozilla Public License, version 2.0.  The full text of the
 %% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 %%
 
@@ -16,7 +16,8 @@
   {applications, [
                   kernel,
                   stdlib,
-		  rvi_common
+		  rvi_common,
+		  public_key
                  ]},
   {mod, { authorize_app, []}},
   {start_phases, [{ json_rpc, []}, {announce, []}]},

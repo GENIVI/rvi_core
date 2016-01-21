@@ -1,20 +1,21 @@
 -module(dlink_data_msgpack).
 
--export([init/1,
+-export([init/0, init/1,
 	 decode/3,
 	 encode/2]).
 
 -export([port_options/0]).
 
 -record(st, {opts = [{allow_atom, pack},
-		     {enable_str, true},
 		     jsx],
 	     buf = <<>>}).
 
 port_options() ->
     [binary, {packet, 0}].
 
-init(_CS) ->
+init(_) -> init().
+
+init() ->
     #st{}.
 
 decode(Msg0, F, #st{buf = Prev, opts = Opts} = St) when is_function(F, 1) ->

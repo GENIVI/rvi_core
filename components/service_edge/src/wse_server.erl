@@ -301,7 +301,7 @@ ws_loop(Buf, Socket, S) ->
 	    end;
 
 	Message ->
-	    ?debug("handle_local: ~p - ~p", [Message, S]),
+	    ?debug("handle_local: ~p", [Message]),
 	    case handle_local(Message, Socket, S) of
 		{noreply,S1} ->
 		    ws_loop(Buf, Socket, S1);

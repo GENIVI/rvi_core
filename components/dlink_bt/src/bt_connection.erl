@@ -29,6 +29,7 @@
 -export([accept/6]).
 -export([send/2]).
 -export([send/3]).
+-export([send_data/2]).
 -export([is_connection_up/1]).
 -export([is_connection_up/2]).
 -export([terminate_connection/1]).
@@ -47,6 +48,8 @@
 	  mode = bt,
 	  packet_mod = ?PACKET_MOD,
 	  packet_st = [],
+	  decode_st = <<>>,
+	  frag_opts = [],
 	  mod,
 	  func,
 	  args
@@ -74,6 +77,8 @@ accept(Channel, ListenRef, Mode, Mod, Fun, Arg) ->
 send(Pid, Data) when is_pid(Pid) ->
     gen_server:cast(Pid, {send, Data}).
 
+send(Pid, Data, Opts) when is_pid(Pid) ->
+    gen_server:cast(Pid, {send, Data, Opts});
 send(Addr, Channel, Data) ->
     case bt_connection_manager:find_connection_by_address(Addr, Channel) of
 	{ok, Pid} ->
@@ -85,6 +90,9 @@ send(Addr, Channel, Data) ->
 	    not_found
 
     end.
+
+send_data(Pid, Data) ->
+    gen_server:cast(Pid, {send_data, Data}).
 
 terminate_connection(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, terminate_connection).
@@ -137,6 +145,10 @@ init({connect, BTAddr, Channel, Mode, Mod, Fun, CS}) ->
     gen_server:cast(self(), connect),
     {ok, PktMod} = get_module_config(packet_mod, ?PACKET_MOD, CS),
     PktSt = PktMod:init(CS),
+    DefFragMod = dlink_data_msgpack,
+    DefFragSt = dlink_data_msgpack:init([]),
+    {ok, FragOpts} = get_module_config(
+		       frag_opts, [{packet_mod, {DefFragMod, DefFragSt}}], CS),
     {ok, #st{
 	    remote_addr = bt_addr(Mode, BTAddr),
 	    channel = Channel,
@@ -144,9 +156,10 @@ init({connect, BTAddr, Channel, Mode, Mod, Fun, CS}) ->
 	    mode = Mode,
 	    mod = Mod,
 	    func = Fun,
-	    args = CS,
+	    args = rvi_common:set_value(role, client, CS),
 	    packet_mod = PktMod,
-	    packet_st = PktSt
+	    packet_st = PktSt,
+	    frag_opts = FragOpts
 	   }};
 
 
@@ -182,7 +195,7 @@ init({accept, Channel, ListenRef, Mode, Mod, Fun, CS}) ->
 	    mode = Mode,
 	    mod = Mod,
 	    func = Fun,
-	    args = CS,
+	    args = rvi_common:set_value(role, server, CS),
 	    packet_mod = PktMod,
 	    packet_st = PktSt
 	   }}.
@@ -271,12 +284,27 @@ handle_cast({send, Data}, #st{mode = Mode,
     ?debug("handle_cast(send): Sending: ~p", [Data]),
     {ok, Encoded, PSt1} = PMod:encode(Data, PSt),
     ?debug("Encoded = ~p", [Encoded]),
-    Res = case Mode of
-	      bt  -> rfcomm:send(Sock, Encoded);
-	      tcp -> gen_tcp:send(Sock, Encoded)
-	  end,
+    Res = do_send(Mode, Sock, Encoded),
     ?debug("send Res = ~p", [Res]),
     {noreply, St#st{packet_st = PSt1}};
+
+handle_cast({send, Data, Opts}, #st{mode = Mode, rfcomm_ref = Socket,
+				    packet_mod = PMod,
+				    packet_st = PSt,
+				    frag_opts = FragOpts} = St) ->
+    ?debug("handle_cast({send, Data, ~p}, ...), FragOpts = ~p",
+	   [Opts, FragOpts]),
+    {ok, Bin, PSt1} = PMod:encode(Data, PSt),
+    St1 = St#st{packet_st = PSt1},
+    rvi_frag:send(Bin, Opts ++ FragOpts, ?MODULE,
+		  fun() ->
+			  do_send(Mode, Socket, Bin)
+		  end),
+    {noreply, St1};
+
+handle_cast({send_data, Data}, #st{mode = Mode, rfcomm_ref = Socket} = St) ->
+    do_send(Mode, Socket, Data),
+    {noreply, St};
 
 handle_cast(_Msg, State) ->
     ?warning("~p:handle_cast(): Unknown call: ~p", [ ?MODULE, _Msg]),
@@ -315,24 +343,23 @@ handle_info({rfcomm, ARef, { accept, BTAddr, _ } },
 handle_info({rfcomm, _ConnRef, {data, Data}},
 	    #st { remote_addr = BTAddr,
 		  channel = Channel,
-		  packet_mod = PMod,
-		  packet_st = PSt,
+		  decode_st = DSt,
+		  frag_opts = FragOpts,
 		  mod = Mod,
 		  func = Fun } = State) ->
     ?debug("~p:handle_info(data): Data: ~p", [ ?MODULE, Data]),
     ?info("~p:handle_info(data): From: ~p:~p ", [ ?MODULE, BTAddr, Channel]),
     ?info("~p:handle_info(data): ~p:~p -> ~p:~p",
 	  [ ?MODULE, BTAddr, Channel, Mod, Fun]),
-    case PMod:decode(Data, fun(Elems) ->
-				   handle_elements(Elems, State)
-			   end, PSt) of
-	{ok, PSt1} ->
-	    {noreply, State#st{packet_st = PSt1}};
+    case dlink_data:decode(Data, fun(Elems) ->
+					 got_msg(Elems, State)
+				 end, DSt, ?MODULE, FragOpts) of
+	{ok, DSt1} ->
+	    {noreply, State#st{decode_st = DSt1}};
 	{error, Reason} ->
-	    ?error("decode failed: ~p", [Reason]),
+	    ?error("decode failed: Reason = ~p", [Reason]),
 	    {stop, Reason, State}
     end;
-
 
 handle_info({rfcomm, ConnRef, closed},
 	    #st { remote_addr = BTAddr,
@@ -375,18 +402,21 @@ handle_info({tcp, Sock, Data}, #st{remote_addr = IP,
 				   channel = Port,
 				   rfcomm_ref = Sock,
 				   packet_mod = PMod,
-				   packet_st = PSt} = St) ->
-    ?debug("handle_info(data): From: ~p:~p", [IP, Port]),
-    case PMod:decode(Data, fun(Elems) ->
-				   handle_elements(Elems, St)
-			   end, PSt) of
-	{ok, PSt1} ->
+				   frag_opts = FragOpts,
+				   decode_st = DSt} = St) ->
+    ?debug("handle_info(Data = ~p): From: ~p:~p", [Data, IP, Port]),
+    ?debug("PMod = ~p; DSt = ~p", [PMod, DSt]),
+    case dlink_data:decode(Data, fun(Elems) ->
+					 got_msg(Elems, St)
+				 end, DSt, ?MODULE, FragOpts) of
+	{ok, DSt1} ->
 	    inet:setopts(Sock, [{active, once}]),
-	    {noreply, St#st{packet_st = PSt1}};
+	    {noreply, St#st{decode_st = DSt1}};
 	{error, Reason} ->
 	    ?error("decode failed, Reason = ~p", [Reason]),
 	    {stop, Reason, St}
     end;
+
 handle_info({inet_async, _L, _Ref, {ok, Sock}} = Msg, #st{mod = Mod,
 							  func = Fun,
 							  args = Arg} = St) ->
@@ -432,14 +462,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+do_send(tcp, Sock, Data) ->
+    gen_tcp:send(Sock, Data);
+do_send(bt,  Sock, Data) ->
+    rfcomm:send(Sock, Data).
+
 get_module_config(Key, Default, CS) ->
     rvi_common:get_module_config(dlink_tcp, dlink_tcp_rpc, Key, Default, CS).
 
-handle_elements(Elements, #st{remote_addr = BTAddr,
-			      channel = Channel,
-			      mod = Mod,
-			      func = Fun,
-			      args = Arg}) ->
+got_msg(Elements, #st{remote_addr = BTAddr, channel = Channel,
+		      mod = Mod, func = Fun, args = Arg}) ->
     ?debug("data complete; processed: ~p",
 	   [authorize_keys:abbrev(Elements)]),
     Mod:Fun(self(), BTAddr, Channel, data, Elements, Arg).
