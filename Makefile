@@ -93,6 +93,7 @@ rpm_tarball: rpmclean clean
 # Create an ubuntu 14.04 tarball
 ubuntu_package: clean ubuntu_clean
 	install --mode=0755 -d ./ubuntu_build
+
 # Pack up all relevant files, and debian/,  necessary for a build.
 # Add rvi-$(VERSION) at the beginning of each file so
 # that theu get packed up into a correctly named subdirectory

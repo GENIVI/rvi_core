@@ -2,12 +2,12 @@ Source: rvi
 Section: Network
 Priority: optional
 Maintainer: Magnus Feuer <mfeuer@jaguarlandrover.com>
-Build-Depends: debhelper (>= 9), libbluetooth-dev, erlang-base (= 1:16.b.3-dfsg-1ubuntu2.1)
+Build-Depends: debhelper (>= 9), libbluetooth-dev, erlang-base (>= 1:16.b.3-dfsg-1ubuntu2.1)
 Standards-Version: 3.9.5
 Homepage: https://github.com/PDXostc/rvi_core
 
 Package: rvi
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends},bluez, erlang-base (= 1:16.b.3-dfsg-1ubuntu2.1), python-jsonrpclib (>= 0.1.3-1build1), python (>= 2.7.5-5ubuntu3)
+Depends: ${shlibs:Depends}, ${misc:Depends},bluez, erlang-base (>= 1:16.b.3-dfsg-1ubuntu2.1), python-jsonrpclib (>= 0.1.3-1build1), python (>= 2.7.5-5ubuntu3)
 Description: Remote Vehicle Interaction
  GENIVI Remote Vehicle Interaction Transport

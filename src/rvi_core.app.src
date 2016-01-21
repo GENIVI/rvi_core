@@ -12,7 +12,7 @@
 {application, rvi_core,
  [
   {description, ""},
-  {vsn, "0.4.0"},
+  {vsn, "0.5.0"},
   {registered, []},
   {applications, [
                   kernel,

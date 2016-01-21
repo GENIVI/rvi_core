@@ -1,10 +1,10 @@
 Summary:    Remote Vehicle Interaction Node, running on top of Erlang,
 Name:       rvi_core
-Version:    0.4.0
+Version:    0.5.0
 Release:    1
 Group:      App Framework/Application Communication
 License:    Mozilla Public License 2.0
-Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi_core-0.4.0.tgz
+Source:     http://content.linuxfoundation.org/auto/downloads/rvi/rvi_core-0.5.0.tgz
 
 BuildRequires:  make
 BuildRequires:  glib2-devel
@@ -50,4 +50,4 @@ rm -rf $RPM_BUILD_ROOT
 %attr(644,app,users) /home/app/content/Documents/vin
 /usr/lib/systemd/system/rvi.service 
 /etc/systemd/system/multi-user.target.wants/rvi.service
-/opt/rvi-0.4.0
+/opt/rvi-0.5.0
