@@ -34,6 +34,7 @@ SRC_LIST=BUILD.md \
 	components \
 	ebin \
 	src \
+	deps \
 	TODO 
 
 VERSION=0.5.0
@@ -85,7 +86,7 @@ test: compile escript
 # Create a SOURCES tarball for RPM
 rpm_tarball: rpmclean clean
 	tar czf /tmp/rvi_core-$(VERSION).tgz BUILD.md CONFIGURE.md doc \
-		LICENSE Makefile README.md rebar rebar.config rel \
+		LICENSE Makefile README.md rebar rebar.config rel deps\
 		RELEASE.md rpm scripts/setup_gen scripts/rvi \
 		scripts/rvi.service scripts/rvi.sh \
 		components priv/config/rvi_sample.config scripts/rvi_instball.sh src \
