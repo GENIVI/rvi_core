@@ -32,6 +32,7 @@ SRC_LIST=BUILD.md \
 	scripts/rvi_install.sh \
 	python/*.py \
 	components \
+	priv \
 	ebin \
 	src \
 	deps \
@@ -92,7 +93,7 @@ rpm_tarball: rpmclean clean
 		components priv/config/rvi_sample.config scripts/rvi_instball.sh src \
 
 # Create an ubuntu 14.04 tarball
-ubuntu_package: clean ubuntu_clean
+ubuntu_package: clean ubuntu_clean escript
 	install --mode=0755 -d ./ubuntu_build
 
 # Pack up all relevant files, and debian/,  necessary for a build.
@@ -114,7 +115,7 @@ rpm:	rpmclean rpm_tarball
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
 install: deps compile
-	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi $(DESTDIR)/opt/rvi $(DESTDIR)/var/opt/log/rvi
+	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi
 	install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
 	install --mode=0644 priv/config/rvi_sample.config $(DESTDIR)/etc/opt/rvi/rvi_sample.config
 	install --mode=0644 priv/config/rvi_common.config $(DESTDIR)/opt/rvi/rvi_core/rvi_common.config
