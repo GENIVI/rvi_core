@@ -115,7 +115,6 @@ rpm:	rpmclean rpm_tarball
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
 install: deps compile
-	./scripts/rvi_install.sh $(DESTDIR)/opt/rvi
-	install --mode=0755 -d $(DESTDIR)/etc/opt/rvi/
-	install --mode=0644 priv/config/rvi_sample.config $(DESTDIR)/etc/opt/rvi/rvi_sample.config
-	install --mode=0644 priv/config/rvi_common.config $(DESTDIR)/opt/rvi/rvi_core/rvi_common.config
+	./scripts/rvi_install.sh  $(DESTDIR)/opt/rvi_core $(DESTDIR)/opt/rvi_core $(DESTDIR)/var/opt/log/rvi
+	install -m 0755 -d $(DESTDIR)/etc/opt/rvi/
+	install -m 0644 priv/config/rvi_sample.config $(DESTDIR)/etc/opt/rvi/rvi_sample.config
