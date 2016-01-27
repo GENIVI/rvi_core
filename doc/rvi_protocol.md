@@ -315,10 +315,10 @@ was generated with the following command:
 # Create the device key. In production, increase the bit size to 4096+
 openssl genrsa -out insecure_device_key.pem 1024
 
-# Create a certificate signing requestsigning request
+# Create a certificate signing request
 openssl req -new -key insecure_device_key.pem -out insecure_device_cert.csr
 
-# Sign the signing request and creaqte the root_cert.crt file
+# Sign the signing request and create the insecure_device_cert.crt file
 openssl x509 -req -days 365 -in insecure_device_cert.csr \
              -CA insecure_root_cert.crt -CAkey insecure_root_key.pem \
              -set_serial 01 -out insecure_device_cert.crt
