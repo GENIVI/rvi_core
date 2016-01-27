@@ -1,9 +1,9 @@
-Copyright (C) 2014-2015, Jaguar Land Rover
+Copyright (C) 2014-2016, Jaguar Land Rover
 
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-**Version 0.4.0**
+**Version 0.5.0**
 
 # CONFIGURING AN RVI NODE 
 
@@ -22,7 +22,7 @@ The reader is assumed to be able to:
 
 ## PREREQUISITES
 
-1. Erlang runtime R16B03 or later has to be installed on the hosting system.
+1. Erlang runtime 18.2 or later has to be installed on the hosting system.
 2. The ```setup_rvi_node.sh``` tool is available to build a release.
 3. ```rvi_sample.config``` is used as a starting point for a customized setup.
 Root access is not needed.
@@ -38,32 +38,31 @@ steps must be taken.
 This node will handle traffic to all services that start with the
 given prefix.
 
-<b>2. Specify RVI node external address</b><br>
-The external address is announced by the Data Link component to other
-RVI nodes, allowing them to connect to this node and exchange
-services. 
+<b>2. Provide paths to keys, certificates and service credentials</b><br>
+RVI Core uses X.509 keys certificates for authentication, and credentials
+specifying which services can be registered and invoked.
 
-<b>2. Configure static nodes</b><br>
+<b>3. Configure static nodes</b><br>
 Backend / Cloud-based RVI nodes have non-changing network addresses that
 should be known by other nodes in a network.  This is acheived by
 setting up service prefixes and addresses of the static nodes in
 all other nodes deployed in a network.
 
-<b>3. Specify Service Edge URL that local services connect to</b><br>
+<b>4. Specify Service Edge URL that local services connect to</b><br>
 The Service Edge URL is used by local services to send traffic that is
 to be forwarded to services on the local and remote nodes.
 
-<b>4. Specify URLs for RVI components</b><br>
+<b>5. Specify URLs for RVI components</b><br>
 In addition to the Service Edge URL, the remaining components must
 have their URLs configured so that the components can locate each
 other and exchange commands.
 
-<b>5. Build the development release</b><br>
-The ```setup_rvi_node.sh``` is executed to read the configuration file
+<b>6. Build the development release</b><br>
+The ```setup_rvi_node.sh``` script is executed to read the configuration file
 and generate a development or production release.
 
-<b>6. Start the release</b><br>
-The ```rvi_node.sh``` is executed to launch the built development
+<b>7. Start the release</b><br>
+The ```rvi_node.sh``` script is executed to launch the built development
 release. ```$REL_HOME/rvi/bin/rvi start``` is used to launch the
 production release.
 
@@ -72,7 +71,7 @@ production release.
 
 There is a single configuration file, with the setup for all
 components and modules in the node, used for each release. 
-A documented example file is provided as ```rvi_sample.config```
+A documented example file is provided as ```priv/config/rvi_sample.config```
 
 The configuration file consists of an array of erlang tuples (records
 / structs / entries), where the ```env``` tuple contains configuration data for
@@ -82,7 +81,104 @@ the lager logging system, only the ```rvi``` tuple needs to be edited.
 
 The term tuple and entry will be intermixed throughout this document.
 
+### Erlang terms
+
+For a full description of Erlang types, read [the Erlang Reference Manual](http://erlang.org/doc/reference_manual/users_guide.html). The following is a brief summary:
+
+* Tuples, written as ```{ Elem1, ..., ElemN }``` are like arrays whose elements are accessed by position.
+* Lists, written as ```[ Elem1, ..., ElemN ]``` are linked lists whose elements are accessed by iterating from the beginning of the list. Another notation is ```[ Head | Tail ]```. Strings are actually lists of integers, and ```"RVI"``` is equivalent to ```[82,86,73]```, or ```[$R,$V,$I]```.
+* Numbers, e.g. ```17```, ```1.44```, ```2#101``` (binary notation), ```16#5A``` (hex notation).
+* Atoms, names starting with a lowercase letter or enclosed in single quotes, are essentially labels.
+* Variable names start with an uppercase letter.
+
+### Setup config files
+
+RVI Core uses the [setup](https://github.com/uwiger/setup) tool to build from configuration files.
+
+The files used by ```setup``` are evaluated using the [file:script/1](http://erlang.org/doc/man/file.html#script-1) function, meaning that the file can contain a sequence of executable Erlang expressions, each terminated with a full stop (```.```). Anything starting with ```%``` and to the end of the line
+constitutes a comment.
+
+Example from ```rvi_core/priv/config/rvi_sample.config```:
+
+    Env = fun(V, Def) ->
+                  case os:getenv(V) of
+                      false -> Def;
+                      Str when is_integer(Def) -> list_to_integer(Str);
+                      Str when is_atom(Def) -> list_to_atom(Str);
+                      Str -> Str
+                  end
+          end.
+    IPPort = fun(IP, Port) ->
+                     IP ++ ":" ++ integer_to_list(Port)
+             end.
+    MyPort = Env("RVI_PORT", 9000).
+    MyIP = Env("RVI_MYIP", "127.0.0.1").
+    MyNodeAddr = Env("RVI_MY_NODE_ADDR", IPPort(MyIP, MyPort)).
+    BackendIP = Env("RVI_BACKEND", "38.129.64.31").
+    BackendPort = Env("RVI_BACKEND_PORT", 8807).
+    LogLevel = Env("RVI_LOGLEVEL", notice).
+
+The above defines two function objects used to check for the existence of a given OS environment variable, and using the corresponding value, or else using a default value. For example, the variable ```MyPort``` is set to either the value of ```RVI_PORT``` or else to ```9000```. These variables are used further down in the configuration file.
+
+The ```setup``` utility is called when the ```rvi.sh``` script is run. To e.g. enable debug logging, you can do the following:
+
+    $ RVI_LOGLEVEL=debug rvi.sh ...
+
+```Setup``` expects certain configuration entries, e.g. ```{apps, [App1, ...]}```, ```{env, [{App, [{Key, Val}, ...]}, ...]}```. Most of the configuration work for RVI is done in ```{env, ...}```.
+
+It is possible to include existing configuration files and then modifying the result. For example, the ```rvi_sample.config``` file includes ```rvi_core/priv/config/rvi_common.config``` via the following line:
+
+     {include_lib, "rvi_core/priv/config/rvi_common.config"},
+
+Includes can be used at several levels. For example, ```priv/test_config/basic_backend.config``` includes ```priv/test_config/backend.config```, which in its turn includes ```priv/config/backend.config```, which, finally, includes ```priv/config/rvi_common.config```.
+
+Other examples can be found in ```rvi_core/priv/test_config/```, where configurations used by the test suite are located:
+
+    {ok, CurDir} = file:get_cwd().
+    [
+     {include_lib, "rvi_core/priv/test_config/backend.config"},
+     {remove_apps, [bt, dlink_bt]},
+     {set_env,
+      [{rvi_core,
+        [
+         {[components, data_link, dlink_tcp_rpc, server_opts, ping_interval], 500}
+        ]}
+      ]}
+    ].
+
+The ```set_env``` instruction specifically takes a list of ```{App, [{Key, Value}]}``` tuples, where the ```Key``` is either an atom or list of atoms, the latter indicating an entry in a 'tree' of entries. In the example above, the tree would look like:
+
+    {rvi_core,
+     [
+      ...
+      {components,
+       [
+        ...
+        {data_link,
+         [
+          ...
+          {dlink_tcp_rpc,
+           [
+            ...
+            {server_opts,
+             [
+              ...
+              {ping_interval, 500}
+             ]}
+           ]}
+         ]}
+       ]}
+     ]}
+
+If the entry in question exists in the tree, it will be modified; if not, it will be added.
+
+For more details about what can be done with ```setup```, see (the setup_gen manual)[https://github.com/uwiger/setup/blob/master/doc/setup_gen.md].
+
 ## CONFIGURATION FILE VALUE SUBSITUTION
+Some forms of substitution are supported by ```setup```, see (the docs on variable expansion)[https://github.com/uwiger/setup/blob/master/doc/setup.md#Variable_expansion].
+
+RVI Core supports some additional substitution of its own. All substitution is done automatically when RVI starts, so the running applications see the final results of the substitutions.
+
 All string values under the rvi tuple tree are scanned
 for specific dokens during startup. If a token is 
 found, it will be replaced with a value referenced by it.
@@ -192,23 +288,30 @@ An example entry is given below:
 ] 
 </pre>
 
+#PROVIDE PATHS TO KEYS, CERTIFICATES AND SERVICE CREDENTIALS
 
-# SPECIFY RVI NODE EXTERNAL ADDRESS #
+The following settings are required for the RVI Core authentication framework:
 
-The external rvi node address is the address, as seen from the outside
-world, where this node's data link can be contacted. In IP based
-networks, this is usually a ```hostname:port``` value. In SMS-only
-networks, this will be the MSISDN of the node's mobile subscription.
-Any traffic directed to the given address should be forwarded to the 
-Data Link component.
+* `{device_key, DevKeyFile}`
+* `{provisioning_key, ProvKeyFile}`
+* `{root_cert, RootCertFile}`
+* `{device_cert, DevCertFile}`
+* `{cred_dir, CredDirectory}`
 
-If the node lives behind a firewall, or should for some reason not
-accept incoming connections from other nodes, the node external address
-should be set to ```"0.0.0.0:0"```. 
+The [doc/rvi_protocol.md](doc/rvi_protocol.md) document explains the authentication
+protocol and how to create the necessary keys and certificates.
 
-The configuration element to set under the ```rvi``` tuple is ```node_address```. 
+Note that the `cred_dir` option needs to be a directory. RVI Core will pick up
+any valid credentials present in that directory.
 
-An example tuple is given below:
+Default values - the sample keys and certs used in `rvi_protocol.md` - are
+specified in [rvi_common.config](priv/doc/rvi_common.config).
+The defaults should *only* be used for testing and demos - never for live use.
+
+#CONFIGURE DATA LINK LAYERS
+
+The ```data_link``` components are specified as ```{Module, Type, Options}```, e.g.
+
 <pre>
 [
   ...
@@ -216,23 +319,32 @@ An example tuple is given below:
     ...
     { rvi_core, [
       ...
-      <b>{ node_address, "92.52.72.132:8817 }</b>
-    ]}
-  ]}
-] 
+      { components, [
+        ...
+        <b>{ dlink_tls_rpc, gen_server, [ ... ] }</b>
+       ] }
+     ] }
+   ] }
+]
 </pre>
 
-*Please note that IP addresses, not DNS names, should be used in all
- network addresses.*
+In the data link component, ```dlink_tls_rpc```, you can specify the following options:
 
-In the data link component, ```dllink_tcp_rpc```, you also
-need to specify the port it should listen to, and optionally also the
-interface to use.
+    { server_opts, Opts }
 
-This is done by editing the tuple ```rvi_core -> data_link -> dlink_tcp_rpc```, and
-set ```port``` to the port that traffic is recevied on. 
+These are options for the TLS listener and subsequent connections:
+
+* `{port, Port}` - which port to listen to
+* `{ip, Address}` - optionally specifies which interface to listen to
+* `{max_msg_size, Sz}` - maximum fragment size (see [doc/rvi_protocol.md](doc/rvi_protocol.md#chunking-of-large-messages) for details
+* `{reliable, true | false}` - if `max_msg_size` isn't specified, this will enable reliable transmission using the fragmentation protocol.
+
+    { persistent_connections, Addresses }
+
+`Addresses` is a list of IP:Port strings signifying other RVI nodes to connect to. The connection-
+and fragmentation-related options above will also be applied to these connections.
+
 An example tuple is given below:
-
 
 <pre>
 [
@@ -245,10 +357,12 @@ An example tuple is given below:
         ...
         { data_link, [ 
          ...
-	     { dlink_tcp_rpc, gen_server,
+	     { dlink_tls_rpc, gen_server,
 	      [ 
 	        ...
-            <b>{ server_opts, [ { ip, "192.168.11.234"}, { port, 8807 }]},
+            <b>{ server_opts, [ { ip, "192.168.11.234"},
+                                { port, 8807 },
+                                { max_msg_size, 1024 } ]},
             { persistent_connections, [ "38.129.64.13:8807" ]}</b>
 	      ]
 	    }]

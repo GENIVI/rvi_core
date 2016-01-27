@@ -15,7 +15,7 @@ This document describes the core protocol between two RVI nodes.
 [6] X.509 Certificates - (link)[https://en.wikipedia.org/wiki/X.509]<br>
 
 # FEATURES COVERED BY PROTOCOL
-1. **Authroization**<br>
+1. **Authorization**<br>
 Prove to the remote RVI node that the local RVI node has the right to
 invoke a set of services, and the right to register another set of services.
 
@@ -257,7 +257,7 @@ openssl genrsa -out insecure_root_key.pem 1024
 openssl req -x509 -new -nodes -key insecure_root_key.pem -days 365 -out insecure_root_cert.crt
 ```
 
-The content of the sample ```insercure_root_key.pem``` private key
+The content of the sample ```insecure_root_key.pem``` private key
 file, which has no password protection, is:
 
 ```
@@ -328,7 +328,7 @@ openssl x509 -req -days 365 -in insecure_device_cert.csr \
 The ```insecure_device_cert.csr``` intermediate certificate signing
 request can be deleted once the three steps above have been executed.
 
-The content of the sample ```insercure_device_key.pem``` private key
+The content of the sample ```insecure_device_key.pem``` private key
 file, which has no password protection, is:
 
 ```

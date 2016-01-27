@@ -702,7 +702,7 @@ install_rvi_node(Name, Env, _ConfigF) ->
     ct:log("install_rvi_node/1 -> ~p", [Res]),
 
 
-    Res1 = cmd(lists:flatten(["install -d --mode 0755 ./", Name])),
+    Res1 = cmd(lists:flatten(["install -d -m 0755 ./", Name])),
     ct:log("install_rvi_node/2 -> ~p", [Res1]),
 
     Res2 = cmd(lists:flatten(["cp -r ", Root, "/priv ", Name])),

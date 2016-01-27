@@ -12,7 +12,7 @@
 # If a UUID file has not been created, it will be done at this time.
 #
 
-SELF_DIR=$(dirname $(readlink -f "$0"))
+SELF_DIR=$(cd ${0%/*} && pwd)
 CONFIG_DIR=/etc/opt/rvi
 BIN_DIR=/opt/rvi
 
