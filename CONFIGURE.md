@@ -596,23 +596,23 @@ external node address chapter:
 
 Communication between the RVi components can be either JSON-RPC or
 Erlang-internal gen\_server calls.
-	
-JSON-RPC calls provide compatability with replacement components
+
+JSON-RPC calls provide compatibility with replacement components
 written in languages other than Erlang. gen\_server calls provide
 native erlang inter-process calls that are signficantly faster than
 JSON-RPC when transmitting large data volumes.
-	
+
 If one or more of the RVI components are replaced with external
 components, use JSON-RPC by ```json_rpc_address```
 for all components.
-	
+
 If an all-native erlang system is configured, use gen\_server calls
 by configuring ```gen_server```.
 
 If both ```gen_server``` and ```json_rpc_address``` are specified, the
 gen\_server communicaiton path will be used for inter component
 communication.
-	
+
 Please note that communication between two RVI nodes are not affected
 by this since data_link_bert_rpc will use the protocol and data links
 specified by the matching routing rule to communicate. See
