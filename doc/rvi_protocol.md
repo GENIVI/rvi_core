@@ -250,7 +250,7 @@ The self signed root certificate used in the examples throughout this
 document was generated using the following commands:
 
 ```Shell
-# Create root key and cert signing request
+# Create root key pair
 openssl genrsa -out insecure_root_key.pem 1024
 
 # Create a self-signed root CA certificate, signed by the root key created above
