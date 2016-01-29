@@ -1,4 +1,4 @@
-Copyright (C) 2015 Jaguar Land Rover
+Copyright (C) 2015-16 Jaguar Land Rover
 
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
@@ -56,7 +56,7 @@ nodes once they have become aware of each other's presence.
 
 The stack schematics is shown below.
 
-<img src="rvi_protocol_stack.png" alt="RVI Core protocol Stack">
+<img src="images/rvi_protocol_stack.png" alt="RVI Core protocol Stack">
 
 ## RVI Core protocol codec
 The RVI core protocol uses MessagePack [3] as its
@@ -94,7 +94,7 @@ RVI credentials.
 
 The figure below shows how this is done.
 
-<img src="rvi_protocol_x509_credential.png" alt="X.509 - RVI Protocol integration">
+<img src="images/rvi_protocol_x509_credential.png" alt="X.509 - RVI Protocol integration">
 
 ## JSON Web token usage
 JSON Web Tokens (JWT) [2] are used to encode RVI credentials, which are
@@ -109,7 +109,7 @@ Please note that the protocol is fully symmetrical and that the
 client-server terminology only denotes who initiates the connection
 (client), and who receives that connection (server).
 
-<img src="rvi_protocol_flow.png" alt="RVI Core protocol Sequence Diagram" style="width:800">
+<img src="images/rvi_protocol_flow.png" alt="RVI Core protocol Sequence Diagram" style="width:800">
 
 ## Authorize command
 The ```authorize``` command contains a list of RVI credentials, each specifying
@@ -138,7 +138,7 @@ shown below.
 
 Connection 1 | Connection 2
 :------:|:------:
-<img src="rvi_protocol_double_connect1.png" alt="RVI Core protocol Double Connect" style="width:400"> | <img src="rvi_protocol_double_connect2.png" alt="RVI Core protocol Double Connect" style="width:400">
+<img src="images/rvi_protocol_double_connect1.png" alt="RVI Core protocol Double Connect" style="width:400"> | <img src="images/rvi_protocol_double_connect2.png" alt="RVI Core protocol Double Connect" style="width:400">
 
 A double connect can be detected by either side by checking if the
 remote peer address already has a connection established.
@@ -181,7 +181,7 @@ fragmented.
 
 The protocol is as follows:
 
-<img src="rvi_protocol_frag1.png" alt="RVI Core fragmentation Sequence Diagram" style="width:800">
+<img src="images/rvi_protocol_frag1.png" alt="RVI Core fragmentation Sequence Diagram" style="width:800">
 
 ### Enabling fragmentation
 
