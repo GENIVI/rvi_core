@@ -16,35 +16,101 @@ SELF_DIR=$(dirname $(readlink -f "$0"))
 SETUP_GEN=$SELF_DIR/setup_gen  # Ulf's kitchen sink setup utility
 
 usage() {
-    echo "Usage: $0 -r root_pub_key [-d device_key_pair] [-l log_dir ] [-s prefix_strip] target_dir"
-    echo 
-    echo "Install a built RVI system into a target directory"
-    echo 
-    echo "NOTE: The last component of 'taget_dir' must be named 'rvi_core'"
-    echo "       Example: /opt/rvi_core"
-    echo 
-    echo "-l log_dir      - Log directory. Default: ${target_dir}/log."
-    echo "-s prefix_strip - See below. Default: nil."
-    echo "-r root_pub_key - Public root key to use. See below."
-    echo
-    echo "The created node can be started with: 'target'/rvi_ctl"
-    echo "The RVI installation will rely on a separate erlang install"
-    echo "to run."
-    echo
-    echo "PREFIX STRIPPING"
+    cat <<EOF
+Usage:
+$0 -r root_cert -d device_cert -c credentials \\
+  [-l log_dir ] [-s prefix_strip] target_dir
+ 
+Install a built RVI system into a target directory
+ 
+NOTE: The last component of 'taget_dir' must be named 'rvi_core'
+       Example: /opt/rvi_core
+ 
+-l log_dir      - Log directory. Default: ${target_dir}/log.
 
-    echo "  If '-s prefix_strip' is provided, that part of the directories above"
-    echo "  will be stripped of the given prefix in all internlal references."
-    echo "  This is useful in debian and other build systems."
-    echo
-    echo "  If, for example, 'target_dir' is './build/root/usr/bin', and"
-    echo "  'prefix_strip' is './build/root', all internal references"
-    echo "  in the files installed under './build/root/usr/bin' will"
-    echo "  reference '/usr/bin'."
-    echo 
-    echo "ROOT KEY"
-    echo "  The root key is used to validate remote certificates."
-    echo "  
+-s prefix_strip - See below. Default: nil.
+
+-r root_cert    - The certificate to validate received X509 device
+                  certificates and credentials.
+ 
+-d device_cert  - Certificate to use when authenticating self toward 
+                  remote nodes.
+
+-c credentials  - Credentials to present to remote nodes. Can be specified
+                  multiple times
+                         
+The created node can be started with: 'target'/rvi_ctl
+The RVI installation will rely on a separate erlang install
+to run.
+
+PREFIX STRIPPING
+  If '-s prefix_strip' is provided, that part of the directories above
+  will be stripped of the given prefix in all internlal references.
+  This is useful in debian and other build systems.
+
+  If, for example, 'target_dir' is './build/root/usr/bin', and
+  'prefix_strip' is './build/root', all internal paths will
+  reference '/usr/bin'.
+ 
+ROOT CERTIFICATE
+  The root certificate is used to validate remote TLS connections and
+  device certificates. It is normally generated once and shared across
+  all RVI nodes.  An initial root certificate, and its corresponding
+  keys can be generated using the following command.
+
+  # Create a root key pair
+  openssl genrsa -out root_key.pem 4096
+
+  # Create a self-signed root certificate using the key above.
+  openssl req -x509 -new -nodes -key root_key.pem \
+    -days 365 -out root_cert.crt
+
+  The root key pair should be stored securely and not be distributed.
+
+  Provide the generated root_cert.crt file as a '-r' argument to rvi_install.
+
+DEVICE CERTIFICATE
+  The device certificate, signed by the root certificate, is sent over
+  to the remote RVI node to prove that self is an authentic node
+  provisioned by the owner of the root key and certificate.
+
+  A device certificate can be created using the following commands
+
+  # Create the device key. In production, increase the bit size to 4096+
+  openssl genrsa -out device_key.pem 4096
+
+  # Create a certificate signing request
+  openssl req -new -key device_key.pem -out device_cert.csr
+
+  # Sign the signing request and create the device_cert.crt file
+  openssl x509 -req -days 365 -in device_cert.csr \
+               -CA root_cert.crt -CAkey root_key.pem \
+               -set_serial 01 -out device_cert.crt
+
+  Provide the generated device_cert.crt file as a '-d' argument to rvi_install.
+
+CREDENTIALS
+  Credentials are provided as JSON Web Tokens (JWT) signed by the root
+  certificate.  The JWT, which has the sender's device certificate
+  embedded into it, proves that the owner of the root key/certificate
+  has approved that the owner of the device certificate has the right
+  to send the credential-specified service calls to the remote node,
+  and receive the credential-specified service calls from the remote
+  node.
+
+  Credentials can be created using the following command:
+
+  rvi_create_credential.py --cred_out="credential.json" \
+                         --jwt_out='credential.jwt' \
+                         --id="my_device_1234" \
+                         --issuer="genivi.org" \
+                         --root_key=root_key.pem \
+                         --device_cert=device_cert.crt \
+                         --invoke='genivi.org/' \
+                         --register='genivi.org/'
+
+  Provide the generated credential.jwt file as a '-c' argument to rvi_install.
+EOF
     exit 1
 }
 
@@ -52,8 +118,20 @@ TARGET_DIR=""
 LIB_DIR=""
 LOG_DIR=""
 
-while getopts "s:l:" o; do
+while getopts "r:s:l:" o; do
     case "${o}" in
+
+	r)
+	    ROOT_CERT=${OPTARG}
+	    ;;
+
+	d)
+	    DEVICE_CERT=${OPTARG}
+	    ;;
+
+	c)
+	    DEVICE_CRED=${OPTARG}
+	    ;;
 
         l)
 	    LOG_DIR=${OPTARG}
