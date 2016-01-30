@@ -300,7 +300,7 @@ mVrUm0lY/n2ilJQ1hzBZ9lFLq0wfjw==
 -----END CERTIFICATE-----
 ```
 
-The root certificate above is checked in as ```priv/certificates/insecure_root_key.pem```.
+The root certificate above is checked in as ```priv/certificates/insecure_root_cert.crt```.
 
 
 **DO NOT USE THE KEYS AND CERTIFICATES ABOVE IN PRODUCTION!<br>
