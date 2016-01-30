@@ -44,9 +44,15 @@ Term      | Meaning
 ## System Overview
 
 The fragmentation support is intended to operate immediately on top of the transport
-layer. In
+layer. In essence, the sending side (Client) asks the fragmentation support to 
+deliver a message. The fragmentation support determines whether fragmentation is
+needed. If it is, it will create a first fragment, encode it and send it to the 
+receiving end (Server).
 
 <img src="images/frag-overview.png" alt="Overview" style="width:600">
+
+The fragmentation support can operate over a transport using its own fragment/reassembly
+method (such as TCP), but does not require it, or makes any such assumptions.
 
 ## Notation
 
@@ -55,6 +61,8 @@ In this document, JSON notation is used. In practice, a byte-oriented JSON-like
 encoding, like msgpack [MSGP] would be more suitable.
 
 ## Messages
+
+<img src="images/rvi_protocol_frag1.png"
 
 The fragment messages are deliberately compact, in order to steal as little of
 the available transfer window from the fragment itself.
@@ -109,7 +117,7 @@ Code or range | Definition
 --------------| ----------------------
 `0`           | Message was successfully transfered and reassembled
 `-99 ... -1`  | Reserved for standard error codes
-`-1`          | Unknown message (i.e. in a `"frg-err"` response to a `"fgr-get"` message)
+`-1`          | Unknown message (i.e. in a `"frg-err"` response to a `"frg-get"` message)
 `-2`          | Protocol error
 `-3`          | Timeout error
 `< -99`       | Application-defined error codes
