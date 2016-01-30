@@ -288,9 +288,9 @@ else
     STRIP_LOG_DIR=${LOG_DIR}
 fi
 
-# Patch rvi_ctl to set its ERL_LIBS path correctly.
+# Patch rvi_ctl.template to set its ERL_LIBS path correctly.
 sed -e "s|__RVI_BINDIR__|${STRIP_TARGET_DIR}|g" \
-    -e "s|__RVI_LOGDIR__|${STRIP_LOG_DIR}|g" < scripts/rvi_ctl > /tmp/rvi_ctl
+    -e "s|__RVI_LOGDIR__|${STRIP_LOG_DIR}|g" < scripts/rvi_ctl.template > /tmp/rvi_ctl
 
 # Install all relevant scripts.
 install -m 0755 -d ${TARGET_DIR}/priv/certificates
@@ -301,6 +301,7 @@ install -m 0644 ${DEVICE_CERT} ${TARGET_DIR}/priv/certificates/device_cert.crt
 install -m 0644 ${DEVICE_KEY} ${TARGET_DIR}/priv/keys/device_key.pem
 install -m 0644 ${DEVICE_CRED} ${TARGET_DIR}/priv/credentials
 install -m 0755 /tmp/rvi_ctl ${TARGET_DIR}
+rm /tmp/rvi_ctl
 install -m 0755 scripts/setup_gen ${TARGET_DIR}
 install -m 0755 rel/files/nodetool ${TARGET_DIR}
 install -m 0755 python/rvi_service.py ${TARGET_DIR}/rvi_service
