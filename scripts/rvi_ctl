@@ -13,7 +13,6 @@
 #
 
 # Assignment of default values done by rvi_install.sh
-echo ${RVI_LIBDIR:="__RVI_LIBDIR__"} > /dev/null
 echo ${RVI_BINDIR:="__RVI_BINDIR__"} > /dev/null
 echo ${RVI_LOGDIR:="__RVI_LOGDIR__"} > /dev/null
 echo ${ERL:=erl} > /dev/null
@@ -37,7 +36,6 @@ usage() {
     echo "  attach          Attach to an rvi node previously started with 'start'."
     echo
     echo "Environennt variables. Default value in paranthesis::"
-    echo "\$RVI_LIBDIR ($RVI_LIBDIR)  Location of RVI library files."
     echo "\$RVI_BINDIR ($RVI_BINDIR)  Location of binary files."
     echo "\$RVI_LOGDIR ($RVI_LOGDIR)  Location of log files."
     exit 1
@@ -66,9 +64,9 @@ then
     usage
 fi
 
-RUNDIR=${RVI_RUNDIR:-"/tmp/rvi"}/$(basename ${CONFIG_FILE} .config)
+RUNDIR=${RVI_RUNDIR:-"/tmp/rvi_${$}"}/rvi_core
 
-export ERL_LIBS=${RVI_LIBDIR}:${RVI_LIBDIR}/deps:${RVI_LIBDIR}/components
+export ERL_LIBS=${RVI_BINDIR}:${RVI_BINDIR}/deps:${RVI_BINDIR}/components
 
 #
 # See if we need to process a config file
@@ -101,7 +99,7 @@ then
     #
     (
 	rm -rf ${RUNDIR}
-	install -D -d --mode=0755 ${RUNDIR}
+	install -d --mode=0755 ${RUNDIR}
 	cd ${RUNDIR}
 	${RVI_BINDIR}/setup_gen rvi ${CONFIG_FILE} rvi
     )

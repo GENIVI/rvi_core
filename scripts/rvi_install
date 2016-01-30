@@ -33,6 +33,9 @@ NOTE: The last component of 'taget_dir' must be named 'rvi_core'
 -r root_cert    - The certificate to validate received X509 device
                   certificates and credentials.
  
+-k device_key   - The PEM file containing the device key pair used
+                  to sign traff
+
 -d device_cert  - Certificate to use when authenticating self toward 
                   remote nodes.
 
@@ -62,12 +65,23 @@ ROOT CERTIFICATE
   openssl genrsa -out root_key.pem 4096
 
   # Create a self-signed root certificate using the key above.
-  openssl req -x509 -new -nodes -key root_key.pem \
-    -days 365 -out root_cert.crt
+  openssl req -x509 -new -nodes -key root_key.pem \\
+     -days 365 -out root_cert.crt
 
   The root key pair should be stored securely and not be distributed.
 
   Provide the generated root_cert.crt file as a '-r' argument to rvi_install.
+
+DEVICE KEY PAIR
+  The device key pair is used to sign outgoing message based traffic, and
+  to create a device certificate signing request (See DEVICE CERTIFICATE)
+
+  Create the device key PEM file using the following command:
+
+  # Create a certificate signing request
+  openssl req -new -key device_key.pem -out device_cert.csr
+
+  Provide the generated device_key.pem file as a '-k' argument to rvi_install.
 
 DEVICE CERTIFICATE
   The device certificate, signed by the root certificate, is sent over
@@ -76,15 +90,15 @@ DEVICE CERTIFICATE
 
   A device certificate can be created using the following commands
 
-  # Create the device key. In production, increase the bit size to 4096+
+  # Create the device key pair.
   openssl genrsa -out device_key.pem 4096
 
   # Create a certificate signing request
   openssl req -new -key device_key.pem -out device_cert.csr
 
   # Sign the signing request and create the device_cert.crt file
-  openssl x509 -req -days 365 -in device_cert.csr \
-               -CA root_cert.crt -CAkey root_key.pem \
+  openssl x509 -req -days 365 -in device_cert.csr \\
+               -CA root_cert.crt -CAkey root_key.pem \\
                -set_serial 01 -out device_cert.crt
 
   Provide the generated device_cert.crt file as a '-d' argument to rvi_install.
@@ -98,29 +112,57 @@ CREDENTIALS
   and receive the credential-specified service calls from the remote
   node.
 
-  Credentials can be created using the following command:
+  Credentials can be created using the following command (given
+  credential.json as input):
 
-  rvi_create_credential.py --cred_out="credential.json" \
-                         --jwt_out='credential.jwt' \
-                         --id="my_device_1234" \
-                         --issuer="genivi.org" \
-                         --root_key=root_key.pem \
-                         --device_cert=device_cert.crt \
-                         --invoke='genivi.org/' \
+  rvi_create_credential.py --cred_out="credential.json" \\
+                         --jwt_out='credential.jwt' \\
+                         --id="my_device_1234" \\
+                         --issuer="genivi.org" \\
+                         --root_key=root_key.pem \\
+                         --device_cert=device_cert.crt \\
+                         --invoke='genivi.org/' \\
                          --register='genivi.org/'
 
   Provide the generated credential.jwt file as a '-c' argument to rvi_install.
+
+EXAMPLE INSTALLATION
+
+  If you want to run an *INSECURE* installation sharing keys
+  certificates, and credentials across all nodes, you can run the
+  following command from the rvi_core root directory to use the
+  provided sample keys, certificates, and credentials:
+
+  $0 -k priv/keys/insecure_device_key.pem \\
+     -r priv/certificates/insecure_root_cert.crt \\
+     -d priv/certificates/insecure_device_cert.crt \\
+     -c priv/credentials/insecure_credential.jwt \\
+     /opt/rvi_core
+
+
+  WARNING: This example installation will provide no protection
+           against unauthenticated nodes, unauthorized calls, or
+           eavesdropping. Do not use in any externally facing 
+           environment.
+
 EOF
-    exit 1
+ exit 1 
 }
 
+if [ "${#}" = "0" ] 
+then
+    usage
+fi
+
 TARGET_DIR=""
-LIB_DIR=""
 LOG_DIR=""
+ROOT_CERT=""
+DEVICE_CERT=""
+DEVICE_KEY=""
+DEVICE_CRED=""
 
-while getopts "r:s:l:" o; do
+while getopts "r:d:c:k:s:l:" o; do
     case "${o}" in
-
 	r)
 	    ROOT_CERT=${OPTARG}
 	    ;;
@@ -130,7 +172,11 @@ while getopts "r:s:l:" o; do
 	    ;;
 
 	c)
-	    DEVICE_CRED=${OPTARG}
+	    DEVICE_CRED="${DEVICE_CRED} ${OPTARG}"
+	    ;;
+
+	k)
+	    DEVICE_KEY=${OPTARG}
 	    ;;
 
         l)
@@ -149,64 +195,111 @@ done
 
 shift $((${OPTIND}-1))
 
-if [ "${#}" = "0" ]
-then
-    echo "ERROR: Missing 'target_dir'."
-    echo
-    usage
-fi
+# Check that we have a target dir
 
 if [ "${#}" != "1" ]
 then
-    echo "ERROR: Wrong number of arguments."
-    echo
+    echo "ERROR: Wrong number of arguments. Only specify target_dir"
     usage
 fi
 
 TARGET_DIR=${1}
 
+# Make sure that the last element of target dir is rvi_core
+# This is an erlang runtime requirement.
 if [ $(basename ${TARGET_DIR}) != "rvi_core" ]
 then
     echo "ERROR: Last component of 'target_dir' must be named rvi_core."
     echo "       Example: $(dirname ${TARGET_DIR})/rvi_core"
-    echo
+    echo "       Run ${0} with no arguments for usage."
     exit 255
 fi 
 
-# For now LIB_DIR is always same as TARGET_DIR
-LIB_DIR=${TARGET_DIR}
+# Check that we can read the root cert
+if [ -z "${ROOT_CERT}" -o ! -r "${ROOT_CERT}" ]
+then
+    echo "ERROR: Cannot read root certificate ${ROOT_CERT}."
+    echo "       Run ${0} with no arguments for usage."
+    exit 255
+fi
 
+# Check that we can read the device key PEM file
+if [ -z "${DEVICE_KEY}" -o ! -r ${DEVICE_KEY} ]
+then
+    echo "ERROR: Cannot read device key ${DEVICE_KEY}."
+    echo "       Run ${0} with no arguments for usage."
+    exit 255
+fi
+
+# Check that we can read the device cert
+if [ -z "${DEVICE_CERT}" -o ! -r ${DEVICE_CERT} ]
+then
+    echo "ERROR: Cannot read device certificate ${DEVICE_CERT}."
+    echo "       Run ${0} with no arguments for usage."
+    exit 255
+fi
+
+# Check that we have at least one device credential
+if [ -z "${DEVICE_CERT}" ]
+then
+    echo "ERROR: No device credential specified"
+    echo "       Run ${0} with no arguments for usage."
+    exit 255
+fi
+
+# Check that we can read each device credential
+for CRED in ${DEVICE_CRED}; do
+
+    if [ ! -r ${CRED} ]
+    then
+	echo "ERROR: Cannot read device certificate ${CRED}."
+	echo "       Run ${0} with no arguments for usage."
+	exit 255
+    fi
+done
+
+#
+# Use default log dir if not specified
+#
 if [ -z "${LOG_DIR}" ]
 then
     LOG_DIR=${TARGET_DIR}/log
 fi
 
-rm -rf ${LIB_DIR} ${TARGET_DIR} > /dev/null 2>&1 
+# Wipe old target dir.
+rm -rf ${TARGET_DIR} > /dev/null 2>&1 
 
+# Create log dirs
 install -m 0755 -d ${TARGET_DIR}
-install -m 0755 -d ${LIB_DIR}
 install -m 0755 -d ${LOG_DIR}
 
+# Copy over the relevant files to the target
 FILE_SET=$(find ebin components deps -name ebin -o -name priv)
+tar cf - ${FILE_SET} | (cd ${TARGET_DIR} ; tar xf - )
 
-tar cf - ${FILE_SET} | (cd ${LIB_DIR} ; tar xf - )
-
-# Patch up the rvi with the correct directories.
+# If we have a prefix strip (for build systems not using
+# chroot), apply it to paths.
 if [ -s "${PREFIX_STRIP}" ] 
 then
     STRIP_TARGET_DIR=$(echo ${TARGET_DIR} | sed "s|^${PREFIX_STRIP}||")
-    STRIP_LIB_DIR=$(echo ${LIB_DIR} | sed "s|^${PREFIX_STRIP}||")
     STRIP_LOG_DIR=$(echo ${LOG_DIR} | sed "s|^${PREFIX_STRIP}||")
 else
     STRIP_TARGET_DIR=${TARGET_DIR}
-    STRIP_LIB_DIR=${LIB_DIR}
     STRIP_LOG_DIR=${LOG_DIR}
 fi
 
-sed -e "s|__RVI_LIBDIR__|${STRIP_LIB_DIR}|g" \
-    -e "s|__RVI_BINDIR__|${STRIP_TARGET_DIR}|g" \
+# Patch rvi_ctl to set its ERL_LIBS path correctly.
+sed -e "s|__RVI_BINDIR__|${STRIP_TARGET_DIR}|g" \
     -e "s|__RVI_LOGDIR__|${STRIP_LOG_DIR}|g" < scripts/rvi_ctl > /tmp/rvi_ctl
 
+# Install all relevant scripts.
+install -m 0755 -d ${TARGET_DIR}/priv/certificates
+install -m 0755 -d ${TARGET_DIR}/priv/keys
+install -m 0755 -d ${TARGET_DIR}/priv/credentials
+install -m 0644 ${ROOT_CERT} ${TARGET_DIR}/priv/certificates/root_cert.crt
+install -m 0644 ${DEVICE_CERT} ${TARGET_DIR}/priv/certificates/device_cert.crt
+install -m 0644 ${DEVICE_KEY} ${TARGET_DIR}/priv/keys/device_key.pem
+install -m 0644 ${DEVICE_CRED} ${TARGET_DIR}/priv/credentials
 install -m 0755 /tmp/rvi_ctl ${TARGET_DIR}
 install -m 0755 scripts/setup_gen ${TARGET_DIR}
 install -m 0755 rel/files/nodetool ${TARGET_DIR}
@@ -217,7 +310,6 @@ install -m 0755 python/rvi_get_services.py ${TARGET_DIR}/rvi_get_services
 install -m 0755 -D priv/config/rvi_common.config ${TARGET_DIR}/priv/config/rvi_common.config
 
 echo "RVI binary files installed under ${TARGET_DIR}"
-# echo "RVI library files installed under ${LIB_DIR}"
 echo "RVI will log to ${LOG_DIR}"
 echo
 echo "Start:              ${TARGET_DIR}/rvi_ctl -c <config_file> start"
