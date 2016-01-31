@@ -43,6 +43,7 @@ Run a developer version of RVI
                   Default ${DEVICE_CRED}
                          
 EOF
+    exit 1
 }
 
 while getopts "r:d:c:k:" o; do
