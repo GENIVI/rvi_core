@@ -28,8 +28,8 @@ SRC_LIST=BUILD.md \
 	RELEASE.md \
 	scripts/setup_gen \
 	scripts/rvi.service \
-	scripts/rvi_ctl \
-	scripts/rvi_install.sh \
+	scripts/rvi_ctl.template \
+	scripts/rvi_install \
 	python/*.py \
 	components \
 	priv \
@@ -104,10 +104,11 @@ ubuntu_package: clean ubuntu_clean escript
 		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
 		$(SRC_LIST) \
 		debian \
-		rvi_ubuntu.config \
 		scripts/rvi.init.ubuntu
+	rm -rf debian/missing-sources
 # Unpack the created tar file
 	(cd ./ubuntu_build; tar xf rvi_$(VERSION).orig.tar.gz)
+	install -d -m 0755 ./ubuntu_build/rvi-$(VERSION)/debian/missing-sources
 # Descend into the unpacked directory and build.
 	(cd ./ubuntu_build/rvi-$(VERSION); debuild -uc -us)
 
@@ -115,6 +116,11 @@ rpm:	rpmclean rpm_tarball
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
 install: deps compile
-	./scripts/rvi_install.sh  $(DESTDIR)/opt/rvi_core $(DESTDIR)/opt/rvi_core $(DESTDIR)/var/opt/log/rvi
+	 ./scripts/rvi_install \
+		-k priv/keys/insecure_device_key.pem \
+		-r priv/certificates/insecure_root_cert.crt \
+		-d priv/certificates/insecure_device_cert.crt \
+		-c priv/credentials/insecure_credential.jwt $(DESTDIR)/opt/rvi_core
+
 	install -m 0755 -d $(DESTDIR)/etc/opt/rvi/
 	install -m 0644 priv/config/rvi_sample.config $(DESTDIR)/etc/opt/rvi/rvi_sample.config
