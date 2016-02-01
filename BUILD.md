@@ -26,7 +26,7 @@ In order to build the system, the reader is assumed to be able to:
 1. Have a basic understanding of Linux system operations.
 2. Install packages on the system.
 
-Please note that the configuraiton process, described in
+Please note that the configuration process described in
 ```CONFIGURE.md``` may have additional skill requirements.
 
 # PREREQUISITES #
@@ -37,12 +37,16 @@ Please note that the configuraiton process, described in
 
 # INSTALLATION PROCESS #
 
-## INSTALL GIT ##
+## INSTALL DEVELOPMENT TOOLS ##
 
 Use ```apt-get``` to install git, which is used to access the Automotive
 Grade Linux repositories where the code resides:
 
-    sudo apt-get git 
+    sudo apt-get install git 
+
+Also ensure that you have the latest BlueZ Linux Bluetooth headers and that g++ is installed on your system:
+
+    sudo apt-get install libbluetooth-dev g++
 
 ## INSTALL ERLANG ##
 
@@ -59,6 +63,11 @@ Update and install erlang
     sudo apt-get update
     sudo apt-get install erlang
 
+**If you receive an authentication error** (such as NO_PUBKEY): note the hexadecimal value (e.g., 6D975C4791E7EE5E) and request the key:
+
+   sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys HEXVALUE
+
+where HEXVALUE is the hexadecimal value specified in the error. Then rerun the ```update``` and ```install``` commands.
 
 ## CLONE THE RVI REPOSITORY ##
 
