@@ -1,0 +1,3 @@
+executable-not-elf-or-script
+missing-dep-for-interpreter
+binary-without-manpage
