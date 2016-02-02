@@ -35,6 +35,8 @@ Please note that the configuration process described in
 2. The user can gain root access to install packages.
 3. There is at least 5GB of space availabled for packages and code.
 
+----
+
 # INSTALLATION PROCESS #
 
 ## INSTALL DEVELOPMENT TOOLS ##
@@ -77,6 +79,8 @@ to the build system.
     git clone https://github.com/PDXostc/rvi_core.git
 
 The clone will be downloaded into a newly created ```rvi_core``` subdirectory.
+
+----
 
 ## BUILD THE RVI SYSTEM ##
 
