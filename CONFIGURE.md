@@ -293,7 +293,6 @@ An example entry is given below:
 The following settings are required for the RVI Core authentication framework:
 
 * `{device_key, DevKeyFile}`
-* `{provisioning_key, ProvKeyFile}`
 * `{root_cert, RootCertFile}`
 * `{device_cert, DevCertFile}`
 * `{cred_dir, CredDirectory}`
