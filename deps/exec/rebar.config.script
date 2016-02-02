@@ -1,16 +1,59 @@
-Arch = erlang:system_info(system_architecture),
+%% Did we get a compiler handed to us from the environment?
+CXX = case os:getenv("CXX") of
+    false -> "g++";
+    Compiler -> Compiler
+    end,
+
+%% What machine are we building for?
+Mach = string:strip(os:cmd(CXX ++ " -dumpmachine"), right, $\n),
+
+%% If we are using a cross compiler we also have a sysroot.
+Sysroot = string:strip(os:cmd(CXX ++ " -print-sysroot"), right, $\n),
+
+%% Get Erlang Runtime System
+Erts = case Sysroot == [] of
+    true ->
+        lists:concat([code:root_dir(), "/erts-", erlang:system_info(version)]);
+    false ->
+        case filelib:wildcard(Sysroot ++ "/usr/lib/erlang/erts-*") of
+            [] ->
+                throw({error, {erl_interface,"No Erlang Runtime System in " ++ Sysroot}});
+            Ertsdir -> 
+                [HErts|_] = Ertsdir, HErts
+            end
+    end,
+
+%% Check if we have erl_interface
+Eilib = case Sysroot == [] of
+    true ->
+        case code:lib_dir(erl_interface) of
+            {error, bad_name} ->
+                throw({error, {erl_interface,"code:lib_dir(erl_interface) is unable to find the erl_interface library."}});
+            Eilibdir ->
+                 Eilibdir
+            end;
+    false ->
+        case filelib:wildcard(Sysroot ++ "/usr/lib/erlang/lib/erl_interface-*") of
+            [] ->
+                throw({error, {erl_interface,"No erl_interface in " ++ Sysroot}});
+            Eilibdir -> 
+                [HEilib|T] = Eilibdir, HEilib
+            end
+    end,
+
 Vsn  = string:strip(os:cmd("git describe --always --tags --abbrev=0 | sed 's/^v//'"), right, $\n),
+
 %% Check for Linux capability API (Install package: libcap-devel).
 {LinCXX, LinLD} =
-    case file:read_file_info("/usr/include/sys/capability.h") of
+    case file:read_file_info(Sysroot ++ "/usr/include/sys/capability.h") of
     {ok, _} ->
-        io:put_chars("INFO:  Detected support of linux capabilities.\n"),
+        %io:put_chars("INFO:  Detected support of linux capabilities.\n"),
         {" -DHAVE_CAP", " -lcap"};
     _ ->
         {"", ""}
     end,
 
-X64 = case Arch of
+X64 = case Mach of
     "x86_64" ++ _E -> " -m64";
     _              -> ""
     end,
@@ -27,12 +70,20 @@ lists:keymerge(1,
                      {"linux", "CXXFLAGS", "$CXXFLAGS -DHAVE_SETRESUID -DHAVE_PTRACE" ++ LinCXX},
                      {"linux", "LDFLAGS", "$LDFLAGS" ++ LinLD},
 
-                     {"CC",  "g++"},
-                     {"CXX", "g++"},
-                     {"CXXFLAGS", "$CXXFLAGS -O0"}
+                     {"CC",  CXX},
+                     {"CXX", CXX},
+                     {"CXXFLAGS", "$CXXFLAGS -O0"},
+
+                     {"ERL_CFLAGS", lists:concat(
+                      [
+                       " -I\"", Eilib ++ "/include",
+                       "\" -I\"", Erts ++ "/include",
+                       "\" "
+                      ])},
+                     {"ERL_EI_LIBDIR", lists:concat(["\"", Eilib, "/lib\""])}
                     ]},
 
-        {port_specs,[{filename:join(["priv", Arch, "exec-port"]), ["c_src/*.cpp"]}]},
+        {port_specs,[{filename:join(["priv", Mach, "exec-port"]), ["c_src/*.cpp"]}]},
         {edoc_opts, [{overview,     "src/overview.edoc"},
                      {title,        "The exec application"},
                      {includes,     ["include"]},
@@ -41,4 +92,3 @@ lists:keymerge(1,
                      {app_default,  "http://www.erlang.org/doc/man"}]}
     ]),
     lists:keysort(1, CONFIG)).
-
