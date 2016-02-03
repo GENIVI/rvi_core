@@ -10,37 +10,6 @@ Mach = string:strip(os:cmd(CXX ++ " -dumpmachine"), right, $\n),
 %% If we are using a cross compiler we also have a sysroot.
 Sysroot = string:strip(os:cmd(CXX ++ " -print-sysroot"), right, $\n),
 
-%% Get Erlang Runtime System
-Erts = case Sysroot == [] of
-    true ->
-        lists:concat([code:root_dir(), "/erts-", erlang:system_info(version)]);
-    false ->
-        case filelib:wildcard(Sysroot ++ "/usr/lib/erlang/erts-*") of
-            [] ->
-                throw({error, {erl_interface,"No Erlang Runtime System in " ++ Sysroot}});
-            Ertsdir -> 
-                [HErts|_] = Ertsdir, HErts
-            end
-    end,
-
-%% Check if we have erl_interface
-Eilib = case Sysroot == [] of
-    true ->
-        case code:lib_dir(erl_interface) of
-            {error, bad_name} ->
-                throw({error, {erl_interface,"code:lib_dir(erl_interface) is unable to find the erl_interface library."}});
-            Eilibdir ->
-                 Eilibdir
-            end;
-    false ->
-        case filelib:wildcard(Sysroot ++ "/usr/lib/erlang/lib/erl_interface-*") of
-            [] ->
-                throw({error, {erl_interface,"No erl_interface in " ++ Sysroot}});
-            Eilibdir -> 
-                [HEilib|T] = Eilibdir, HEilib
-            end
-    end,
-
 Vsn  = string:strip(os:cmd("git describe --always --tags --abbrev=0 | sed 's/^v//'"), right, $\n),
 
 %% Check for Linux capability API (Install package: libcap-devel).
@@ -72,15 +41,7 @@ lists:keymerge(1,
 
                      {"CC",  CXX},
                      {"CXX", CXX},
-                     {"CXXFLAGS", "$CXXFLAGS -O0"},
-
-                     {"ERL_CFLAGS", lists:concat(
-                      [
-                       " -I\"", Eilib ++ "/include",
-                       "\" -I\"", Erts ++ "/include",
-                       "\" "
-                      ])},
-                     {"ERL_EI_LIBDIR", lists:concat(["\"", Eilib, "/lib\""])}
+                     {"CXXFLAGS", "$CXXFLAGS -O0"}
                     ]},
 
         {port_specs,[{filename:join(["priv", Mach, "exec-port"]), ["c_src/*.cpp"]}]},
