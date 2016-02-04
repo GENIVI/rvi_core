@@ -20,11 +20,11 @@ Git branch management is JLR OSTCs standard git document
 
 For build instructions, please check the build instructions:
 [Markdown](BUILD.md) | 
-[PDF](https://wiki.automotivelinux.org/_media/eg-rvi/rvi-build.pdf)
+[PDF](doc/pdf/BUILD.pdf)
 
 For configuration and launch instructions, please check the configuration documentation:
 [Markdown](CONFIGURE.md) | 
-[PDF](https://wiki.automotivelinux.org/_media/eg-rvi/rvi-configure.pdf)
+[PDF](doc/pdf/CONFIGURE.pdf)
 
 Technical RVI disussions are held at the GENIVI project mailing list:
 [GENIVI](https://lists.genivi.org/mailman/listinfo/genivi-projects)
@@ -151,7 +151,7 @@ with a wide variety of hardware.
 
 ## PYTHON ##
 Python is used to implement all demonstrations, beginning
-with the HVAC demo available in the ```hvac_demo``` subdirectory.
+with the HVAC demo available in the `hvac_demo` subdirectory.
 
 By using Python for the demos, which is better known than erlang,
 examples are given on how to write applications and services
