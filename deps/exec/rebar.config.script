@@ -1,9 +1,9 @@
 %% For cross building using erlang:system_info() does not work as rebar runs
 %% using the build hosts Erlang runtime.
 %% If CXX envrionment variable is defined we are most likely running in a cross environment.
-{CXX,Target} = case os:getenv("CXX") of
-    false -> {"g++",erlang:system_info(system_architecture)};
-    Compiler -> {Compiler,string:strip(os:cmd(Compiler ++ " -dumpmachine"), right, $\n)}
+{CXX,Target,Sysroot} = case os:getenv("CXX") of
+    false -> {"g++",erlang:system_info(system_architecture),""};
+    Compiler -> {Compiler,string:strip(os:cmd(Compiler ++ " -dumpmachine"), right, $\n),string:strip(os:cmd(Compiler ++ " -print-sysroot"), right, $\n)}
 end,
 
 %% Commonly on Linux, compilers report the target triplet as <arch>-<vendor>-linux,
@@ -16,9 +16,6 @@ Mach = case string:str(Target,"linux") of
         _ -> Target ++ "-gnu"
         end
     end,
-
-%% If we are using a cross compiler we also have a sysroot.
-Sysroot = string:strip(os:cmd(CXX ++ " -print-sysroot"), right, $\n),
 
 Vsn  = string:strip(os:cmd("git describe --always --tags --abbrev=0 | sed 's/^v//'"), right, $\n),
 
