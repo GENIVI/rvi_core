@@ -1,0 +1,11 @@
+Erlang
+
+apt-get install devscripts
+apt-get install libbluetooth-dev 
+apt-get install git
+apt-get install g++
+apt-get install make
+
+apt-get install libwxgtk3.0-0
+wget https://packages.erlang-solutions.com/erlang/esl-erlang/FLAVOUR_1_general/esl-erlang_18.2-1~debian~jessie_amd64.deb
+dpkg -i esl-erlang_18.2-1~debian~jessie_amd64.deb
