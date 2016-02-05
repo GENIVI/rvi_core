@@ -21,9 +21,9 @@ def usage():
     print "through an RVI node."
     print
     print "Usage:", sys.argv[0], " [RVI-node]"
-    print "Default RVI node is http://127.0.0.1:8801"
+    print "Default RVI node is http://127.0.0.1:9001"
     print
-    print "Example: ./callrvi.py http://rvi1.nginfotpdx.net:8801"
+    print "Example: ./callrvi.py http://rvi1.nginfotpdx.net:9001"
     print
     sys.exit(255)
 
@@ -39,7 +39,7 @@ progname = sys.argv[0]
 if len(sys.argv) == 2:
     rvi_node = sys.argv[1]
 else:
-    rvi_node = "http://localhost:8801"
+    rvi_node = "http://localhost:9001"
 
 #
 # Setup an outbound JSON-RPC connection to the backend RVI node

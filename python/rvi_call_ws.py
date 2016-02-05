@@ -6,7 +6,7 @@ import json
 
 opts, args = getopt.getopt(sys.argv[1:], "n:")
 
-host = 'ws://localhost:8808'
+host = 'ws://localhost:9008'
 
 for o, a in opts:
     if o == "-n":

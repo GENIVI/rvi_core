@@ -69,6 +69,9 @@ clean:   rpmclean
 ubuntu_clean:
 	rm -rf ./ubuntu_build
 
+debian_clean:
+	rm -rf ./debian_build
+
 rpm_clean:
 	rm -rf ./rpm/BUILD/* \
 		./rpm/BUILDROOT/* \
@@ -92,25 +95,50 @@ rpm_tarball: rpmclean clean
 		scripts/rvi.service scripts/rvi.sh \
 		components priv/config/rvi_sample.config scripts/rvi_instball.sh src \
 
-# Create an ubuntu 14.04 tarball
+# Create an ubuntu package 
 ubuntu_package: clean ubuntu_clean escript
 	install --mode=0755 -d ./ubuntu_build
 
-# Pack up all relevant files, and debian/,  necessary for a build.
+# Pack up all relevant files, and ubuntu/,  necessary for a build.
 # Add rvi-$(VERSION) at the beginning of each file so
 # that theu get packed up into a correctly named subdirectory
 # 
 	tar czf ./ubuntu_build/rvi_$(VERSION).orig.tar.gz \
 		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
 		$(SRC_LIST) \
-		debian \
+		ubuntu_template \
 		scripts/rvi.init.ubuntu
-	rm -rf debian/missing-sources
+	rm -rf ubuntu/missing-sources
 # Unpack the created tar file
 	(cd ./ubuntu_build; tar xf rvi_$(VERSION).orig.tar.gz)
+# Move the ubuntu template to be the debian package
+	mv ./ubuntu_build/rvi-$(VERSION)/ubuntu_template  ./ubuntu_build/rvi-$(VERSION)/debian
 	install -d -m 0755 ./ubuntu_build/rvi-$(VERSION)/debian/missing-sources
 # Descend into the unpacked directory and build.
 	(cd ./ubuntu_build/rvi-$(VERSION); debuild -uc -us)
+
+# Create a debian package 
+debian_package: clean debian_clean escript
+	install --mode=0755 -d ./debian_build
+
+# Pack up all relevant files, and debian/,  necessary for a build.
+# Add rvi-$(VERSION) at the beginning of each file so
+# that theu get packed up into a correctly named subdirectory
+# 
+	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz \
+		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
+		$(SRC_LIST) \
+		debian_template \
+		scripts/rvi.init.debian
+	rm -rf debian/missing-sources
+# Unpack the created tar file
+	(cd ./debian_build; tar xf rvi_$(VERSION).orig.tar.gz)
+# Move the debian template to be the debian package
+	mv ./debian_build/rvi-$(VERSION)/debian_template  ./debian_build/rvi-$(VERSION)/debian
+	install -d -m 0755 ./debian_build/rvi-$(VERSION)/debian/missing-sources
+# Descend into the unpacked directory and build.
+	(cd ./debian_build/rvi-$(VERSION); debuild -uc -us)
+
 
 rpm:	rpmclean rpm_tarball 
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
