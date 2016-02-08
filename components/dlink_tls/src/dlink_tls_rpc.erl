@@ -222,7 +222,7 @@ connect_remote(IP, Port, CompSpec) ->
 	not_found ->
 	    %% Setup a new outbound connection
 	    {ok, Timeout} = rvi_common:get_module_config(
-			      dlink_tls, ?MODULE, connect_timeout, 10000, CompSpec),
+			      data_link, ?MODULE, connect_timeout, 10000, CompSpec),
 	    ?info("dlink_tls:connect_remote(): Connecting ~p:~p (TO=~p",
 		  [IP, Port, Timeout]),
 	    log("new connection", [], CompSpec),
