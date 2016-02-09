@@ -24,7 +24,9 @@
 #  In order to create a standalone release, use create_rvi_release.sh
 #
 
-SELF_DIR=$(dirname $(readlink -f "$0"))
+#SELF_DIR=$(dirname $(readlink -f "$0"))
+SELF_DIR=$(cd ${0%/*} && pwd)
+echo "SELF_DIR=$SELF_DIR"
 SETUP_GEN=$SELF_DIR/setup_gen  # Ulf's kitchen sink setup utility
 
 usage() {
@@ -62,20 +64,20 @@ cd ${SELF_DIR}/..;
 
 rm -rf ${TARGET_DIR} > /dev/null 2>&1 
 
-install --mode=0755 -d ${TARGET_DIR}/rvi_core
-install --mode=0755 -d ${TARGET_DIR}/scripts
+install -m 0755 -d ${TARGET_DIR}/rvi_core
+install -m 0755 -d ${TARGET_DIR}/scripts
 
 FILE_SET=$(find priv ebin components deps -name ebin -o -name priv)
 
 echo "Installing rvi at ${TARGET_DIR}."
 
 tar cf - ${FILE_SET} | (cd ${TARGET_DIR}/rvi_core ; tar xf - )
-install --mode=0755 scripts/rvi.sh ${TARGET_DIR}
-install --mode=0755 scripts/setup_gen ${TARGET_DIR}/scripts
-install --mode=0755 rel/files/nodetool ${TARGET_DIR}/scripts
-install --mode=0755 scripts/rvi_create_root_key.sh ${TARGET_DIR}/scripts
-install --mode=0755 scripts/rvi_create_device_key.sh ${TARGET_DIR}/scripts
-install --mode=0755 scripts/rvi_create_certificate_key.sh ${TARGET_DIR}/scripts
+install -m 0755 scripts/rvi.sh ${TARGET_DIR}
+install -m 0755 scripts/setup_gen ${TARGET_DIR}/scripts
+install -m 0755 rel/files/nodetool ${TARGET_DIR}/scripts
+install -m 0755 scripts/rvi_create_root_key.sh ${TARGET_DIR}/scripts
+install -m 0755 scripts/rvi_create_device_key.sh ${TARGET_DIR}/scripts
+install -m 0755 scripts/rvi_create_certificate_key.sh ${TARGET_DIR}/scripts
 
 
 echo "RVI installed under ${TARGET_DIR}"

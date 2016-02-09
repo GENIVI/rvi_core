@@ -22,6 +22,8 @@
     t_install_tls_sample_node/1,
     t_install_tlsj_backend_node/1,
     t_install_tlsj_sample_node/1,
+    t_install_tls_backend_noverify_node/1,
+    t_install_tls_sample_noverify_node/1,
     t_install_bt_backend_node/1,
     t_install_bt_sample_node/1,
     t_start_basic_backend/1,
@@ -32,6 +34,8 @@
     t_start_tls_sample/1,
     t_start_tlsj_backend/1,
     t_start_tlsj_sample/1,
+    t_start_tls_backend_noverify/1,
+    t_start_tls_sample_noverify/1,
     t_register_lock_service/1,
     t_register_sota_service/1,
     t_call_lock_service/1,
@@ -55,6 +59,7 @@ all() ->
      {group, test_run},
      {group, test_run_tls},
      {group, test_run_tlsj},
+     {group, test_run_tls_noverify},
      {group, test_run_bt}
     ].
 
@@ -74,6 +79,8 @@ groups() ->
        t_install_tls_sample_node,
        t_install_tlsj_backend_node,
        t_install_tlsj_sample_node,
+       t_install_tls_backend_noverify_node,
+       t_install_tls_sample_noverify_node,
        t_install_bt_backend_node,
        t_install_bt_sample_node
       ]},
@@ -112,6 +119,19 @@ groups() ->
        t_call_sota_service,
        t_multicall_sota_service,
        t_remote_call_lock_service,
+       t_no_errors
+      ]},
+     {test_run_tls_noverify, [],
+      [
+       t_start_tls_backend_noverify,
+       t_start_tls_sample_noverify,
+       t_register_lock_service,
+       t_register_sota_service,
+       t_call_lock_service,
+       t_remote_call_lock_service,
+       t_call_sota_service,
+       t_multicall_sota_service,
+       t_check_rvi_log,
        t_no_errors
       ]},
      {test_run_bt, [],
@@ -227,6 +247,13 @@ t_install_tlsj_backend_node(_Config) ->
 t_install_tlsj_sample_node(_Config) ->
     install_sample_node("tlsj_sample", "tlsj_sample.config").
 
+t_install_tls_backend_noverify_node(_Config) ->
+    install_rvi_node("tls_backend_noverify", env(),
+		     [root(), "/priv/test_config/tls_backend_noverify.config"]).
+
+t_install_tls_sample_noverify_node(_Config) ->
+    install_sample_node("tls_sample_noverify", "tls_sample_noverify.config").
+
 t_install_bt_backend_node(_Config) ->
     install_rvi_node("bt_backend", env(),
 		     [root(), "/priv/test_config/bt_backend.config"]).
@@ -270,6 +297,12 @@ t_start_tlsj_backend(_Config) ->
 
 t_start_tlsj_sample(_Config) ->
     generic_start("tlsj_sample").
+
+t_start_tls_backend_noverify(_Config) ->
+    generic_start("tls_backend_noverify").
+
+t_start_tls_sample_noverify(_Config) ->
+    generic_start("tls_sample_noverify").
 
 t_register_lock_service(_Config) ->
     Pid =
@@ -436,6 +469,7 @@ start_json_rpc_server(Port) ->
     Pid.
 
 handle_body(Socket, Request, Body, St) ->
+    ct:log("handle_body(Body = ~p)", [Body]),
     JSON = jsx:decode(Body),
     ct:log("Got JSON Req: ~p", [JSON]),
     case JSON of
@@ -702,7 +736,7 @@ install_rvi_node(Name, Env, _ConfigF) ->
     ct:log("install_rvi_node/1 -> ~p", [Res]),
 
 
-    Res1 = cmd(lists:flatten(["install -d --mode 0755 ./", Name])),
+    Res1 = cmd(lists:flatten(["install -d -m 0755 ./", Name])),
     ct:log("install_rvi_node/2 -> ~p", [Res1]),
 
     Res2 = cmd(lists:flatten(["cp -r ", Root, "/priv ", Name])),

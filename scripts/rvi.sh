@@ -12,7 +12,7 @@
 # through an RPM.
 #
 
-SELF_DIR=$(dirname $(readlink -f "$0"))
+SELF_DIR=$(cd ${0%/*} && pwd)
 
 ERL=${ERL:=erl}
 
@@ -104,7 +104,7 @@ fi
 # Check that we have a config dir
 if [ ! -d ${CONFIG_DIR} ]
 then
-    install -d --mode=0755 ${CONFIG_DIR}
+    install -d -m 0755 ${CONFIG_DIR}
 fi
 
 # Check if we have a uuid file.
@@ -166,8 +166,8 @@ LAUNCH="${ERL} +A 128 -boot ${CONFIG_DIR}/rvi/start -sname ${SNAME} -config ${CO
 
 case "${CMD}" in
    start)
-	 install -d --mode 0755  ${TMP_DIR}
-	 install -d --mode 0755  ${LOG_DIR}
+	 install -d -m 0755  ${TMP_DIR}
+	 install -d -m 0755  ${LOG_DIR}
 	 cd ${SELF_DIR}
 	 exec run_erl -daemon ${TMP_DIR}/ ${LOG_DIR} "exec ${LAUNCH}"
 	 ;;
