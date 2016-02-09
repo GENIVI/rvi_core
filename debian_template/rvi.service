@@ -1,15 +1,17 @@
 # systemd(8) setup usde by Tizen and others.
+
 [Unit]
 Description=Remote Vehicle Interaction Service
 Wants=network-online.target
 
 [Service]
-Environment="HOME=/opt/rvi"
+Environment="HOME=/usr/lib/rvi"
 Type=forking
 StandardOutput=journal
 StandardError=journal
-ExecStart=/bin/sh /opt/rvi/rvi_ctl start
-ExecStop=/bin/sh /opt/rvi/rvi_ctl stop
+#ExecStartPre=/opt/rvi-0.5.0/erts-5.10.4/bin/epmd -daemon
+ExecStart=/bin/sh /usr/bin/rvi_ctl -c /etc/rvi/rvi.config start
+ExecStop=/bin/sh /usr/bin/rvi_ctl stop
 GuessMainPID=yes
 
 [Install]

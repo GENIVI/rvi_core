@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+# -*- makefile --*
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	 ./scripts/rvi_install \
+	 	-s ./debian/rvi \
+		-k priv/keys/insecure_device_key.pem \
+		-r priv/certificates/insecure_root_cert.crt \
+		-d priv/certificates/insecure_device_cert.crt \
+		-c priv/credentials/insecure_credential.jwt \
+		-l ./debian/rvi/var/log/rvi ./debian/rvi/usr/lib/rvi_core
+# Copy out rvi_ctl to /usr/bin
+	install -D -m 0755 ./debian/rvi/usr/lib/rvi_core/rvi_ctl ./debian/rvi/usr/bin/rvi_ctl
+# Install default config
+	install -D -m 0644 ./priv/config/rvi_ubuntu.config ./debian/rvi/etc/rvi/rvi.config
+# Install start/stop scripts
+	install -D -m 0755 ./scripts/rvi.init.ubuntu ./debian/rvi/etc/init.d/rvi

@@ -1,0 +1,141 @@
+#!/bin/sh
+#
+
+#
+# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
+#
+#
+# Setup a correct configuration and launch an RVI release node.
+# If a UUID file has not been created, it will be done at this time.
+# Init.d script to start and stop an RVI system installed
+# through an RPM.
+#
+
+# Assignment of default values done by rvi_install.sh
+echo ${RVI_BINDIR:="__RVI_BINDIR__"} > /dev/null
+echo ${RVI_LOGDIR:="__RVI_LOGDIR__"} > /dev/null
+echo ${ERL:=erl} > /dev/null
+
+
+
+usage() {
+    echo "Usage: $0 -d config_dir [-c config_file] -l log_dir \\" 
+    echo "       start|stop|console|attach|ping"
+    echo
+    echo "  -c config_file  Configuration file to launch rvi node with."
+    echo "                  Mandatory for start and console. Ignored for"
+    echo "                  all other commands."
+    echo
+    echo "  start           Start an rvi node with the given configuration file."
+    echo
+    echo "  stop            Stop an rvi node previously started with 'start'."
+    echo
+    echo "  console         Start an rvi in foreground mode."
+    echo 
+    echo "  attach          Attach to an rvi node previously started with 'start'."
+    echo
+    echo "Environennt variables. Default value in paranthesis::"
+    echo "\$RVI_BINDIR ($RVI_BINDIR)  Location of binary files."
+    echo "\$RVI_LOGDIR ($RVI_LOGDIR)  Location of log files."
+    exit 1
+}
+
+CONFIG_FILE=""
+SNAME=rvi
+COOKIE=rvi_cookie
+while getopts "c:" o; do
+    case "${o}" in
+        c)
+            CONFIG_FILE=${OPTARG}
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
+
+shift $((${OPTIND}-1))
+CMD=$1
+
+
+if [ "${CMD}" != "start" -a "${CMD}" != "stop" -a  "${CMD}" != "console" -a  "${CMD}" != "ping" ]
+then
+    usage
+fi
+
+RUNDIR=${RVI_RUNDIR:-"/tmp/rvi_${$}"}
+
+export ERL_LIBS=${RVI_BINDIR}:${RVI_BINDIR}/deps:${RVI_BINDIR}/components
+
+#
+# See if we need to process a config file
+#
+if [ ${CMD} = "start" -o ${CMD} = "console" ]
+then
+    if [ -z "${CONFIG_FILE}" ]
+    then
+	echo "Missing -c <config_file> argument."
+	usage
+    fi
+    #
+    # Check if we need to prepend current dir
+    # to relative config file path
+    #
+    if [ $(echo ${CONFIG_FILE} | cut -c 1,1) != "/" ]
+    then
+	CONFIG_FILE=${PWD}/${CONFIG_FILE}
+    fi
+
+    # Check that config file can be read.
+    if [ ! -r "${CONFIG_FILE}" ]
+    then
+	echo "${CONFIG_FILE} cannot be opened for reading."
+	usage
+    fi
+    # 
+    # Generate a config file that will end up as
+    # /tmp/rvi/[cfg]/sys.config
+    #
+    (
+	rm -rf ${RUNDIR}
+	install -d --mode=0755 ${RUNDIR}
+	cd ${RUNDIR}
+	${RVI_BINDIR}/setup_gen rvi ${CONFIG_FILE} rvi
+    )
+
+    # Did we succeed with config generation?
+    if [ "$?" != "0" ]
+    then
+	# Nope
+	echo "Failed to process configuration file."
+	exit "$?"
+    fi
+fi
+
+LAUNCH="${ERL} -boot ${RUNDIR}/rvi/start -sname ${SNAME} -config ${RUNDIR}/rvi/sys -setcookie ${COOKIE}"
+
+case "${CMD}" in
+   start)
+	 install -D -d --mode 0755  ${RVI_LOGDIR}
+	 exec run_erl -daemon ${RUNDIR}/ ${RVI_LOGDIR} "exec ${LAUNCH}"
+	 ;;
+
+   console)
+       exec ${LAUNCH}
+       ;;
+
+   stop)
+       exec ${RVI_BINDIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} stop
+       ;;
+
+   ping)
+       exec ${RBI_BINDIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} ping
+       ;;
+
+   attach) 
+       exec to_erl ${RUNDIR}
+       ;;
+
+esac 
+
