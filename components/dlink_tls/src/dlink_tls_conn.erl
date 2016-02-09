@@ -421,12 +421,13 @@ do_upgrade(Sock, client, CompSpec) ->
     ?debug("TLS Opts = ~p", [Opts]),
     {DoVerify, ssl:connect(Sock, Opts)};
 do_upgrade(Sock, server, CompSpec) ->
-    {DoVerify, Opts} = tls_opts(client, CompSpec),
+    {DoVerify, Opts} = tls_opts(server, CompSpec),
     ?debug("TLS Opts = ~p", [Opts]),
     {DoVerify, ssl:ssl_accept(Sock, Opts)}.
 
 tls_opts(Role, CompSpec) ->
-    TlsOpts = rvi_common:get_value(tls_opts, [], CompSpec),
+    {ok, ServerOpts} = get_module_config(server_opts, [], CompSpec),
+    TlsOpts = rvi_common:get_value(tls_opts, ServerOpts, CompSpec),
     Opt = fun(K) -> opt(K, TlsOpts,
                         fun() ->
                                 ok(setup:get_env(rvi_core, K))
