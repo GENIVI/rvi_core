@@ -3,7 +3,7 @@ Section: net
 Priority: optional
 Maintainer: Magnus Feuer <mfeuer@jaguarlandrover.com>
 Build-Depends: debhelper (>= 9), libbluetooth-dev, esl-erlang (>= 1:18.2)
-Standards-Version: 3.9.5
+Standards-Version: 3.9.6
 Homepage: https://github.com/PDXostc/rvi_core
 
 Package: rvi
