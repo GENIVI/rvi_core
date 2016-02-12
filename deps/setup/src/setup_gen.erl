@@ -83,7 +83,10 @@ help() ->
 %%                         option.
 %% * `{remove_apps, Apps}' - Remove `Apps' from the list of applications.
 %% * `{sort_app, App, Before}' - Change the sort order so that `App' comes
-%%                       before `Before'. `Before' can be either
+%%                       before `Before'. `Before' can be either an application
+%%                       name or a list of names. In the latter case, `App'
+%%                       is inserted before either of the applications in
+%%                       the list, whichever comes first.
 %% * `{include, ConfigFile}' - include options from the given file. The file
 %%                             is processed using `file:script/2'.
 %% * `{include_lib, ConfigFile}' - As above, but ConfigFile is named as with
