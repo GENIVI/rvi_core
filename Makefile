@@ -144,11 +144,22 @@ rpm:	rpmclean rpm_tarball
 	rpmbuild --define "_topdir $$PWD/rpm" -ba rpm/SPECS/rvi-$(VERSION).spec
 
 install: deps compile
-	 ./scripts/rvi_install \
+ifndef STRIPPATH
+	./scripts/rvi_install \
 		-k priv/keys/insecure_device_key.pem \
 		-r priv/certificates/insecure_root_cert.crt \
 		-d priv/certificates/insecure_device_cert.crt \
-		-c priv/credentials/insecure_credential.jwt $(DESTDIR)/opt/rvi_core
+		-c priv/credentials/insecure_credential.jwt \
+		$(DESTDIR)/opt/rvi_core
+else
+	./scripts/rvi_install \
+		-k priv/keys/insecure_device_key.pem \
+		-r priv/certificates/insecure_root_cert.crt \
+		-d priv/certificates/insecure_device_cert.crt \
+		-c priv/credentials/insecure_credential.jwt \
+		-s $(STRIPPATH) \
+		$(DESTDIR)/opt/rvi_core
+endif
 
 	install -m 0755 -d $(DESTDIR)/etc/opt/rvi/
 	install -m 0644 priv/config/rvi_sample.config $(DESTDIR)/etc/opt/rvi/rvi_sample.config
