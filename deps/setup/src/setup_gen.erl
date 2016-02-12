@@ -83,7 +83,7 @@ help() ->
 %%                         option.
 %% * `{remove_apps, Apps}' - Remove `Apps' from the list of applications.
 %% * `{sort_app, App, Before}' - Change the sort order so that `App' comes
-%%                       before `Before'.
+%%                       before `Before'. `Before' can be either
 %% * `{include, ConfigFile}' - include options from the given file. The file
 %%                             is processed using `file:script/2'.
 %% * `{include_lib, ConfigFile}' - As above, but ConfigFile is named as with
@@ -600,7 +600,8 @@ sort_apps(Options, Apps) ->
     lists:foldl(fun({sort_app, A, Before}, Acc) ->
                         case is_in_set(A, Acc) of
                             {true, App} ->
-                                insert_before(Acc -- [App], App, Before);
+                                insert_before(Acc -- [App], App,
+                                              mk_set(Before));
                             false ->
                                 abort("Cannot re-sort ~p - not found~n", [A])
                         end;
@@ -635,6 +636,12 @@ del_from_set(As, Set) ->
                                 Acc
                         end
                 end, Set, As).
+
+%% ensure that this is a 'set' (well, at least a list)
+mk_set(Set) when is_list(Set) ->
+    Set;
+mk_set(Entry) ->
+    [Entry].
 
 is_in_set(Entry, Set) ->
     A = if is_tuple(Entry) -> element(1, Entry);
