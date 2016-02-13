@@ -12,10 +12,42 @@
 #
 #
 
-# fqn : fully qualified name (e.g. realpath, but portable)
+# join two path names (avoid things like //foo or /foo/../bar)
+join()
+{
+    if [ "$1" = "/" ]
+    then
+        echo "/$2"
+    else
+        if [ "$2" = ".." ]
+        then
+            echo $(fqn $(dirname $1))
+        else
+            echo "$1/$2"
+        fi
+    fi
+}
+
+# fqn : fully qualified name
+# (e.g. realpath, but portable & works even if path doesn't exist)
 fqn()
 {
-    echo $(cd $(dirname $1); pwd)/$(basename $1)
+    if [ "$1" = "." ]
+    then
+        echo $(pwd)
+    else
+        if [ "$1" = "/" ]
+        then
+            echo "/"
+        else
+            if [ -e $1 ]
+            then
+                echo $(join $(cd $(dirname $1); pwd) $(basename $1))
+            else
+                echo $(join $(fqn $(dirname $1)) $(basename $1))
+            fi
+        fi
+    fi
 }
 
 SELF_DIR=$(dirname $(fqn "$0"))
@@ -194,7 +226,7 @@ while getopts "r:d:c:k:s:l:n:" o; do
 	    ;;
 
         s)
-	    PREFIX_STRIP=${OPTARG}
+	    PREFIX_STRIP=$(fqn ${OPTARG})
             ;;
 	n)
 	    NAME=${OPTARG}
