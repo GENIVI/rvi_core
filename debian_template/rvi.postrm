@@ -25,7 +25,6 @@ case "$1" in
 
   remove|purge|upgrde|disappear)
     rm -f /etc/init.d/rvi
-    rm -rf /etc/rvi
     #DEBHELPER#
   ;;
 
