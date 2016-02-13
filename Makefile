@@ -101,7 +101,7 @@ ubuntu_package: clean ubuntu_clean escript
 
 # Pack up all relevant files, and ubuntu/,  necessary for a build.
 # Add rvi-$(VERSION) at the beginning of each file so
-# that theu get packed up into a correctly named subdirectory
+# that they get packed up into a correctly named subdirectory
 # 
 	tar czf ./ubuntu_build/rvi_$(VERSION).orig.tar.gz \
 		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
@@ -123,7 +123,7 @@ debian_package: clean debian_clean escript
 
 # Pack up all relevant files, and debian/,  necessary for a build.
 # Add rvi-$(VERSION) at the beginning of each file so
-# that theu get packed up into a correctly named subdirectory
+# that they get packed up into a correctly named subdirectory
 # 
 	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz \
 		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
