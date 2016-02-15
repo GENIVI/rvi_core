@@ -1,4 +1,4 @@
-# systemd(8) setup usde by Tizen and others.
+# systemd(8) setup for Debian
 
 [Unit]
 Description=Remote Vehicle Interaction Service
