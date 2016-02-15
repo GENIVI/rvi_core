@@ -1,4 +1,4 @@
-# systemd(8) setup usde by Tizen and others.
+# systemd(8) setup usde by Yocto Project
 [Unit]
 Description=Remote Vehicle Interaction Service
 Wants=network-online.target
@@ -8,9 +8,10 @@ Environment="HOME=/opt/rvi"
 Type=forking
 StandardOutput=journal
 StandardError=journal
-ExecStart=/bin/sh /opt/rvi/rvi_ctl start
-ExecStop=/bin/sh /opt/rvi/rvi_ctl stop
+ExecStart=/opt/rvi/rvi_ctl start
+ExecStop=/opt/rvi/rvi_ctl stop
 GuessMainPID=yes
+RemainAfterExit=yes
 
 [Install]
 WantedBy=graphical.target multi-user.target
