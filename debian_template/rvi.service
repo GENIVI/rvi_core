@@ -9,8 +9,8 @@ Environment="HOME=/usr/lib/rvi_core"
 Type=forking
 StandardOutput=journal
 StandardError=journal
-ExecStart=/bin/sh /usr/bin/rvi_ctl -c /etc/rvi/rvi.config start
-ExecStop=/bin/sh /usr/bin/rvi_ctl stop
+ExecStart=/usr/bin/rvi_ctl -c /etc/rvi/rvi.config start
+ExecStop=/usr/bin/rvi_ctl stop
 GuessMainPID=yes
 RemainAfterExit=yes
 
