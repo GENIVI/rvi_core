@@ -27,7 +27,6 @@ SRC_LIST=BUILD.md \
 	rel \
 	RELEASE.md \
 	scripts/setup_gen \
-	scripts/rvi.service \
 	scripts/rvi_ctl.template \
 	scripts/rvi_install \
 	python/*.py \
@@ -101,13 +100,12 @@ ubuntu_package: clean ubuntu_clean escript
 
 # Pack up all relevant files, and ubuntu/,  necessary for a build.
 # Add rvi-$(VERSION) at the beginning of each file so
-# that theu get packed up into a correctly named subdirectory
+# that they get packed up into a correctly named subdirectory
 # 
 	tar czf ./ubuntu_build/rvi_$(VERSION).orig.tar.gz \
 		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
 		$(SRC_LIST) \
-		ubuntu_template \
-		scripts/rvi.init.ubuntu
+		ubuntu_template
 	rm -rf ubuntu/missing-sources
 # Unpack the created tar file
 	(cd ./ubuntu_build; tar xf rvi_$(VERSION).orig.tar.gz)
@@ -123,13 +121,12 @@ debian_package: clean debian_clean escript
 
 # Pack up all relevant files, and debian/,  necessary for a build.
 # Add rvi-$(VERSION) at the beginning of each file so
-# that theu get packed up into a correctly named subdirectory
+# that they get packed up into a correctly named subdirectory
 # 
 	tar czf ./debian_build/rvi_$(VERSION).orig.tar.gz \
 		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
 		$(SRC_LIST) \
-		debian_template \
-		scripts/rvi.init.debian
+		debian_template
 	rm -rf debian/missing-sources
 # Unpack the created tar file
 	(cd ./debian_build; tar xf rvi_$(VERSION).orig.tar.gz)

@@ -19,5 +19,3 @@ override_dh_auto_install:
 	install -D -m 0755 ./debian/rvi/usr/lib/rvi_core/rvi_ctl ./debian/rvi/usr/bin/rvi_ctl
 # Install default config
 	install -D -m 0644 ./priv/config/rvi_ubuntu.config ./debian/rvi/etc/rvi/rvi.config
-# Install start/stop scripts
-	install -D -m 0755 ./scripts/rvi.init.ubuntu ./debian/rvi/etc/init.d/rvi
