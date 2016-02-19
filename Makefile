@@ -71,6 +71,9 @@ ubuntu_clean:
 debian_clean:
 	rm -rf ./debian_build
 
+raspbian_clean:
+	rm -rf ./raspbian_build
+
 rpm_clean:
 	rm -rf ./rpm/BUILD/* \
 		./rpm/BUILDROOT/* \
@@ -135,6 +138,28 @@ debian_package: clean debian_clean escript
 	install -d -m 0755 ./debian_build/rvi-$(VERSION)/debian/missing-sources
 # Descend into the unpacked directory and build.
 	(cd ./debian_build/rvi-$(VERSION); debuild -uc -us)
+
+
+# Create a raspbian package 
+raspbian_package: clean raspbian_clean escript
+	install --mode=0755 -d ./raspbian_build
+
+# Pack up all relevant files, and debian/,  necessary for a build.
+# Add rvi-$(VERSION) at the beginning of each file so
+# that they get packed up into a correctly named subdirectory
+# 
+	tar czf ./raspbian_build/rvi_$(VERSION).orig.tar.gz \
+		--exclude-vcs --transform="s|^|./rvi-$(VERSION)/|" \
+		$(SRC_LIST) \
+		raspbian_template
+	rm -rf raspbian/missing-sources
+# Unpack the created tar file
+	(cd ./raspbian_build; tar xf rvi_$(VERSION).orig.tar.gz)
+# Move the debian template to be the debian package
+	mv ./raspbian_build/rvi-$(VERSION)/raspbian_template  ./raspbian_build/rvi-$(VERSION)/debian
+	install -d -m 0755 ./raspbian_build/rvi-$(VERSION)/debian/missing-sources
+# Descend into the unpacked directory and build.
+	(cd ./raspbian_build/rvi-$(VERSION); debuild --prepend-path /usr/local/bin -uc -us)
 
 
 rpm:	rpmclean rpm_tarball 
