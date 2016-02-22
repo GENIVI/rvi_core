@@ -1,0 +1,18 @@
+# systemd(8) setup for Debian
+
+[Unit]
+Description=Remote Vehicle Interaction Service
+Wants=network-online.target
+
+[Service]
+Environment="HOME=/usr/lib/rvi_core"
+Type=forking
+StandardOutput=journal
+StandardError=journal
+ExecStart=/usr/bin/rvi_ctl -c /etc/rvi/rvi.config start
+ExecStop=/usr/bin/rvi_ctl stop
+GuessMainPID=yes
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target multi-user.target
