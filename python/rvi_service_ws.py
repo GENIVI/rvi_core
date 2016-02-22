@@ -21,14 +21,14 @@ import getopt
 def usage():
     print "Usage:", sys.argv[0], "[-n <rvi_url>] <service_name>"
     print "  <rvi_url>                     URL of Service Edge on a local RVI node."
-    print "                                Default: ws://localhost:8808"
+    print "                                Default: ws://localhost:9008"
     print "  <service_name>                URL of Service to register"
     print
     print "The Service Edge URL is logged as a notice when the"
     print "RVI node is started."
     print
    
-    print "Example: ./rvi_service_ws.py -n ws://rvi1.nginfotpdx.net:8808 /test/some_service"
+    print "Example: ./rvi_service_ws.py -n ws://rvi1.nginfotpdx.net:9008 /test/some_service"
     sys.exit(255)
 
 
@@ -39,7 +39,7 @@ def usage():
 # the sender has to match the argument names.
 
 # For example:
-# rvi_call.py http://localhost:8801 jlr.com/vin/test a=1 b=2 c=3 ->
+# rvi_call.py http://localhost:9001 jlr.com/vin/test a=1 b=2 c=3 ->
 #    def service(a,b,c)
 # 
 def service_invoked(**args):
@@ -75,7 +75,7 @@ def services_unavailable(**args):
 #
 opts, args= getopt.getopt(sys.argv[1:], "n:")
 
-rvi_node_url = "ws://localhost:8808"
+rvi_node_url = "ws://localhost:9008"
 for o, a in opts:
     if o == "-n":
         rvi_node_url = a

@@ -1,13 +1,21 @@
+<style type="text/css" media="print">
+  div.pagebreak
+  {
+    page-break-before: always;
+  }
+</style>
 # The RVI Core Fragmentation Protocol
 
 ## Abstract
 
-The Remote Vehicle Interaction (RVI) system is a framework for secure interaction between
-vehicles and other devices and/or cloud services. RVI is designed to be agnostic in regard
-to connectivity options and intermittent connectivity. One consequence of this is that
-large messages may have to be partially transmitted via one type of connection, and completed
-on another. The fragmentation protocol described below allows for varying Message Transfer
-Unit (MTU) and lets the remote client request fragments as needed.
+The Remote Vehicle Interaction (RVI) system is a framework for secure
+interaction between vehicles and other devices and/or cloud services.
+RVI is designed to be agnostic in regard to connectivity options and
+intermittent connectivity. One consequence of this is that large messages
+may have to be partially transmitted via one type of connection, and completed
+on another. The fragmentation protocol described below allows for varying
+Message Transfer Unit (MTU) and lets the remote client request fragments
+as needed.
 
 ## Status of This Memo
 
@@ -40,6 +48,8 @@ Term      | Meaning
 `Client`  | Sending side of the interaction
 `Server`  | Receiving side of the interaction
 `MTU`     | Message Transfer Unit
+
+<div class="pagebreak"></div>
 
 ## System Overview
 

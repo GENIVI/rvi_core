@@ -1,9 +1,13 @@
+<style type="text/css" media="print">
+  div.pagebreak
+  {
+    page-break-before: always;
+  }
+</style>
 Copyright (C) 2014, 2015 Jaguar Land Rover
 
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
-
-
 
 Remote Vehicle Interface (RVI) Core Services
 ============================================
@@ -105,6 +109,7 @@ The parameters are:
   
 After receiving a key the device will typically store it in its key store.
 
+<div class="pagebreak"></div>
 
 ##### Provision Certificate
 
@@ -153,6 +158,8 @@ The parameters are:
   
 After receiving an erase certificate request the device must remove it from its
 certificate store.
+
+<div class="pagebreak"></div>
 
 ##### Clear Certificates
 
@@ -207,7 +214,7 @@ reject that certificate as invalid.
 
 Services to manage device configuration.
 
-##### Read Congfiguration Variables
+##### Read Configuration Variables
 
 Retrieve the value of one or more configuration variables from the device.
 
@@ -251,7 +258,9 @@ The parameters are:
 * variables - An array of dictionaries with variable names and values.
 * value - The value of the variable.
 
-##### Write Congfiguration Variables
+<div class="pagebreak"></div>
+
+##### Write Configuration Variables
 
 Set the value of one or more configuration variable in the device.
 
@@ -305,7 +314,9 @@ Sequence of events:
 5. After the server has sent the last chunk it sends `finish` to the client.
 6. Once the client receives the `finish` message and has assembled and verified
    the download it sends `download_complete` to the server with a status indicator.
-   
+
+<div class="pagebreak"></div>
+
 #### Notify
 
 Inform client of pending file transfer.
@@ -353,6 +364,8 @@ The parameters are:
           match the ID from the `notify` message this message is sent in response
           to.
 
+<div class="pagebreak"></div>
+
 #### Start Download
 
 Initiate the download from the server to the client.
@@ -398,6 +411,8 @@ The parameters are:
           may not arrive in order.
 * msg - File chunk encoded with base64.
 
+<div class="pagebreak"></div>
+
 #### Finish Transmission
 
 Indication by the server to the client that the last chunk has been sent.
@@ -440,6 +455,8 @@ The parameters are:
 * retry - Unique numeric ID, used by the identify the download transaction. Must
           match the ID from the `notify` message this message is sent in response
           to.
+
+<div class="pagebreak"></div>
 
 #### Cancel Download
 
@@ -488,7 +505,9 @@ The parameters are:
 
 * channels - An array with the data channels to subscribe to.
 * reporting_interval - The reporting interval in milliseconds [ms].
-  
+
+<div class="pagebreak"></div>
+
 #### Unsubscribe
 
 Unsubscribe from one of more data channels. This message is typically implemented
@@ -544,6 +563,8 @@ The parameters are:
    JSON data type. In particular `value` can be a dictionary in itself, as it is
    with the `location` channel.
 
+<div class="pagebreak"></div>
+
 Currently defined channels:
 
 | Channel   | Description                | Value Data Type                    |
@@ -595,7 +616,8 @@ The parameters are:
   ```r2_lt``` and ```r2_rt``` are row two (rear) doors.<br>
   ```trunk``` is the rear trunk.<br>
   ```hood``` is the rear hood.
-  
+
+<div class="pagebreak"></div>
 
 #### Start / Stop Engine
 
@@ -639,6 +661,8 @@ The parameters are:
 * action - Specifies if trunk should be opened or closed
   ```open``` open the trunk.<br>
   ```close``` close the trunk.
+
+<div class="pagebreak"></div>
 
 #### Horn
 Activate the horn.
@@ -814,6 +838,8 @@ will be listed.
 			"engine": "on",
         }
     } 
+
+<div class="pagebreak"></div>
 
 The parameters are:
 

@@ -19,11 +19,11 @@ import getopt
 def usage():
     print "Usage:", sys.argv[0], "[-n RVI-node] service key=val ..."
     print "  RVI-node     DNS name or IP of host running RVI. "
-    print "               default: http://localhost:8801"
+    print "               default: http://localhost:9001"
     print "  service      Service to invoke in RVI."
     print "  key=val      Named arguments to provide to service."
     print
-    print "Example: ./callrvi.py -n http://rvi1.nginfotpdx.net:8801 \\"
+    print "Example: ./callrvi.py -n http://rvi1.nginfotpdx.net:9001 \\"
     print "                      jlr.com/vin/aaron/4711/test/ping \\"
     print "                      arg1=val1 arg2=val2"                    
 
@@ -36,7 +36,7 @@ def usage():
 opts, args= getopt.getopt(sys.argv[1:], "n:")
 
 
-rvi_node = "http://localhost:8801"
+rvi_node = "http://localhost:9001"
 for o, a in opts:
     if o == "-n":
         rvi_node = a

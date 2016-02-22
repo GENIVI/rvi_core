@@ -5,7 +5,7 @@
 # Mozilla Public License, version 2.0.  The full text of the 
 # Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 #
-# rbilib.py 0.4.0
+# rbilib.py 0.5.0
 #  
 # This moduke
 from jsonrpclib.SimpleJSONRPCServer import SimpleJSONRPCServer
