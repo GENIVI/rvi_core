@@ -193,6 +193,8 @@ Currently supported RVI options are
 * `"rvi.max_msg_size"` (integer > 0)
 * `"rvi.reliable"`     (true | false)
 
+<div class="pb"></div>
+
 ## Double connect resolution
 There is a risk that two parties try to initiate a connection to each
 other in a race condition, creating two connections between them, as

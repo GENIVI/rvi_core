@@ -1,9 +1,4 @@
-<style type="text/css" media="print">
-  div.pagebreak
-  {
-    page-break-before: always;
-  }
-</style>
+<style type="text/css" media="print"> div.pb { page-break-before: always; } </style>
 Copyright (C) 2014-2016, Jaguar Land Rover
 
 This document is licensed under Creative Commons
@@ -43,7 +38,7 @@ Please note that the configuration process described in
 
 ----
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 # INSTALLATION PROCESS #
 
@@ -88,7 +83,7 @@ to the build system.
 
 The clone will be downloaded into a newly created ```rvi_core``` subdirectory.
 
-----
+<div class="pb"></div>
 
 ## BUILD THE RVI SYSTEM ##
 
@@ -100,8 +95,6 @@ top level project in the ```rvi``` directory.
 The local ```rebar``` command is used to retrieve the dependencies. See
 ```rebar.config``` and ```deps/*/rebar.config``` for a list of
 dependencies.
-
-<div class="pagebreak"></div>
 
 See the [rebar](https://github.com/basho/rebar) project for a detailed
 description of the rebar Erlang build tool.

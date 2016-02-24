@@ -38,7 +38,7 @@ manage all subpaths below itself.
 A typical service name for a vehicle that specifies a service to lock a door:
 
     message:jaguarlandrover.com/vin/1HGCM82633A004352/services/body/lock
-    
+
 Services can freely be defined and implemented by anyone for any purpose as long
 as the global name space is not violated (hence the organization). RVI defines
 a couple of core services that are specified by this document.
@@ -60,7 +60,7 @@ Procedure Calls (RPC) (JSON-RPC).
             "reporting_interval": 5000
          }
     }
-		
+
 * jsonrpc - JSON-RPC version number.
 * id - Request ID, used to match the response to the request.
 * method - Method to be invoked. For RVI the method is ```message```.
@@ -101,7 +101,7 @@ The parameters are:
 * keyid - Unique key ID.
 * key - JWT encoded key, signed by the private root key, where the
   payload is a JWK-formatted JSON object.
-  
+
 After receiving a key the device will typically store it in its key store.
 
 <div class="pb"></div>
@@ -128,7 +128,7 @@ The parameters are:
 * certid - Unique certificate ID.
 * checksum - The md5 checksum calculated over the entire certificate
 * certificate - The certificate encoded as base64.
-  
+
 After receiving a certificate the device will typically store it in its certificate
 store.
 
@@ -150,7 +150,7 @@ Erase a certificate from the device's certificate store.
 The parameters are:
 
 * certid - Unique certificate ID.
-  
+
 After receiving an erase certificate request the device must remove it from its
 certificate store.
 
@@ -175,7 +175,6 @@ The parameters are:
 
 * dummy - Placeholder parameter
 
-  
 After receiving an erase certificate request the device must remove all certificates
 from its certificate store.
 
@@ -199,7 +198,7 @@ from it.
 The parameters are:
 
 * certid - Unique certificate ID.
-  
+
 After receiving a revoke certificate request the device must add it to its
 certificate blacklist. When the device is presented with a blacklisted certificate
 or a certificate that has been derived from a blacklisted certificate it must
@@ -208,6 +207,8 @@ reject that certificate as invalid.
 #### Configuration
 
 Services to manage device configuration.
+
+<div class="pb"></div>
 
 ##### Read Configuration Variables
 
@@ -229,7 +230,7 @@ The server sends to the device:
 The parameters are:
 
 * variable - The name of the variable.
-  
+
 The device responds with:
 
     {
@@ -246,7 +247,7 @@ The device responds with:
             ]
          }
     }
-  
+
 The parameters are:
 
 * vin - The VIN of the device reporting the variable.
@@ -359,7 +360,7 @@ The parameters are:
           match the ID from the `notify` message this message is sent in response
           to.
 
-<div class="pg"></div>
+<div class="pb"></div>
 
 #### Start Download
 
@@ -696,8 +697,8 @@ The parameters are:
 
 * duration - The duration, in milliseconds, that the lights should be on for
 
+<div class="pb"></div>
 
-  
 #### Windows
 Open/close windows and other hatches 
 
@@ -712,6 +713,8 @@ Open/close windows and other hatches
 			"position": 75
 		}
     }
+
+<div class="pb"></div>
 
 The parameters are:
 
