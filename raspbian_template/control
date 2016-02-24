@@ -8,6 +8,6 @@ Homepage: https://github.com/PDXostc/rvi_core
 
 Package: rvi
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, bluez, erlang (>= 1:18.2), python-jsonrpclib (>= 0.1.3-1), python (>= 2.7.9-1)
+Depends: ${shlibs:Depends}, ${misc:Depends}, bluez, python-jsonrpclib (>= 0.1.3-1), python (>= 2.7.9-1)
 Description: Remote Vehicle Interaction
  GENIVI Remote Vehicle Interaction Core
