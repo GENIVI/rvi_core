@@ -75,9 +75,7 @@ Then rerun the ```update``` and ```install``` commands.
 
 ## DOWNLOAD AND INSTALL RVI ##
 
-Download the RVI package from the remote location:
-
-    wget http://(TODO)/rvi_0.5.0-1ubuntu1_amd64.deb
+Download the RVI package from https://github.com/PDXostc/rvi_core/releases. 
 
 Then install RVI via dpkg:
 

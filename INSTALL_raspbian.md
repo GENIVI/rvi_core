@@ -43,14 +43,7 @@ Please note that the configuration process described in
 
 ## GET RASPBIAN PACKAGES ##
 
-Download Erlang and RVI for Raspbian:
-
-    wget (TODO)/erlang-18.2.tar.bz2
-    wget (TODO)/rvi_0.5.0-1_armhf.deb
-
-Also download the install script:
-
-    wget (TODO)/installRVI
+Download the Raspbian package from https://github.com/PDXostc/rvi_core/releases. Then extract the tarball to get packages for Erlang and RVI, as well as an install script.
 
 ## INSTALL ERLANG AND RVI ##
 
