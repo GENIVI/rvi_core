@@ -1,9 +1,4 @@
-<style type="text/css" media="print">
-  div.pagebreak
-  {
-    page-break-before: always;
-  }
-</style>
+<style type="text/css" media="print"> div.pb { page-break-before: always; } </style>
 Copyright (C) 2014, 2015 Jaguar Land Rover
 
 This document is licensed under Creative Commons
@@ -43,7 +38,7 @@ manage all subpaths below itself.
 A typical service name for a vehicle that specifies a service to lock a door:
 
     message:jaguarlandrover.com/vin/1HGCM82633A004352/services/body/lock
-    
+
 Services can freely be defined and implemented by anyone for any purpose as long
 as the global name space is not violated (hence the organization). RVI defines
 a couple of core services that are specified by this document.
@@ -65,7 +60,7 @@ Procedure Calls (RPC) (JSON-RPC).
             "reporting_interval": 5000
          }
     }
-		
+
 * jsonrpc - JSON-RPC version number.
 * id - Request ID, used to match the response to the request.
 * method - Method to be invoked. For RVI the method is ```message```.
@@ -106,10 +101,10 @@ The parameters are:
 * keyid - Unique key ID.
 * key - JWT encoded key, signed by the private root key, where the
   payload is a JWK-formatted JSON object.
-  
+
 After receiving a key the device will typically store it in its key store.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 ##### Provision Certificate
 
@@ -133,7 +128,7 @@ The parameters are:
 * certid - Unique certificate ID.
 * checksum - The md5 checksum calculated over the entire certificate
 * certificate - The certificate encoded as base64.
-  
+
 After receiving a certificate the device will typically store it in its certificate
 store.
 
@@ -155,11 +150,11 @@ Erase a certificate from the device's certificate store.
 The parameters are:
 
 * certid - Unique certificate ID.
-  
+
 After receiving an erase certificate request the device must remove it from its
 certificate store.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 ##### Clear Certificates
 
@@ -180,7 +175,6 @@ The parameters are:
 
 * dummy - Placeholder parameter
 
-  
 After receiving an erase certificate request the device must remove all certificates
 from its certificate store.
 
@@ -204,7 +198,7 @@ from it.
 The parameters are:
 
 * certid - Unique certificate ID.
-  
+
 After receiving a revoke certificate request the device must add it to its
 certificate blacklist. When the device is presented with a blacklisted certificate
 or a certificate that has been derived from a blacklisted certificate it must
@@ -213,6 +207,8 @@ reject that certificate as invalid.
 #### Configuration
 
 Services to manage device configuration.
+
+<div class="pb"></div>
 
 ##### Read Configuration Variables
 
@@ -234,7 +230,7 @@ The server sends to the device:
 The parameters are:
 
 * variable - The name of the variable.
-  
+
 The device responds with:
 
     {
@@ -251,14 +247,14 @@ The device responds with:
             ]
          }
     }
-  
+
 The parameters are:
 
 * vin - The VIN of the device reporting the variable.
 * variables - An array of dictionaries with variable names and values.
 * value - The value of the variable.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 ##### Write Configuration Variables
 
@@ -315,7 +311,7 @@ Sequence of events:
 6. Once the client receives the `finish` message and has assembled and verified
    the download it sends `download_complete` to the server with a status indicator.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Notify
 
@@ -364,7 +360,7 @@ The parameters are:
           match the ID from the `notify` message this message is sent in response
           to.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Start Download
 
@@ -411,7 +407,7 @@ The parameters are:
           may not arrive in order.
 * msg - File chunk encoded with base64.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Finish Transmission
 
@@ -456,7 +452,7 @@ The parameters are:
           match the ID from the `notify` message this message is sent in response
           to.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Cancel Download
 
@@ -506,7 +502,7 @@ The parameters are:
 * channels - An array with the data channels to subscribe to.
 * reporting_interval - The reporting interval in milliseconds [ms].
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Unsubscribe
 
@@ -563,7 +559,7 @@ The parameters are:
    JSON data type. In particular `value` can be a dictionary in itself, as it is
    with the `location` channel.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 Currently defined channels:
 
@@ -617,7 +613,7 @@ The parameters are:
   ```trunk``` is the rear trunk.<br>
   ```hood``` is the rear hood.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Start / Stop Engine
 
@@ -662,7 +658,7 @@ The parameters are:
   ```open``` open the trunk.<br>
   ```close``` close the trunk.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Horn
 Activate the horn.
@@ -701,8 +697,8 @@ The parameters are:
 
 * duration - The duration, in milliseconds, that the lights should be on for
 
+<div class="pb"></div>
 
-  
 #### Windows
 Open/close windows and other hatches 
 
@@ -717,6 +713,8 @@ Open/close windows and other hatches
 			"position": 75
 		}
     }
+
+<div class="pb"></div>
 
 The parameters are:
 
@@ -839,7 +837,7 @@ will be listed.
         }
     } 
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 The parameters are:
 

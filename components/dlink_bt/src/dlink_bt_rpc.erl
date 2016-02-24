@@ -338,6 +338,13 @@ process_authorize(FromPid, PeerBTAddr, PeerBTChannel,
     ?info("dlink_bt:authorize(): Protocol:       ~p",  [ Protocol ]),
     ?debug("dlink_bt:authorize(): Credentials:   ~p",  [ Credentials ]),
 
+    case Protocol of
+	<<"1.", _/binary>> -> ok;
+	undefined -> ok;
+	_ ->
+	    throw({protocol_failure, {unknown_version, Protocol}})
+    end,
+
     %% If FromPid (the genserver managing the socket) is not yet registered
     %% with the conneciton manager, this is an incoming connection
     %% from the client. We should respond with our own authorize followed by
@@ -368,9 +375,15 @@ handle_socket(FromPid, PeerBTAddr, PeerChannel, data,
 		      ?DLINK_ARG_CREDENTIALS],
 		     Elems, undefined),
 
-	    process_authorize(FromPid, PeerBTAddr, RemoteChannel,
-			     RemoteAddress, RemoteChannel,
-			     RVIProtocol,  Credentials, CS);
+	    try
+		process_authorize(FromPid, PeerBTAddr, RemoteChannel,
+				  RemoteAddress, RemoteChannel,
+				  RVIProtocol,  Credentials, CS)
+	    catch
+		throw:{protocol_failure, What} ->
+		    ?error("Protocol failure (~p): ~p", [FromPid, What]),
+		    exit(FromPid, protocol_failure)
+	    end;
 
 	?DLINK_CMD_SERVICE_ANNOUNCE ->
 	    [ Status,

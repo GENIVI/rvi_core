@@ -2,7 +2,7 @@
 #
 
 #
-# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License, version 2.0.  The full text of the
 # Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 #
 #
@@ -20,7 +20,7 @@ echo ${ERL:=erl} > /dev/null
 
 
 usage() {
-    echo "Usage: $0 -d config_dir [-c config_file] -l log_dir \\" 
+    echo "Usage: $0 -d config_dir [-c config_file] -l log_dir \\"
     echo "       start|stop|console|attach|ping"
     echo
     echo "  -c config_file  Configuration file to launch rvi node with."
@@ -32,7 +32,7 @@ usage() {
     echo "  stop            Stop an rvi node previously started with 'start'."
     echo
     echo "  console         Start an rvi in foreground mode."
-    echo 
+    echo
     echo "  attach          Attach to an rvi node previously started with 'start'."
     echo
     echo "Environennt variables. Default value in paranthesis::"
@@ -42,7 +42,7 @@ usage() {
 }
 
 CONFIG_FILE=""
-SNAME=rvi
+SNAME="__RVI_NAME__"
 COOKIE=rvi_cookie
 while getopts "c:" o; do
     case "${o}" in
@@ -93,15 +93,21 @@ then
 	echo "${CONFIG_FILE} cannot be opened for reading."
 	usage
     fi
-    # 
+    #
     # Generate a config file that will end up as
     # /tmp/rvi/[cfg]/sys.config
     #
     (
-	rm -rf ${RUNDIR}
+	if [ -z "${RVI_RUNDIR}" ]
+	then
+	    RUNDIR="/tmp/rvi_${$}"
+	    rm -rf ${RUNDIR}
+	else
+	    RUNDIR=${RVI_RUNDIR}
+	fi
 	install -d --mode=0755 ${RUNDIR}
 	cd ${RUNDIR}
-	${RVI_BINDIR}/setup_gen rvi ${CONFIG_FILE} rvi
+	RVI_LOGDIR="${RVI_LOGDIR}" ${RVI_BINDIR}/setup_gen rvi ${CONFIG_FILE} rvi
     )
 
     # Did we succeed with config generation?
@@ -133,9 +139,8 @@ case "${CMD}" in
        exec ${RBI_BINDIR}/nodetool -sname ${SNAME} -setcookie ${COOKIE} ping
        ;;
 
-   attach) 
+   attach)
        exec to_erl ${RUNDIR}
        ;;
 
-esac 
-
+esac
