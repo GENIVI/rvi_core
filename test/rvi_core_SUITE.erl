@@ -141,9 +141,9 @@ groups() ->
        t_register_lock_service,
        t_register_sota_service,
        t_call_lock_service,
-       t_call_sota_service,
-       t_multicall_sota_service,
-       t_remote_call_lock_service,
+       %% t_call_sota_service,
+       %% t_multicall_sota_service,
+       %% t_remote_call_lock_service,
        t_no_errors
       ]}
     ].
@@ -327,19 +327,35 @@ t_multicall_sota_service(_Config) ->
 		     client3,
 		     client4,
 		     client5]],
-    collect(Pids).
+    Ref = erlang:send_after(5000, self(), collect_timeout),
+    collect(Pids, Ref).
 
-collect([{Pid, Ref} | T]) ->
+collect([{_, Ref} | T] = L, TRef) ->
     receive
 	{'DOWN', Ref, _, _, {ok, ok}} ->
-	    collect(T);
+	    collect(T, Ref);
 	{'DOWN', Ref, _, _, Reason} ->
-	    [exit(P, kill) || {P,_} <- T],
-	    error(Reason)
+	    flush_reqs(T),
+	    error(Reason);
+	{timeout, TRef, collect_timeout} ->
+	    flush_reqs(T),
+	    error(timeout)
     after 30000 ->
+	    flush_reqs(L),
 	    error(timeout)
     end;
-collect([]) ->
+collect([], _) ->
+    ok.
+
+flush_reqs([{Pid, Ref}|T]) ->
+    receive
+	{'DOWN', Ref, _, _, _} ->
+	    flush_reqs(T)
+    after 0 ->
+	    erlang:demonitor(Ref),
+	    exit(Pid, kill)
+    end;
+flush_reqs([]) ->
     ok.
 
 
@@ -367,7 +383,7 @@ call_sota_service_(RegName, Data) ->
 	{message, Other} ->
 	    ct:log("wrong message: ~p", [Other]),
 	    error({unmatched, Other})
-    after 30000 ->
+    after 5000 ->
 	    error(timeout)
     end.
 
@@ -456,7 +472,11 @@ sota_bin() ->
       "00000000000000000000000000000000000000000000000000">>.
 
 json_result({ok, {http_response, {_V1, _V2}, 200, _Text, _Hdr}, JSON}) ->
-    jsx:decode(JSON).
+    jsx:decode(JSON);
+json_result(Other) ->
+    ct:log("json_result(~p)", [Other]),
+    error({unexpected, Other}).
+
 
 start_json_rpc_server(Port) ->
     {ok, Pid} = exo_http_server:start(Port, [{request_handler,
@@ -464,7 +484,7 @@ start_json_rpc_server(Port) ->
     save({server,Port}, Pid),
     Pid.
 
-handle_body(Socket, Request, Body, St) ->
+handle_body(Socket, _Request, Body, _St) ->
     ct:log("handle_body(Body = ~p)", [Body]),
     JSON = jsx:decode(Body),
     ct:log("Got JSON Req: ~p", [JSON]),
@@ -889,15 +909,15 @@ hex(X) when X >= 10, X =< 15 ->
     $a + X - 10.
 
 
-json_rpc(URL, Method, Args) ->
-    Req = binary_to_list(
-	    iolist_to_binary(
-	      exo_json:encode({struct, [{"jsonrpc", "2.0"},
-					{"id", 1},
-					{"method", Method},
-					{"params", Args}]}))),
-    Hdrs = [{'Content-Type', "application/json"}],
-    exo_http:wpost(URL, {1,1}, Hdrs, Req, 1000).
+%% json_rpc(URL, Method, Args) ->
+%%     Req = binary_to_list(
+%% 	    iolist_to_binary(
+%% 	      exo_json:encode({struct, [{"jsonrpc", "2.0"},
+%% 					{"id", 1},
+%% 					{"method", Method},
+%% 					{"params", Args}]}))),
+%%     Hdrs = [{'Content-Type', "application/json"}],
+%%     exo_http:wpost(URL, {1,1}, Hdrs, Req, 1000).
 
 t_no_errors(Config) ->
     no_errors(?config(test_nodes, Config), ?config(test_dir, Config)).

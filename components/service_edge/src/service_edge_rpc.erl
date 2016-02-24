@@ -619,7 +619,7 @@ do_handle_local_message_([SvcName, TimeoutArg, Parameters | _Tail], CS) ->
 		       [TimeoutArg]),
 		(Now * 1000) + TimeoutArg;
 
-	    false -> %% Absolute timoeut. Convert to unix time msec
+	    false -> %% Absolute timeout. Convert to unix time msec
 		TimeoutArg * 1000
 	end,
     %%
