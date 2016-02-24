@@ -136,6 +136,7 @@ The compiled code is available under ```ebin/```, ```components/*/ebin``` and ``
 
 ## CREATE A RELEASE ##
 
-See ```CONFIGURE.md``` for details on configuring and creating a
-developer and production release that can be launched.
+See [CONFIGURE.md](CONFIGURE.md) ([PDF](doc/pdf/CONFIGURE.pdf)) for details
+on configuring and creating a developer and production release that can be
+launched.
 
