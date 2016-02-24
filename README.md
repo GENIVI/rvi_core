@@ -1,9 +1,9 @@
-Copyright (C) 2014-2015 Jaguar Land Rover
+Copyright (C) 2014-2016 Jaguar Land Rover
 
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-# REMOTE VEHICLE INTERACTION (RVI) 0.4.0 #
+# REMOTE VEHICLE INTERACTION (RVI) 0.5.0 #
 
 This document gives a brief introduction to the codebase of the RVI
 project and explains the reasoning behind some of the technical
@@ -14,9 +14,13 @@ For a high level description, with an exhaustive master usecase
 walkthrough, please see the High Level Design document 
 [here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf)
 
-Git branch management is JLR OSTCs standard git document
-[Git strategy](https://docs.google.com/document/d/1xG86q2o5Y-aSn7m8QARIH8hcTpH_yNMWCLQJD47IP48/edit/)
+Git branch management is JLR OSTCs standard git document:
+[Git strategy](https://docs.google.com/document/d/1xG86q2o5Y-aSn7m8QARIH8hcTpH_yNMWCLQJD47IP48/edit/) |
 [Git strategy](https://docs.google.com/document/d/1ko12dTXGeb2-E18SHOzGuC1318hGYSCIq3ADSzFOlGM/edit)
+
+Packages are available for some distributions. See installation
+instructions for [Ubuntu](INSTALL_ubuntu.md), [Debian](INSTALL_debian.md),
+and [Raspbian](INSTALL_raspbian.md).
 
 For build instructions, please check the build instructions:
 [Markdown](BUILD.md) | 
