@@ -10,13 +10,10 @@ project and explains the reasoning behind some of the technical
 choices.
 
 # ADDITIONAL DOCUMENTATION AND RESOURCES#
-For a high level description, with an exhaustive master usecase
-walkthrough, please see the High Level Design document 
-[here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf)
 
-Git branch management is JLR OSTCs standard git document
-[Git strategy](https://docs.google.com/document/d/1xG86q2o5Y-aSn7m8QARIH8hcTpH_yNMWCLQJD47IP48/edit/)
-[Git strategy](https://docs.google.com/document/d/1ko12dTXGeb2-E18SHOzGuC1318hGYSCIq3ADSzFOlGM/edit)
+For a high level description, with an exhaustive master use-case
+walkthrough, please see the High Level Design document 
+[here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf) (**NOTE: HLD not updated to reflect RVI Core 0.5.0**)
 
 For build instructions, please check the **build instructions**:
 [Markdown](BUILD.md) | 
