@@ -1,9 +1,4 @@
-<style type="text/css" media="print">
-  div.pagebreak
-  {
-    page-break-before: always;
-  }
-</style>
+<style type="text/css" media="print"> div.pb { page-break-before: always; } </style>
 # The RVI Core Fragmentation Protocol
 
 ## Abstract
@@ -49,7 +44,7 @@ Term      | Meaning
 `Server`  | Receiving side of the interaction
 `MTU`     | Message Transfer Unit
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 ## System Overview
 

@@ -129,12 +129,10 @@ handle_call({rvi, send_message,
     ?debug("    protocol:send(): data_link_mod:   ~p~n", [DataLinkMod]),
     ?debug("    protocol:send(): data_link_opts:  ~p~n", [DataLinkOpts]),
     ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
-    Data = jsx:encode([
-		       { <<"tid">>, TID },
-		       { <<"service">>, ServiceName },
-		       { <<"timeout">>, Timeout },
-		       { <<"parameters">>, Parameters }
-		      ]),
+    Data = [{ <<"service">>, ServiceName },
+	    { <<"timeout">>, Timeout },
+	    { <<"parameters">>, Parameters }
+	   ],
     RviOpts = rvi_common:rvi_options(Parameters),
     Res = DataLinkMod:send_data(
 	    St#st.cs, ?MODULE, ServiceName, RviOpts ++ DataLinkOpts, Data),
@@ -145,9 +143,8 @@ handle_call(Other, _From, St) ->
     { reply, [ invalid_command ], St}.
 
 %% Convert list-based data to binary.
-handle_cast({rvi, receive_message, [Payload, IP, Port | _LogId]} = Msg, St) ->
+handle_cast({rvi, receive_message, [Elems, IP, Port | _LogId]} = Msg, St) ->
     ?debug("~p:handle_cast(~p)", [?MODULE, Msg]),
-    Elems = jsx:decode(iolist_to_binary(Payload)),
 
     [ ServiceName, Timeout, Parameters ] =
 	opts([<<"service">>, <<"timeout">>, <<"parameters">>],

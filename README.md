@@ -18,13 +18,25 @@ Git branch management is JLR OSTCs standard git document
 [Git strategy](https://docs.google.com/document/d/1xG86q2o5Y-aSn7m8QARIH8hcTpH_yNMWCLQJD47IP48/edit/)
 [Git strategy](https://docs.google.com/document/d/1ko12dTXGeb2-E18SHOzGuC1318hGYSCIq3ADSzFOlGM/edit)
 
-For build instructions, please check the build instructions:
+For build instructions, please check the **build instructions**:
 [Markdown](BUILD.md) | 
 [PDF](doc/pdf/BUILD.pdf)
 
-For configuration and launch instructions, please check the configuration documentation:
+For configuration and launch instructions, please check the **configuration documentation**:
 [Markdown](CONFIGURE.md) | 
 [PDF](doc/pdf/CONFIGURE.pdf)
+
+For instructions on how to create RVI Core certificates, keys and credentials, please check the **certificates documentation**:
+[Markdown](doc/rvi_certificates.md) |
+[PDF](doc/pdf/rvi_certificates.pdf)
+
+For instructions on using the Services API, please check the **services documentation**:
+[Markdown](doc/rvi_services.md) |
+[PDF](doc/pdf/rvi_services.pdf)
+
+For a detailed description of the RVI Core Peer-to-peer protocol, please check the **rvi_protocol documentation**:
+[Markdown](doc/rvi_protocol.md) |
+[PDF](doc/pdf/rvi_protocol.pdf)
 
 Technical RVI disussions are held at the GENIVI project mailing list:
 [GENIVI](https://lists.genivi.org/mailman/listinfo/genivi-projects)

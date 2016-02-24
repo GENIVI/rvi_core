@@ -1,9 +1,4 @@
-<style type="text/css" media="print">
-  div.pagebreak
-  {
-    page-break-before: always;
-  }
-</style>
+<style type="text/css" media="print"> div.pb { page-break-before: always; } </style>
 Copyright (C) 2014, 2015 Jaguar Land Rover
 
 This document is licensed under Creative Commons
@@ -109,7 +104,7 @@ The parameters are:
   
 After receiving a key the device will typically store it in its key store.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 ##### Provision Certificate
 
@@ -159,7 +154,7 @@ The parameters are:
 After receiving an erase certificate request the device must remove it from its
 certificate store.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 ##### Clear Certificates
 
@@ -258,7 +253,7 @@ The parameters are:
 * variables - An array of dictionaries with variable names and values.
 * value - The value of the variable.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 ##### Write Configuration Variables
 
@@ -315,7 +310,7 @@ Sequence of events:
 6. Once the client receives the `finish` message and has assembled and verified
    the download it sends `download_complete` to the server with a status indicator.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Notify
 
@@ -364,7 +359,7 @@ The parameters are:
           match the ID from the `notify` message this message is sent in response
           to.
 
-<div class="pagebreak"></div>
+<div class="pg"></div>
 
 #### Start Download
 
@@ -411,7 +406,7 @@ The parameters are:
           may not arrive in order.
 * msg - File chunk encoded with base64.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Finish Transmission
 
@@ -456,7 +451,7 @@ The parameters are:
           match the ID from the `notify` message this message is sent in response
           to.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Cancel Download
 
@@ -506,7 +501,7 @@ The parameters are:
 * channels - An array with the data channels to subscribe to.
 * reporting_interval - The reporting interval in milliseconds [ms].
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Unsubscribe
 
@@ -563,7 +558,7 @@ The parameters are:
    JSON data type. In particular `value` can be a dictionary in itself, as it is
    with the `location` channel.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 Currently defined channels:
 
@@ -617,7 +612,7 @@ The parameters are:
   ```trunk``` is the rear trunk.<br>
   ```hood``` is the rear hood.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Start / Stop Engine
 
@@ -662,7 +657,7 @@ The parameters are:
   ```open``` open the trunk.<br>
   ```close``` close the trunk.
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 #### Horn
 Activate the horn.
@@ -839,7 +834,7 @@ will be listed.
         }
     } 
 
-<div class="pagebreak"></div>
+<div class="pb"></div>
 
 The parameters are:
 
