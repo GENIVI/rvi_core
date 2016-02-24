@@ -18,4 +18,4 @@ override_dh_auto_install:
 # Copy out rvi_ctl to /usr/bin
 	install -D -m 0755 ./debian/rvi/usr/lib/rvi_core/rvi_ctl ./debian/rvi/usr/bin/rvi_ctl
 # Install default config
-	install -D -m 0644 ./priv/config/rvi_debian.config ./debian/rvi/etc/rvi/rvi.config
+	install -D -m 0644 ./priv/config/rvi_ubuntu.config ./debian/rvi/etc/rvi/rvi.config
