@@ -49,7 +49,7 @@
 %% 	       cert}).
 
 -record(cred, {id,
-	       right_to_register = [],
+	       right_to_receive = [],
 	       right_to_invoke = [],
 	       validity = [],
 	       device_cert,
@@ -301,12 +301,12 @@ find_cred_by_service_(Service) ->
     SvcParts = split_path(strip_prot(Service)),
     LocalCreds = ets:select(?CREDS, [{ {{local,'_'}, '$1'}, [], ['$1'] }]),
     ?debug("find_creds_by_service(~p~nLocalCreds = ~p~n",
-	   [Service, [{Id,Reg,Inv} || #cred{id = Id,
+	   [Service, [{Id,Rcv,Inv} || #cred{id = Id,
 					    right_to_invoke = Inv,
-					    right_to_register = Reg} <- LocalCreds]]),
+					    right_to_receive = Rcv} <- LocalCreds]]),
     case lists:foldl(
-	   fun(#cred{right_to_register = Register} = C, {Max, _} = Acc) ->
-		   case match_length(Register, SvcParts) of
+	   fun(#cred{right_to_receive = Receive} = C, {Max, _} = Acc) ->
+		   case match_length(Receive, SvcParts) of
 		       L when L > Max ->
 			   {L, C};
 		       _ ->
@@ -540,8 +540,9 @@ process_cred_struct(Cred, Bin, UTC, Cert) ->
 
 process_cred_struct_(Cred, Bin, UTC, DevCert) ->
     ID = cred_id(Cred),
-    {ok, Register} = rvi_common:get_json_element(
-		      [{'OR', ["right_to_register", "sources", "register"]}], Cred),
+    {ok, Receive} = rvi_common:get_json_element(
+		      [{'OR', ["right_to_receive", "right_to_register",
+			       "sources", "register"]}], Cred),
     {ok, Invoke} = rvi_common:get_json_element(
 		    [{'OR', ["right_to_invoke", "destinations", "invoke"]}], Cred),
     {ok, Start} = rvi_common:get_json_element(
@@ -561,7 +562,7 @@ process_cred_struct_(Cred, Bin, UTC, DevCert) ->
     case check_validity(Start, Stop, UTC) of
 	true ->
 	    #cred{id = ID,
-		  right_to_register = Register,
+		  right_to_receive = Receive,
 		  right_to_invoke = Invoke,
 		  validity = Validity,
 		  jwt = Bin,

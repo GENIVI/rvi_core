@@ -643,7 +643,7 @@ generate_cred(sample, KeyDir, CredDir, _Config) ->
 	 " --start='", Start, "'"
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
-	 " --register='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock'"
+	 " --receive='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock'"
 	 " --invoke='jlr.com/backend/set_state'"
 	 " --jwt_out=", CredDir, "/lock_cred.jwt"
 	 " --cred_out=", KeyDir, "/lock_cred.json"]),
@@ -658,7 +658,7 @@ generate_cred(backend, KeyDir, CertDir, _Config) ->
 	 " --start='", Start, "'"
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
-	 " --register='jlr.com'"
+	 " --receive='jlr.com'"
 	 " --invoke='jlr.com'"
 	 " --jwt_out=", CertDir, "/backend_cred.jwt"
 	 " --cred_out=", KeyDir, "/backend_cred.json"]),
@@ -676,7 +676,7 @@ generate_sota_cred(sample, KeyDir, CredDir, _Config) ->
 	 " --start='", Start, "'"
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
-	 " --register='jlr.com/vin/abc/store'"
+	 " --receive='jlr.com/vin/abc/store'"
 	 " --invoke='jlr.com/backend/set_state'"
 	 " --jwt_out=", CredDir, "/sota_cred.jwt"
 	 " --cred_out=", KeyDir, "/sota_cred.json"]),
@@ -691,7 +691,7 @@ generate_sota_cred(backend, KeyDir, CertDir, _Config) ->
 	 " --start='", Start, "'"
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
-	 " --register='jlr.com'"
+	 " --receive='jlr.com'"
 	 " --invoke='jlr.com'"
 	 " --jwt_out=", CertDir, "/sota_backend_cred.jwt"
 	 " --cred_out=", KeyDir, "/sota_backend_cred.json"]),
