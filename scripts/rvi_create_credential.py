@@ -77,7 +77,7 @@ def read_x509_cert_pem_file(file_name):
 
         
 def usage():
-    print "Usage:", sys.argv[0], "--id=<id> --invoke='<services>' -register='<services>' \\"
+    print "Usage:", sys.argv[0], "--id=<id> --invoke='<services>' -receive='<services>' \\"
     print "                       --root_key=<file> --start='<date/time>' --stop='<date/time>' \\"
     print "                       --out=<file>"
     print
@@ -85,8 +85,8 @@ def usage():
     print 
     print "  --invoke='<services>'           Right to invoke service. Space separate multiple services."
     print 
-    print "  --register='<services>'         Right to register service. Space separate multiple services."
-    print "                                  At least one --invoke or --register must be given."
+    print "  --receive='<services>'          Right to receive service invocations. Space separate multiple services."
+    print "                                  At least one --invoke or --receive must be given."
     print 
     print "  --root_key=<file>               Private, PEM-encoded root key to sign credential with"
     print "                                  Mandatory"
@@ -123,14 +123,14 @@ def usage():
     print "                            --stop='2020-12-31 23:59:59' \\"
     print "                            --root_key=root_key.pem \\"
     print "                            --issuer=GENIVI \\"
-    print "                            --register='genivi.org/vin/abc/unlock genivi.org/vin/abc/lock' \\"
+    print "                            --receive='genivi.org/vin/abc/unlock genivi.org/vin/abc/lock' \\"
     print "                            --invoke='genivi.org/backend/report genivi.org/backend/set_state' \\"
     print "                            --jwt_out=lock_cert.jwt \\"
     print "                            --cred_out=lock_credential.json"
     sys.exit(255)
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "", [ 'issuer=', 'invoke=', 'register=', 
+    opts, args = getopt.getopt(sys.argv[1:], "", [ 'issuer=', 'invoke=', 'receive=', 
                                                    'root_key=', 'start=', 
                                                    'stop=', 'cred_out=', 'id=',
                                                    'jwt_out=', 'device_cert='])
@@ -145,7 +145,7 @@ stop=int(time.time()) + 86400 * 365
 
 issuer=None
 invoke=None
-register=None
+receive=None
 root_key=None
 device_cert=None
 jwt_out_file=None
@@ -186,8 +186,8 @@ for o, a in opts:
     elif o == '--invoke':
         invoke=a.split(' ')
 
-    elif o == '--register':
-        register=a.split(' ')
+    elif o == '--receive':
+        receive=a.split(' ')
 
     elif o == '--id':
         id_string=a
@@ -218,9 +218,9 @@ for o, a in opts:
 if jwt_out_file == None:
     jwt_out_file = sys.stdout
 
-if not invoke and not register:
+if not invoke and not receive:
     print
-    print "At least one --invoke or --register service must be specified."
+    print "At least one --invoke or --receive service must be specified."
     print
     usage()
 
@@ -255,7 +255,7 @@ if not id_string:
 cred = { 
     'iss': issuer,
     'id': id_string,
-    'right_to_register': register,
+    'right_to_receive': receive,
     'right_to_invoke': invoke,
     'create_timestamp': int(time.time()),
     'device_cert': device_cert,

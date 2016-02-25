@@ -163,7 +163,7 @@ CREDENTIALS
                          --root_key=root_key.pem \\
                          --device_cert=device_cert.crt \\
                          --invoke='genivi.org/' \\
-                         --register='genivi.org/'
+                         --receive='genivi.org/'
 
   Provide the generated credential.jwt file as a '-c' argument to rvi_install.
 
