@@ -5,7 +5,7 @@
 export DH_VERBOSE=1
 
 %:
-	dh --with systemd $@
+	dh $@
 
 override_dh_auto_install:
 	 ./scripts/rvi_install \
@@ -18,6 +18,4 @@ override_dh_auto_install:
 # Copy out rvi_ctl to /usr/bin
 	install -D -m 0755 ./debian/rvi/usr/lib/rvi_core/rvi_ctl ./debian/rvi/usr/bin/rvi_ctl
 # Install default config
-	install -D -m 0644 ./priv/config/rvi_ubuntu.config ./debian/rvi/etc/rvi/rvi.config
-# Install start/stop scripts
-	install -D -m 0755 ./scripts/rvi.init.debian ./debian/rvi/etc/init.d/rvi
+	install -D -m 0644 ./priv/config/rvi_debian.config ./debian/rvi/etc/rvi/rvi.config

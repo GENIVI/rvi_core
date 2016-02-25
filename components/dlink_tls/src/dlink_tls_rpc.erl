@@ -365,16 +365,20 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
     case opt(?DLINK_ARG_CMD, Elems, undefined) of
         ?DLINK_CMD_AUTHORIZE ->
 	    ?debug("got authorize ~s:~w", [PeerIP, PeerPort]),
-            [ RemoteAddress,
-              RemotePort,
+            [ ProtoVersion,
               Credentials ] =
-                opts([?DLINK_ARG_ADDRESS,
-                      ?DLINK_ARG_PORT,
+                opts([?DLINK_ARG_VERSION,
                       ?DLINK_ARG_CREDENTIALS],
                      Elems, undefined),
 
-            process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress, RemotePort,
-                              Credentials, CS);
+	    try
+		process_authorize(FromPid, PeerIP, PeerPort,
+				  Credentials, ProtoVersion, CS)
+	    catch
+		throw:{protocol_failure, What} ->
+		    ?error("Protocol failure (~p): ~p", [FromPid, What]),
+		    exit(FromPid, protocol_failure)
+	    end;
 
 	%% ?DLINK_CMD_CRED_EXCHANGE ->
 	%%     ?debug("got cred exch ~s:~w", [PeerIP, PeerPort]),
@@ -684,39 +688,28 @@ availability_msg(Availability, Services) ->
 status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
 status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
 
-process_authorize(FromPid, PeerIP, PeerPort, RemoteAddress,
-		  RemotePort, Credentials, CompSpec) ->
+process_authorize(FromPid, PeerIP, PeerPort, 
+		  Credentials, ProtoVersion, CompSpec) ->
     ?info("dlink_tls:authorize(): Peer Address:   ~s:~p", [PeerIP, PeerPort ]),
-    ?info("dlink_tls:authorize(): Remote Address: ~s:~p", [ RemoteAddress, RemotePort ]),
-
-    {NRemoteAddress, NRemotePort} = Conn = {PeerIP, PeerPort},
-    %% { NRemoteAddress, NRemotePort} = Conn =
-    %%     case { RemoteAddress, RemotePort } of
-    %%         { <<"0.0.0.0">>, 0 } ->
-
-    %%             ?info("dlink_tls:authorize(): Remote is behind firewall. Will use ~p:~p",
-    %%                   [ PeerIP, PeerPort]),
-    %%             { PeerIP, PeerPort };
-    %%         _ -> { RemoteAddress, RemotePort}
-    %%     end,
-    log("auth ~s:~w", [NRemoteAddress, NRemotePort], CompSpec),
+    case ProtoVersion of
+	<<"1.", _/binary>> -> ok;
+	undefined -> ok;
+	_ ->
+	    throw({protocol_failure, {unknown_version, ProtoVersion}})
+    end,
+    Conn = {PeerIP, PeerPort},
+    log("auth ~s:~w", [PeerIP, PeerPort], CompSpec),
     PeerCert = rvi_common:get_value(dlink_tls_peer_cert, not_found, CompSpec),
     authorize_rpc:store_creds(CompSpec, Credentials, Conn, PeerCert),
     connection_authorized(FromPid, Conn, CompSpec).
 
 send_authorize(Pid, CompSpec) ->
     ?debug("send_authorize() Pid = ~p; CompSpec = ~p", [Pid, abbrev(CompSpec)]),
-    {LocalIP, LocalPort} = rvi_common:node_address_tuple(),
     Creds = get_credentials(CompSpec),
     dlink_tls_conn:send(Pid, rvi_common:pass_log_id(
 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE},
 				{?DLINK_ARG_VERSION, ?DLINK_TLS_VERSION},
-				{?DLINK_ARG_ADDRESS, bin(LocalIP)},
-				{?DLINK_ARG_PORT, LocalPort},
 				{?DLINK_ARG_CREDENTIALS, Creds}], CompSpec)).
-
-bin(S) ->
-    iolist_to_binary(S).
 
 connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
     %% If FromPid (the genserver managing the socket) is not yet registered

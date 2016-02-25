@@ -1,0 +1,10 @@
+rvi for Debian
+--------------
+
+Will rely on existing Erlang installation to work.
+
+We will copy out the Erlang VM BEAM files to /opt/rvi and the configuration files to /etc/opt/rvi
+
+/opt/rvi/rvi.sh is the main control program.
+
+ -- Magnus Feuer <mfeuer@jaguarlandrover.com>  Fri, 27 Nov 2015 15:34:39 -0800

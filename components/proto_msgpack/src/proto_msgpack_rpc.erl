@@ -132,10 +132,9 @@ handle_call({rvi, send_message,
     ?debug("    protocol:send(): data_link_mod:   ~p~n", [DataLinkMod]),
     ?debug("    protocol:send(): data_link_opts:  ~p~n", [DataLinkOpts]),
     ?debug("    protocol:send(): parameters:      ~p~n", [Parameters]),
-    Data = msgpack:pack([ { <<"tid">>, TID },
-			  { <<"service">>, ServiceName },
-			  { <<"timeout">>, Timeout },
-			  { <<"parameters">>, Parameters } ], St#st.pack_opts),
+    Data = [ { <<"service">>, ServiceName },
+             { <<"timeout">>, Timeout },
+             { <<"parameters">>, Parameters } ],
     RviOpts = rvi_common:rvi_options(Parameters),
     Res = DataLinkMod:send_data(
 	    St#st.cs, ?MODULE, ServiceName, RviOpts ++ DataLinkOpts, Data),
@@ -147,9 +146,8 @@ handle_call(Other, _From, St) ->
 
 
 %% Convert list-based data to binary.
-handle_cast({rvi, receive_message, [Payload, IP, Port | LogId]} = Msg, St) ->
+handle_cast({rvi, receive_message, [Elems, IP, Port | LogId]} = Msg, St) ->
     ?debug("~p:handle_cast(~p)", [?MODULE, Msg]),
-    {ok, Elems} = msgpack:unpack(Payload, St#st.pack_opts),
 
     [ ServiceName, Timeout, Parameters ] =
 	opts([<<"service">>, <<"timeout">>, <<"parameters">>],

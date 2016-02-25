@@ -305,12 +305,10 @@ handle_sms(FromPid, Addr, data, Payload, [CompSpec]) ->
     case opt(?DLINK_ARG_CMD, Elems, undefined) of
         ?DLINK_CMD_AUTHORIZE ->
             [ TransactionID,
-              RemoteAddress,
               ProtoVersion,
 	      CertificatesTmp,
               Signature ] =
                 opts([?DLINK_ARG_TRANSACTION_ID,
-                      ?DLINK_ARG_ADDRESS,
                       ?DLINK_ARG_VERSION,
 		      ?DLINK_ARG_CERTIFICATES,
                       ?DLINK_ARG_SIGNATURE],
@@ -321,8 +319,15 @@ handle_sms(FromPid, Addr, data, Payload, [CompSpec]) ->
 		    {array, C} -> C;
 		    undefined -> []
 		end,
-           process_authorize(FromPid, Addr, TransactionID, RemoteAddress,
-                              ProtoVersion, Signature, Certificates, CompSpec);
+	    try
+		process_authorize(
+		  FromPid, Addr, TransactionID,
+		  ProtoVersion, Signature, Certificates, CompSpec)
+	    catch
+		throw:{protocol_failure, What} ->
+		    ?error("Protocol failure (~p): ~p", [FromPid, What]),
+		    exit(FromPid, protocol_failure)
+	    end;
 
         ?DLINK_CMD_SERVICE_ANNOUNCE ->
             [ TransactionID,
@@ -613,13 +618,19 @@ availability_msg(Availability, Services) ->
 status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
 status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
 
-process_authorize(FromPid, PeerAddr, TransactionID, RemoteAddress,
+process_authorize(FromPid, PeerAddr, TransactionID,
 		  ProtoVersion, Signature, Certificates, CompSpec) ->
     ?info("dlink_sms:authorize(): Peer Address:   ~p" , [PeerAddr]),
-    ?info("dlink_sms:authorize(): Remote Address: ~p" , [RemoteAddress]),
     ?info("dlink_sms:authorize(): Protocol Ver:   ~p" , [ProtoVersion]),
     ?debug("dlink_sms:authorize(): TransactionID:  ~p", [TransactionID]),
     ?debug("dlink_sms:authorize(): Signature:      ~p", [Signature]),
+
+    case ProtoVersion of
+	<<"1.", _/binary>> -> ok;
+	undefined -> ok;
+	_ ->
+	    throw({protocol_failure, {unknown_version, ProtoVersion}})
+    end,
 
     Conn = {PeerAddr, 0},  % add dummy port (necessary?)
     case validate_auth_jwt(Signature, Certificates, Conn, CompSpec) of
@@ -631,14 +642,12 @@ process_authorize(FromPid, PeerAddr, TransactionID, RemoteAddress,
     end.
 
 send_authorize(Pid, CompSpec) ->
-    LocalAddr = rvi_common:node_msisdn(),
     sms_connection:send_auth(
       Pid,
       term_to_json(
 	{struct,
 	 [ { ?DLINK_ARG_TRANSACTION_ID, 1 },
 	   { ?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE },
-	   { ?DLINK_ARG_ADDRESS, LocalAddr },
 	   { ?DLINK_ARG_VERSION, ?DLINK_SMS_VERSION },
 	   { ?DLINK_ARG_CERTIFICATES, {array, get_certificates(CompSpec)} },
 	   { ?DLINK_ARG_SIGNATURE, get_authorize_jwt(CompSpec) } ]})).

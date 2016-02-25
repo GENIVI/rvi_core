@@ -23,13 +23,13 @@ export PATH="/bin/:/usr/bin:/sbin:/usr/sbin"
 
 set -e 
 
-DAEMON_PATH="/opt/rvi"
+DAEMON_PATH="/opt/rvi_core"
 DAEMON_NAME="rvi"
 
 case "$1" in
   start)
         echo -n "Starting $DAEMON_NAME: "
-        $DAEMON_PATH/rvi_ctl start
+        $DAEMON_PATH/rvi_ctl -c /etc/opt/rvi/rvi.config start
         RETVAL=$?
         if [ $RETVAL -eq 0 ] ; then
             echo "OK"

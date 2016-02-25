@@ -1,5 +1,6 @@
-rvi (0.5.0-1) jessie; urgency=low
+rvi for Debian
+--------------
 
-  * Initial release
 
  -- Magnus Feuer <mfeuer@jaguarlandrover.com>  Fri, 27 Nov 2015 15:34:39 -0800
+
