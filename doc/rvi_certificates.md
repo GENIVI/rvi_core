@@ -192,7 +192,7 @@ An RVI credential has the following format in its native JSON state:
     "right_to_invoke": [
         "jlr.com/vin/"
     ],
-    "right_to_register": [
+    "right_to_receive": [
         "jlr.com/backend/sota"
     ],
     "id": "insecure_cert",
@@ -213,7 +213,7 @@ Member              | Description
 --------------------|---------------------
 create\_timestamp   | Unix timestamp of when the credential was created
 right\_to\_invoke   | A list of service prefixes that the sender has the right to invoke on any node that has registered matching services that start with the given string(s).
-right\_to\_register | A list of services that the sender has the right to to register for other nodes to invoke.
+right\_to\_receive | A list of services that the sender has the right to to receive remote invocations for from remote nodes.
 id                  | A system-wide unique identifier for the credential.
 iss                 | The issuing organization.
 device_certificate  | The PEM-encoded device X.509 certificate to match against the sender's TLS certificate.
@@ -233,7 +233,7 @@ rvi_create_credential.py --cred_out="insecure_credential.json" \
                          --root_key=insecure_root_key.pem \
                          --device_cert=insecure_device_cert.crt \
                          --invoke='genivi.org/' \
-                         --register='genivi.org/'
+                         --receive='genivi.org/'
 ```
 
 The following command line parameters are accepted:
@@ -246,7 +246,7 @@ Parameter      | Required | Description
 --root\_key    | Yes      | Private, PEM-encoded root key to sign the credential. Must be the same key used to sign the root X.509 certificate.
 --device\_cert | Yes      | The PEM-encoded device X.509 certificate to embed into the credential as the device_cert member.
 --invoke       | Yes      | Space separated list (within quotes) of RVI service prefixes that the owner of the credential has the right to invoke.
---register     | Yes      | Space separated list (within quotes) of RVI service prefixes that the owner of the credential has the right to register for others to call (with the right credential).
+--receive     | Yes      | Space separated list (within quotes) of RVI service prefixes that the owner of the credential has the right to have invoked by other nodes (with the right credential).
 --start        | No       | The Unix timestamps when the credential becomes active.
 --stop         | No       | The Unix timestamps when the credential becomes inactive.
 
