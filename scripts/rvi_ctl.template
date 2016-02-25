@@ -20,8 +20,7 @@ echo ${ERL:=erl} > /dev/null
 
 
 usage() {
-    echo "Usage: $0 -d config_dir [-c config_file] -l log_dir \\"
-    echo "       start|stop|console|attach|ping"
+    echo "Usage: $0 [-c config_file] start|stop|console|attach|ping"
     echo
     echo "  -c config_file  Configuration file to launch rvi node with."
     echo "                  Mandatory for start and console. Ignored for"
