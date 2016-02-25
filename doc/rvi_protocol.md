@@ -20,7 +20,7 @@ created as described in [rvi_certificates.md](rvi_certificates.md).
 # FEATURES COVERED BY PROTOCOL
 1. **Authorization**<br>
 Prove to the remote RVI node that the local RVI node has the right to
-invoke a set of services, and the right to register another set of services.
+invoke a set of services, and the right to receive invocations of another set of services.
 
 2. **Service Discovery**<br>
 Announce to the remote RVI node local RVI services which the remote node
@@ -83,7 +83,7 @@ authentication.
 
 3. **RVI credentials (JWT)**<br>
 Describes the services that the device has the right to invoke and the
-services that the device has right to register.
+services that the device has right to have invoked by remote nodes.
 Embeds the device X.509 certificate as a PEM-encoded string.
 Signed by root cert.
 
@@ -128,7 +128,7 @@ client-server terminology only denotes who initiates the connection
 ## Authorize command
 The ```authorize``` command contains a list of RVI credentials, each specifying
 a set of services that the sender has the right to invoke on the receiving node,
-and a set of services that the sender has the right to register.
+and a set of services that the sender has the right to have invoked.
 
 ```json
 {"cmd"  : "au",
