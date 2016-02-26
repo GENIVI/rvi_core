@@ -723,10 +723,11 @@ env() ->
     "RVI_LOGLEVEL=debug RVI_MYIP=127.0.0.1 RVI_BACKEND=127.0.0.1".
 
 env(backend) ->
-    env();
+    [env(), " RVI_MYPORT=8800",
+     " RVI_MY_NODE_ADDR=127.0.0.1:8800"];
 env(sample) ->
     [env(),
-     " RVI_BACKEND=127.0.0.1 RVI_PORT=9000"
+     " RVI_BACKEND=127.0.0.1"
      " RVI_MY_NODE_ADDR=127.0.0.1:9000"].
 
 
