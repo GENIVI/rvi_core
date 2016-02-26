@@ -141,9 +141,9 @@ groups() ->
        t_register_lock_service,
        t_register_sota_service,
        t_call_lock_service,
-       %% t_call_sota_service,
-       %% t_multicall_sota_service,
-       %% t_remote_call_lock_service,
+       t_call_sota_service,
+       t_multicall_sota_service,
+       t_remote_call_lock_service,
        t_no_errors
       ]}
     ].
