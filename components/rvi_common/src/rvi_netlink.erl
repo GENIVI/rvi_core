@@ -22,6 +22,8 @@
          terminate/2,
          code_change/3]).
 
+-include_lib("lager/include/log.hrl").
+
 -record(iface, {name,
                 status = down,
                 opts = []}).
@@ -34,6 +36,7 @@
              poll_ref}).
 
 -define(BADARG, {?MODULE, '__BADARG__'}).
+-define(POLL_INTERVAL, 3000).  % we only poll if netlink_drv isn't present
 
 is_network_up() ->
     call(is_network_up).
@@ -60,6 +63,7 @@ init(_) ->
                   undefined
           end,
     Interfaces = get_interfaces(),
+    ?debug("get_interfaces() -> ~p", [Interfaces]),
     {ok, #st{ifs = Interfaces,
              poll_ref = Ref}}.
 
@@ -92,8 +96,8 @@ handle_info({timeout, _Ref, poll}, #st{ifs = Ifs} = S) ->
               end, [], NewIfs),
     {noreply, tell_subscribers(Diffs, S#st{ifs = NewIfs,
                                            poll_ref = NewPollRef})};
-handle_info({netlink, NRef, Iface, Field, Prev, New}, St) ->
-    {Prev1, New1} = adjust_status(IFace, Field, Prev, New),
+handle_info({netlink, _NRef, Iface, Field, Prev, New}, St) ->
+    {Prev1, New1} = adjust_status(Iface, Field, Prev, New),
     {noreply, tell_subscribers([{Iface, Field, Prev1, New1}], St)};
 handle_info(_, St) ->
     {noreply, St}.
@@ -114,8 +118,8 @@ call(Req) ->
 
 tell_subscribers(Evts, #st{subscribers = Subs} = St) ->
     lists:foreach(
-      fun({Name, Field, Old New}) ->
-              [Pid ! {rvi_netlink, Ref, Name, Field, Old New}
+      fun({Name, Field, Old, New}) ->
+              [Pid ! {rvi_netlink, Ref, Name, Field, Old, New}
                || #sub{name = N, pid = Pid, ref = Ref} <- Subs,
                   match_name(N, Name)]
       end, Evts),
@@ -124,7 +128,7 @@ tell_subscribers(Evts, #st{subscribers = Subs} = St) ->
 get_interfaces() ->
     case inet:getifaddrs() of
         {ok, IFs} ->
-            [if_entry(I) || {_, Flags} <- IFs];
+            [if_entry(I) || {_Name, _Flags} = I <- IFs];
         Error ->
             ?error("getifaddrs() -> ~p", [Error]),
             []
@@ -143,7 +147,7 @@ if_status(Opts) ->
 
 adjust_status(IF, operstate, A, B) ->
     {adjust_operstate(A, IF), adjust_operstate(B, IF)};
-adjust_status(_, A, B) ->
+adjust_status(_, _, A, B) ->
     {A, B}.
 
 adjust_operstate(undefined,  _) -> down;
@@ -164,6 +168,6 @@ match_name(A, B) when is_binary(A), is_list(B) ->
     binary_to_list(A) == B;
 match_name(_, _) ->
     false.
-            
+
 start_poll_timer() ->
     erlang:start_timer(?POLL_INTERVAL, self(), poll).
