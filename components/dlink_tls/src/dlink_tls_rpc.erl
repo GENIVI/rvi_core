@@ -125,7 +125,7 @@ setup_initial_listeners([_|_] = TlsOpts, CompSpec) ->
 	{value, {_, Ports}, Rest} ->
 	    setup_initial_listeners_(Rest, CompSpec),
 	    [setup_initial_listeners_(
-	       [{port,P}|inherit_opts([ip], TlsOpts, POpts)], CompSpec)
+	       [{port,P}|inherit_opts([ip, ifaddr], TlsOpts, POpts)], CompSpec)
 	     || {P, POpts} <- Ports];
 	false ->
 	    setup_initial_listeners_(TlsOpts, CompSpec)
@@ -427,7 +427,7 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
 
 %% JSON-RPC entry point
 %% CAlled by local exo http server
-handle_notification("service_available", Args) ->
+handle_notification(<<"service_available">>, Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
 
@@ -436,7 +436,7 @@ handle_notification("service_available", Args) ->
 					DataLinkModule ]}),
 
     ok;
-handle_notification("service_unavailable", Args) ->
+handle_notification(<<"service_unavailable">>, Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
 
@@ -450,7 +450,7 @@ handle_notification(Other, _Args) ->
     ?info("dlink_tls:handle_notification(~p): unknown", [ Other ]),
     ok.
 
-handle_rpc("setup_data_link", Args) ->
+handle_rpc(<<"setup_data_link">>, Args) ->
     { ok, Service } = rvi_common:get_json_element(["service"], Args),
 
     { ok, Opts } = rvi_common:get_json_element(["opts"], Args),
@@ -460,12 +460,12 @@ handle_rpc("setup_data_link", Args) ->
 
     {ok, [ {status, rvi_common:json_rpc_status(Res)} , { timeout, Timeout }]};
 
-handle_rpc("disconnect_data_link", Args) ->
+handle_rpc(<<"disconnect_data_link">>, Args) ->
     { ok, NetworkAddress} = rvi_common:get_json_element(["network_address"], Args),
     [Res] = gen_server:call(?SERVER, { rvi, disconnect_data_link, [NetworkAddress]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
 
-handle_rpc("send_data", Args) ->
+handle_rpc(<<"send_data">>, Args) ->
     { ok, ProtoMod } = rvi_common:get_json_element(["proto_mod"], Args),
     { ok, Service } = rvi_common:get_json_element(["service"], Args),
     { ok,  Data } = rvi_common:get_json_element(["data"], Args),
@@ -473,7 +473,7 @@ handle_rpc("send_data", Args) ->
     [ Res ]  = gen_server:call(?SERVER, { rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts]}),
     {ok, [ {status, rvi_common:json_rpc_status(Res)} ]};
 
-handle_rpc("connections", []) ->
+handle_rpc(<<"connections">>, []) ->
     Res = gen_server:call(?SERVER, connections),
     {ok, [ {status, ok} | {connections, {array, Res}} ]};
 
@@ -688,7 +688,7 @@ availability_msg(Availability, Services) ->
 status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
 status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
 
-process_authorize(FromPid, PeerIP, PeerPort, 
+process_authorize(FromPid, PeerIP, PeerPort,
 		  Credentials, ProtoVersion, CompSpec) ->
     ?info("dlink_tls:authorize(): Peer Address:   ~s:~p", [PeerIP, PeerPort ]),
     case ProtoVersion of

@@ -178,7 +178,7 @@ handle_rpc(Other, _Args) ->
 
 
 
-handle_notification("service_available", Args) ->
+handle_notification(<<"service_available">>, Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_mod"], Args),
     LogId = rvi_common:get_json_log_id(Args),
@@ -189,7 +189,7 @@ handle_notification("service_available", Args) ->
 					LogId ]}),
     ok;
 
-handle_notification("service_unavailable", Args) ->
+handle_notification(<<"service_unavailable">>, Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_mod"], Args),
     LogId = rvi_common:get_json_log_id(Args),
