@@ -35,6 +35,7 @@
 -define(SERVER, ?MODULE).
 
 -record(st, {
+	  cs,
 	  conn_by_pid = undefined,
 	  conn_by_addr = undefined
 	 }).
@@ -87,6 +88,7 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, #st{
+	    cs = rvi_common:get_component_specification(),
 	    conn_by_pid = dict:new(),  %% All managed connection stored by pid
 	    conn_by_addr = dict:new()  %% All managed connection stored by address
 	   }}.
@@ -114,36 +116,15 @@ handle_call({add_connection, BTAddr, Channel, Pid}, _From,
     %% Store so that we can find connection both by pid and by address
     NConPid = dict:store(Pid, { BTAddr, Channel }, ConPid),
     NConBTAddr = dict:store({ BTAddr, Channel }, Pid, ConBTAddr),
-
+    erlang:monitor(process, Pid),
     NSt = St#st { conn_by_pid = NConPid,
 		  conn_by_addr = NConBTAddr },
     {reply, ok, NSt};
 
 %% Delete connection by pid
-handle_call({delete_connection_by_pid, Pid}, _From,
-	    #st { conn_by_pid = ConPid,
-		  conn_by_addr = ConBTAddr} = St) when is_pid(Pid)->
-
-    %% Find address associated with Pid
-    case dict:find(Pid, ConPid) of
-	error ->
-	    ?debug("~p:handle_call(del_by_pid): not found: ~p",
-		   [ ?MODULE, Pid]),
-	    { reply, not_found, St};
-
-	{ok, BTAddr } ->
-	    ?debug("~p:handle_call(del_by_pid): deleted Pid: ~p, BTAddress: ~p",
-		   [ ?MODULE, Pid, BTAddr]),
-
-	    NConPid = dict:erase(Pid, ConPid),
-	    NConBTAddr = dict:erase(BTAddr, ConBTAddr),
-
-	    NSt = St#st { conn_by_pid = NConPid,
-			  conn_by_addr = NConBTAddr },
-
-	    {reply, ok, NSt}
-    end;
-
+handle_call({delete_connection_by_pid, Pid}, _From, St) when is_pid(Pid)->
+    {Res, NSt} = delete_connection_by_pid_(Pid, St),
+    {reply, Res, NSt};
 
 %% Delete connection by address
 handle_call({ delete_connection_by_address, BTAddr, Channel}, _From,
@@ -233,6 +214,9 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({'DOWN', _Ref, process, Pid, _}, St) ->
+    {_, NSt} = delete_connection_by_pid_(Pid, St),
+    {noreply, NSt};
 handle_info(_Info, State) ->
     ?warning("~p:handle_cast(): Unknown info: ~p", [ ?MODULE, _Info]),
     {noreply, State}.
@@ -265,3 +249,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+delete_connection_by_pid_(Pid, #st{conn_by_pid = ConPid,
+				   conn_by_addr = ConBTAddr,
+				   cs = CS} = St) ->
+    %% Find address associated with Pid
+    case dict:find(Pid, ConPid) of
+	error ->
+	    ?debug("del_by_pid: not found: ~p", [Pid]),
+	    {not_found, St};
+
+	{ok, BTAddr } ->
+	    ?debug("del_by_pid: deleted Pid: ~p, BTAddress: ~p", [Pid, BTAddr]),
+
+	    NConPid = dict:erase(Pid, ConPid),
+	    NConBTAddr = dict:erase(BTAddr, ConBTAddr),
+
+	    NSt = St#st { conn_by_pid = NConPid,
+			  conn_by_addr = NConBTAddr },
+	    authorize_rpc:remove_connection(CS, BTAddr),
+	    {ok, NSt}
+    end.
