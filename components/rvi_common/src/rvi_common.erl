@@ -214,8 +214,8 @@ notification(Component,
 	    send_json_notification(URL, atom_to_binary(Function, latin1),  JSONArg),
 	    ok;
 	{ error, _ } = Error ->
-	    ?warning("get_module_type(~p,~p,~p) -> ~p",
-		     [Component, Module, CompSpec, Error]),
+	    ?debug("get_module_type(~p,~p,~p) -> ~p",
+		   [Component, Module, CompSpec, Error]),
 	    %% ignore
 	    ok
     end.
