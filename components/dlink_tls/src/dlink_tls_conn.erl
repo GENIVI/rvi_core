@@ -427,7 +427,10 @@ do_upgrade(Sock, server, CompSpec) ->
 
 tls_opts(Role, CompSpec) ->
     {ok, ServerOpts} = get_module_config(server_opts, [], CompSpec),
-    TlsOpts = proplists:get_value(tls_opts, ServerOpts, []),
+    TlsOpts0 = proplists:get_value(tls_opts, ServerOpts, []),
+    TlsOpts = TlsOpts0 ++
+        [{reuse_sessions, false}
+         || not lists:keymember(reuse_sessions, 1, TlsOpts0)],
     ?debug("TlsOpts = ~p", [TlsOpts]),
     Opt = fun(K) -> opt(K, TlsOpts,
                         fun() ->
