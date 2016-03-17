@@ -427,7 +427,8 @@ do_upgrade(Sock, server, CompSpec) ->
 
 tls_opts(Role, CompSpec) ->
     {ok, ServerOpts} = get_module_config(server_opts, [], CompSpec),
-    TlsOpts = rvi_common:get_value(tls_opts, ServerOpts, CompSpec),
+    TlsOpts = proplists:get_value(tls_opts, ServerOpts, []),
+    ?debug("TlsOpts = ~p", [TlsOpts]),
     Opt = fun(K) -> opt(K, TlsOpts,
                         fun() ->
                                 ok(setup:get_env(rvi_core, K))
@@ -440,11 +441,11 @@ tls_opts(Role, CompSpec) ->
                      {certfile, Opt(device_cert)},
                      {keyfile, Opt(device_key)},
                      {cacertfile, Opt(root_cert)}
-                    ]};
+                     | other_tls_opts(TlsOpts)]};
         {verify, false} ->
             {false, [
                      {verify, verify_none}
-                    ]};
+                     | other_tls_opts(TlsOpts)]};
         _ when VOpt==false; VOpt == {verify, true} ->  % {verify,true} default
             {true, [
                     {verify, verify_peer},
@@ -457,8 +458,18 @@ tls_opts(Role, CompSpec) ->
                                         fun(X) ->
                                                 partial_chain(Role, X)
                                         end)}
+                    | other_tls_opts(TlsOpts)
                    ]}
     end.
+
+other_tls_opts(Opts) ->
+    other_tls_opts([device_cert, device_key,
+                    root_cert, verify_fun,
+                    partial_chain, verify], Opts).
+
+other_tls_opts(Remove, Opts) ->
+    [O || {K,_} = O <- Opts,
+          not lists:member(K, Remove)].
 
 opt(Key, Opts, Def) ->
     case lists:keyfind(Key, 1, Opts) of
