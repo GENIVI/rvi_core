@@ -300,6 +300,12 @@ handle_ws_json_rpc(WSock, <<"unregister_service">>, Params, _Arg ) ->
     gen_server:call(?SERVER, { rvi, unregister_local_service, [ SvcName ]}),
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ]};
 
+handle_ws_json_rpc(WSock, <<"get_node_service_prefix">>, [], _Arg) ->
+    ?debug("websocket_get_node_service_prefix(~p)", [WSock]),
+    { ok, [ { status, rvi_common:json_rpc_status(ok) },
+	    { node_service_prefix, rvi_common:local_service_prefix() },
+	    { method, <<"get_node_service_prefix">> } ]};
+
 handle_ws_json_rpc(_Ws , <<"get_available_services">>, _Params, _Arg ) ->
     ?debug("service_edge_rpc:websocket_get_available()"),
     [ ok, Services ] =
@@ -343,6 +349,10 @@ handle_rpc(<<"unregister_service">>, Args) ->
 	   { method, <<"unregister_service">>}
 	 ]};
 
+handle_rpc(<<"get_node_service_prefix">>, []) ->
+    { ok, [ { status, rvi_common:json_rpc_status(ok) },
+	    { node_service_prefix, rvi_common:local_service_prefix() },
+	    { method, <<"get_node_service_prefix">> } ]};
 
 handle_rpc(<<"get_available_services">>, _Args) ->
     [ Status, Services ] = gen_server:call(?SERVER, { rvi, get_available_services, []}),
