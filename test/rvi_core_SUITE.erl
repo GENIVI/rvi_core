@@ -42,6 +42,7 @@
     t_call_sota_service/1,
     t_multicall_sota_service/1,
     t_remote_call_lock_service/1,
+    t_get_node_service_prefix/1,
     t_check_rvi_log/1,
     t_no_errors/1
    ]).
@@ -94,6 +95,7 @@ groups() ->
        t_call_sota_service,
        t_multicall_sota_service,
        t_remote_call_lock_service,
+       t_get_node_service_prefix,
        t_no_errors
       ]},
      {test_run_tls, [],
@@ -106,6 +108,7 @@ groups() ->
        t_remote_call_lock_service,
        t_call_sota_service,
        t_multicall_sota_service,
+       t_get_node_service_prefix,
        t_check_rvi_log,
        t_no_errors
       ]},
@@ -131,6 +134,7 @@ groups() ->
        t_remote_call_lock_service,
        t_call_sota_service,
        t_multicall_sota_service,
+       t_get_node_service_prefix,
        t_check_rvi_log,
        t_no_errors
       ]},
@@ -144,6 +148,7 @@ groups() ->
        t_call_sota_service,
        t_multicall_sota_service,
        t_remote_call_lock_service,
+       t_get_node_service_prefix,
        t_no_errors
       ]}
     ].
@@ -362,6 +367,43 @@ flush_reqs([{Pid, Ref}|T]) ->
 flush_reqs([]) ->
     ok.
 
+t_get_node_service_prefix(Config) ->
+    get_node_service_prefix_("backend", Config),
+    get_short_node_service_prefix_("backend", Config),
+    get_node_service_prefix_("sample", Config),
+    get_short_node_service_prefix_("sample", Config).
+
+get_node_service_prefix_(Node, _Config) ->
+    Reply = json_rpc_request(
+	      service_edge(Node),
+	      <<"get_node_service_prefix">>,
+	      []),
+    ct:log("get_node_service_prefix (~s) -> ~p", [Node, Reply]),
+    Result = node_prefix_result(Reply),
+    ct:log("Result = ~p", [Result]),
+    case Node of
+	"sample"	-> <<"jlr.com/vin/abc/">> = Result;
+	"backend"	-> <<"genivi.org/backend/">> = Result
+    end,
+    ok.
+
+get_short_node_service_prefix_(Node, _Config) ->
+    Reply = json_rpc_request(
+	      service_edge(Node),
+	      <<"get_node_service_prefix">>,
+	      [{<<"full">>, false}]),
+    ct:log("get_short_node_service_prefix (~s) -> ~p", [Node, Reply]),
+    Result = node_prefix_result(Reply),
+    ct:log("Result = ~p", [Result]),
+    case Node of
+	"sample"	-> <<"jlr.com">> = Result;
+	"backend"	-> <<"genivi.org">> = Result
+    end,
+    ok.
+
+node_prefix_result(Res) ->
+    proplists:get_value(<<"node_service_prefix">>,
+			proplists:get_value(<<"result">>, Res), []).
 
 call_sota_service_(RegName, Data) ->
     {Mega, Secs, _} = os:timestamp(),
