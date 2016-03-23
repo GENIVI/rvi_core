@@ -119,7 +119,7 @@ unsubscribe(CompSpec, SubscribingMod) ->
 %% Called by local exo http server
 
 %% Register remote services
-handle_notification("register_services", Args) ->
+handle_notification(<<"register_services">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, Services} = rvi_common:get_json_element(["services"], Args),
     {ok, DataLinkModule} = rvi_common:get_json_element(["data_link_module"], Args),
@@ -129,7 +129,7 @@ handle_notification("register_services", Args) ->
     ok;
 
 
-handle_notification("unregister_services", Args) ->
+handle_notification(<<"unregister_services">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, Services} = rvi_common:get_json_element(["services"], Args),
     {ok, DataLinkModule } = rvi_common:get_json_element(["data_link_module"], Args),
@@ -138,7 +138,7 @@ handle_notification("unregister_services", Args) ->
     ok;
 
 
-handle_notification("subscribe", Args) ->
+handle_notification(<<"subscribe">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, Module } = rvi_common:get_json_element(["subscribing_module"], Args),
 
@@ -146,7 +146,7 @@ handle_notification("subscribe", Args) ->
     gen_server:cast(?SERVER, { rvi, subscribe, [ list_to_atom(Module), LogId ]}),
     ok;
 
-handle_notification("unsubscribe_from_service", Args) ->
+handle_notification(<<"unsubscribe_from_service">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, Module } = rvi_common:get_json_element(["subscribing_module"], Args),
 
@@ -162,14 +162,14 @@ handle_notification( Other, _Args) ->
 %%
 %% Get all services
 %%
-handle_rpc("get_all_services", Args) ->
+handle_rpc(<<"get_all_services">>, Args) ->
     ?debug("svc_disc:get_all_services(json-rpc)"),
     LogId = rvi_common:get_json_log_id(Args),
     [ok, Services ] = gen_server:call(?SERVER, { rvi, get_all_services, [LogId]}),
     {ok, [ {status, rvi_common:json_rpc_status(ok)} , { services, Services }]};
 
 
-handle_rpc("get_services_by_module", Args) ->
+handle_rpc(<<"get_services_by_module">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, DataLinkMod } = rvi_common:get_json_element(["data_link_module"], Args),
     ?debug("svc_disc:get_services_by_module(json-rpc): ~p ", [DataLinkMod]),
@@ -180,7 +180,7 @@ handle_rpc("get_services_by_module", Args) ->
     {ok, [ {status, rvi_common:json_rpc_status(ok)} , { services, { array, Services } }]};
 
 
-handle_rpc("get_modules_by_service", Args) ->
+handle_rpc(<<"get_modules_by_service">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, Service } = rvi_common:get_json_element(["service"], Args),
     ?debug("svc_disc:get_modules_by_service(json-rpc): ~p ", [Service]),

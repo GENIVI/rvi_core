@@ -7,7 +7,7 @@
 	 get_pub_key/1,
 	 provisioning_key/0,
 	 signed_public_key/2,
-	 save_keys/2,
+	 %% save_keys/2,
 	 save_cred/5]).
 -export([get_credentials/0,
 	 get_credentials/1]).
@@ -17,6 +17,13 @@
 	 find_cred_by_service/1]).
 -export([public_key_to_json/1,
 	 json_to_public_key/1]).
+
+-export([cache_authorizations/1,
+	 remove_cached_authorizations/1,
+	 remove_cached_authorizations_for_conn/1,
+	 update_authorization_cache/2]).
+
+-export([remove_connection/1]).
 
 -export([self_signed_public_key/0]).  % just temporary
 -export([strip_nl/1]).
@@ -41,13 +48,6 @@
 	     dev_cert,
 	     cred_dir}).
 
-%% -record(cert, {id,
-%% 	       register = [],
-%% 	       invoke = [],
-%% 	       validity = [],
-%% 	       jwt,
-%% 	       cert}).
-
 -record(cred, {id,
 	       right_to_receive = [],
 	       right_to_invoke = [],
@@ -56,11 +56,8 @@
 	       jwt,
 	       cred}).
 
--record(key, {id,
-	      key}).
-
 -define(CREDS, authorize_creds).
--define(KEYS,  authorize_keys).
+-define(CACHE, authorize_cache).
 
 public_key_to_json(#'RSAPublicKey'{modulus = N, publicExponent = E}) ->
     [
@@ -124,8 +121,16 @@ get_device_key() ->
 validate_message(JWT, Conn) ->
     gen_server:call(?MODULE, {validate_message, JWT, Conn}).
 
-validate_service_call(Service, Conn) ->
-    gen_server:call(?MODULE, {validate_service_call, Service, Conn}).
+validate_service_call(Service, Conn0) ->
+    Conn = normalize_conn(Conn0),
+    case ets:lookup(?CACHE, {Service, Conn}) of
+	[{_, Res}] ->
+	    ?debug("cached validation (~p): ~p", [{Service, Conn}, Res]),
+	    Res;
+	[] ->
+	    ?debug("no cached validation (~p)", [{Service, Conn}]),
+	    gen_server:call(?MODULE, {validate_service_call, Service, Conn})
+    end.
 
 get_credentials() ->
     get_credentials(local).
@@ -142,11 +147,23 @@ find_cred_by_service(Service) ->
 provisioning_key() ->
     gen_server:call(?MODULE, provisioning_key).
 
-save_keys(Keys, Conn) ->
-    gen_server:call(?MODULE, {save_keys, Keys, Conn}).
-
 save_cred(Cred, JWT, Conn, PeerCert, LogId) ->
     gen_server:call(?MODULE, {save_cred, Cred, JWT, Conn, PeerCert, LogId}).
+
+cache_authorizations(Svcs) ->
+    gen_server:cast(?MODULE, {cache_authorizations, Svcs}).
+
+remove_cached_authorizations(Svcs) ->
+    gen_server:cast(?MODULE, {remove_cached_authorizations, Svcs}).
+
+remove_cached_authorizations_for_conn(Conn) ->
+    remove_cached_authorizations_for_conn_(normalize_conn(Conn)).
+
+update_authorization_cache(Conn, CS) ->
+    gen_server:cast(?MODULE, {update_authorization_cache, Conn, CS}).
+
+remove_connection(Conn) ->
+    gen_server:cast(?MODULE, {remove_connection, Conn}).
 
 %% Gen_server functions
 
@@ -155,7 +172,7 @@ start_link() ->
     case gen_server:start_link({local, ?MODULE}, ?MODULE, [], []) of
 	{ok, Pid} = Ok ->
 	    ets:give_away(?CREDS, Pid, undefined),
-	    ets:give_away(?KEYS, Pid, undefined),
+	    %% ets:give_away(?KEYS, Pid, undefined),
 	    Ok;
 	Other ->
 	    Other
@@ -191,16 +208,7 @@ handle_call_(provisioning_key, _, S) ->
 handle_call_({get_credentials, Conn}, _, S) ->
     Creds = creds_by_conn(normalize_conn(Conn)),
     {reply, Creds, S};
-handle_call_({save_keys, Keys, Conn0}, _, S) ->
-    Conn = normalize_conn(Conn0),
-    ?debug("save_keys: Keys=~p, Conn=~p~n", [abbrev_k(Keys), Conn]),
-    save_keys_(Keys, Conn),
-    {reply, ok, S};
-handle_call_({validate_message, JWT, Conn0}, _, S) ->
-    Conn = normalize_conn(Conn0),
-    {reply, validate_message_(JWT, Conn), S};
-handle_call_({validate_service_call, Svc, Conn0}, _, S) ->
-    Conn = normalize_conn(Conn0),
+handle_call_({validate_service_call, Svc, Conn}, _, S) ->
     {reply, validate_service_call_(Svc, Conn), S};
 handle_call_({save_cred, Cred, JWT, {IP, Port} = Conn0, PeerCert, LogId}, _, S) ->
     Conn = normalize_conn(Conn0),
@@ -228,6 +236,21 @@ handle_call_({find_cred_by_service, Service} = R, _From, State) ->
 handle_call_(_, _, S) ->
     {reply, error, S}.
 
+handle_cast({cache_authorizations, Svcs}, S) ->
+    cache_authorizations_(Svcs),
+    {noreply, S};
+handle_cast({remove_cached_authorizations, Svcs}, S) ->
+    remove_cached_authorizations_(Svcs),
+    {noreply, S};
+handle_cast({update_authorization_cache, Conn0, CS}, S) ->
+    Conn = normalize_conn(Conn0),
+    update_authorization_cache_(Conn, CS),
+    {noreply, S};
+handle_cast({remove_connection, Conn0}, S) ->
+    Conn = normalize_conn(Conn0),
+    ets:select_delete(?CACHE, [{ {{'_', Conn}, '_'}, [], [true] }]),
+    ets:select_delete(?CREDS, [{ {{Conn, '_'}, '_'}, [], [true] }]),
+    {noreply, S};
 handle_cast(_, S) ->
     {noreply, S}.
 
@@ -449,7 +472,8 @@ get_pub_key_from_cert_rec(#'Certificate'{
 
 create_ets() ->
     create_ets(?CREDS, 1),
-    create_ets(?KEYS, #key.id).
+    %% create_ets(?KEYS, #key.id),
+    create_ets(?CACHE, 1).
 
 create_ets(Tab, KeyPos) ->
     case ets:info(Tab, name) of
@@ -589,56 +613,73 @@ check_validity({Start, Stop}, UTC) ->
 check_validity(Start, Stop, UTC) ->
     (UTC > Start) andalso (UTC < Stop).
 
-save_keys_(Keys, Conn) ->
-    lists:foreach(
-      fun(K) ->
-	      save_key(K, Conn)
-      end, Keys).
-
-save_key(K, Conn) ->
-    case json_to_public_key(K) of
-	undefined ->
-	    ?warning("Unknown key type: ~p~n", [K]),
-	    skip;
-	#'RSAPublicKey'{} = PubKey ->
-	    KeyID =
-	    case rvi_common:get_json_element(["kid"], K) of
-		{ok, ID} -> {Conn, ID};
-		_        -> {Conn, make_ref()}
-	    end,
-	    ?debug("Saving key ~p, PubKey = ~p~n", [KeyID, pp_key(PubKey)]),
-	    ets:insert(?KEYS, #key{id = KeyID, key = PubKey})
-    end.
-
-keys_by_conn(Conn) ->
-    ?debug("keys_by_conn(~p); all keys: ~p",
-	   [Conn, ets:select(?KEYS, [{ #key{id = '$1', _='_'},
-				       [], ['$1'] }])]),
-    ets:select(?KEYS, [{ #key{id = {Conn,'$1'},
-			      key = '$2', _='_'}, [], [{{'$1', '$2'}}] }]).
-
-validate_message_(JWT, Conn) ->
-    ?debug("validate_message_(~p, ~p) -> ~p~n", [JWT, Conn, keys_by_conn(Conn)]),
-    [_|_] = Keys = keys_by_conn(Conn),
-    validate_message_1(Keys, JWT).
-
-validate_message_1([{_,K}|T], JWT) ->
-    case authorize_sig:decode_jwt(JWT, K) of
-	invalid ->
-	    validate_message_1(T, JWT);
-	{_, Msg} ->
-	    Msg
-    end;
-validate_message_1([], _) ->
-    error(invalid).
-
 validate_service_call_(Svc, Conn) ->
-    case lists:filter(fun(C) -> can_invoke(Svc, C) end, cred_recs_by_conn(Conn)) of
-	[] ->
-	    invalid;
-	[#cred{id = ID}|_] ->
-	    {ok, ID}
+    Res =
+	case lists:filter(fun(C) ->
+				  can_invoke(Svc, C)
+			  end, cred_recs_by_conn(Conn)) of
+	    [] ->
+		invalid;
+	    [#cred{id = ID}|_] ->
+		{ok, ID}
+	end,
+    ets:insert(?CACHE, {{Svc, Conn}, Res}),
+    Res.
+
+cache_authorizations_(Svcs) ->
+    CacheEntries = ets:foldl(
+		     fun(CEntry, Acc) ->
+			     lists:foldr(
+			       fun(Svc, Acc1) ->
+				       cache_authorization_entry(
+					 CEntry, Svc, Acc1)
+			       end, Acc, Svcs)
+		     end, [], ?CREDS),
+    ets:insert(?CACHE, CacheEntries),
+    ?debug("auth cache: ~p", [ets:tab2list(?CACHE)]),
+    ok.
+
+cache_authorization_entry(Entry, Svc, Acc) ->
+    ?debug("cache_authorization_entry(~p, ~p)", [Entry, Svc]),
+    case {Entry, Acc} of
+	{{{Conn, _}, _C}, [{{Svc, Conn}, {ok,_}}|_]} ->
+	    Acc;
+	{{{Conn, ID}, C}, Acc} ->
+	    case can_invoke(Svc, C) of
+		true  ->
+		    case Acc of
+			[{{Svc, Conn}, invalid}|Rest] ->
+			    [{{Svc, Conn}, {ok, ID}}|Rest];
+			_ ->
+			    [{{Svc, Conn}, {ok, ID}}|Acc]
+		    end;
+		false ->
+		    case Acc of
+			[{{Svc, Conn}, invalid}|_] ->
+			    Acc;
+			_ ->
+			    [{{Svc, Conn}, invalid}|Acc]
+		    end
+	    end
     end.
+
+remove_cached_authorizations_(Svc) ->
+    ets:select_delete(?CACHE, [{ {{Svc,'_'},'_'}, [], [true] }]),
+    ok.
+
+update_authorization_cache_(Conn, CS) ->
+    remove_cached_authorizations_for_conn_(Conn),
+    [ok, Svcs] = service_discovery_rpc:get_all_services(CS),
+    ?debug("update authorization cache for ~p; Svs = ~p", [Conn, Svcs]),
+    lists:foreach(
+      fun(Svc) ->
+	      validate_service_call_(Svc, Conn)
+      end, Svcs),
+    ?debug("auth cache: ~p", [ets:tab2list(?CACHE)]).
+
+remove_cached_authorizations_for_conn_(Conn) ->
+    ets:select_delete(?CACHE, [{ {{'_', Conn}, '_'}, [], [true] }]),
+    ok.
 
 can_invoke(Svc, #cred{right_to_invoke = In}) ->
     lists:any(fun(I) -> match_svc(I, Svc) end, In).

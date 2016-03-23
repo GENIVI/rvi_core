@@ -1,0 +1,12 @@
+{application, netlink,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { netlink_app, []}},
+  {env, []}
+ ]}.

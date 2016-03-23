@@ -398,7 +398,7 @@ get_json_value(K, [{K1,V}|T], Def) ->
     end;
 get_json_value(K, [_|T], Def) ->
     get_json_value(K, T, Def);
-get_json_value(_, [], Def) ->
+get_json_value(_, _, Def) ->
     Def.
 
 comp(A, A) -> true;

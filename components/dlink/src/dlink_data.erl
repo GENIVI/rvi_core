@@ -47,7 +47,7 @@ do_decode(Data) ->
 decoded(Decoded, Rest, F, Mod, FragOpts) ->
     case rvi_frag:maybe_fragment(Decoded, Mod, FragOpts) of
 	true ->
-	    {ok, Rest};
+	    decode(Rest, F, <<>>, Mod, FragOpts);
 	{true, Msg} ->
 	    case do_decode(Msg) of
 		{ok, DecMsg, <<>>} ->

@@ -317,7 +317,11 @@ t_register_sota_service(_Config) ->
 t_call_sota_service(_Config) ->
     call_sota_service_(sota_client, sota_bin()).
 
-t_multicall_sota_service(_Config) ->
+t_multicall_sota_service(Config) ->
+    with_trace(fun t_multicall_sota_service_/1, Config,
+     	       "t_multicall_sota_service").
+
+t_multicall_sota_service_(_Config) ->
     Data = <<"abc">>,
     Pids = [spawn_monitor(fun() ->
 				  exit({ok, call_sota_service_(N, Data)})
@@ -546,13 +550,17 @@ join_stdout_msgs_rev(L) ->
 spawn_cmd(Cmd0) ->
     Cmd = binary_to_list(iolist_to_binary(Cmd0)),
     Me = self(),
-    Pid = spawn(fun() ->
-			Res = exec:run(Cmd, [stdin, stdout, stderr]),
-			ct:log("~s ->~n~p~n", [Cmd, Res]),
-			Me ! {self(), ok},
-			cmd_loop()
-		end),
+    {Pid, Ref} =
+	spawn_monitor(fun() ->
+			      Res = exec:run(Cmd, [stdin, stdout, stderr]),
+			      ct:log("~s ->~n~p~n", [Cmd, Res]),
+			      Me ! {self(), ok},
+			      cmd_loop()
+		      end),
     receive
+	{'DOWN', Ref, _, _, Reason} ->
+	    error({spawn_cmd, [{cmd, Cmd},
+			       {error, Reason}]});
 	{Pid, ok} ->
 	    Pid
     end.
@@ -644,7 +652,7 @@ generate_cred(sample, KeyDir, CredDir, _Config) ->
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
 	 " --receive='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock'"
-	 " --invoke='jlr.com/backend/set_state'"
+	 " --invoke='jlr.com/vin/abc/lock jlr.com/backend/set_state'"
 	 " --jwt_out=", CredDir, "/lock_cred.jwt"
 	 " --cred_out=", KeyDir, "/lock_cred.json"]),
     ok;
@@ -677,7 +685,7 @@ generate_sota_cred(sample, KeyDir, CredDir, _Config) ->
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
 	 " --receive='jlr.com/vin/abc/store'"
-	 " --invoke='jlr.com/backend/set_state'"
+	 " --invoke='jlr.com/vin/abc/sota jlr.com/backend/set_state'"
 	 " --jwt_out=", CredDir, "/sota_cred.jwt"
 	 " --cred_out=", KeyDir, "/sota_cred.json"]),
     ok;
@@ -858,11 +866,15 @@ save_ospid(Node) ->
 %%     lookup({Node, pid}).
 
 stop_nodes() ->
-    Nodes = ets:select(?DATA, [{ {{'$1',pid},'$2'}, [], [{{'$1','$2'}}] }]),
+    Nodes = get_nodes(),
     ct:log("Stopping, Nodes = ~p~n", [Nodes]),
     rpc:multicall([N || {N,_} <- Nodes], init, stop, []),
     [verify_killed(cmd_(["kill -9 ", P], [])) || {_,P} <- Nodes],
     [delete_node(N) || {N,_} <- Nodes].
+
+get_nodes() ->
+    ets:select(?DATA, [{ {{'$1',pid},'$2'}, [], [{{'$1','$2'}}] }]).
+
 
 stop_services() ->
     Services =
@@ -948,3 +960,28 @@ log_is_empty(Log, F, Name) ->
 	    ct:log("~s: Cannot read log ~s (~p)", [Name, Log, Reason]),
 	    false
     end.
+
+
+with_trace(F, Config, File) ->
+    Nodes = [N || {N,_} <- get_nodes()],
+    rvi_ttb:on_nodes([node()|Nodes], File),
+    try F(Config)
+    catch
+	error:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ttb_stop(),
+	    ct:log("Error ~p; Stack = ~p", [R, Stack]),
+	    erlang:error(R);
+	exit:R ->
+	    ttb_stop(),
+	    exit(R)
+    end,
+    rvi_ttb:stop_nofetch(),
+    ok.
+
+ttb_stop() ->
+    Dir = rvi_ttb:stop(),
+    Out = filename:join(filename:dirname(Dir),
+			filename:basename(Dir) ++ ".txt"),
+    rvi_ttb:format(Dir, Out),
+    ct:log("Formatted trace log in ~s~n", [Out]).

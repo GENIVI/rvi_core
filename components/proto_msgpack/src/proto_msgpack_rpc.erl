@@ -74,7 +74,7 @@ receive_message(CompSpec, {IP, Port}, Data) ->
 %% JSON-RPC entry point
 
 %% CAlled by local exo http server
-handle_rpc("send_message", Args) ->
+handle_rpc(<<"send_message">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, TID} = rvi_common:get_json_element(["transaction_id"], Args),
     {ok, ServiceName} = rvi_common:get_json_element(["service_name"], Args),
@@ -100,7 +100,7 @@ handle_rpc(Other, _Args) ->
     { ok, [ { status, rvi_common:json_rpc_status(invalid_command)} ] }.
 
 
-handle_notification("receive_message", Args) ->
+handle_notification(<<"receive_message">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, Data} = rvi_common:get_json_element(["data"], Args),
     {ok, RemoteIP} = rvi_common:get_json_element(["remote_ip"], Args),

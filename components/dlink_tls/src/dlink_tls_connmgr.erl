@@ -38,7 +38,7 @@
 -define(PID_TAB, dlink_tls_pid_tab).
 -define(ADDR_TAB, dlink_tls_addr_tab).
 
--record(st, {}).
+-record(st, {cs}).
 
 %%%===================================================================
 %%% API
@@ -101,7 +101,7 @@ maybe_create(Tab) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #st{}}.
+    {ok, #st{cs = rvi_common:get_component_specification()}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -122,28 +122,16 @@ handle_call({add_connection, IP, Port, Pid}, _From, St) ->
     ?debug("~p:handle_call(add): Adding Pid: ~p, Address: ~p",
 	     [ ?MODULE, Pid, Addr]),
     %% Store so that we can find connection both by pid and by address
+    erlang:monitor(process, Pid),
     ets_insert(?PID_TAB, {Pid, Addr}),
     ets_insert(?ADDR_TAB, {Addr, Pid}),
     {reply, ok, St};
 
 %% Delete connection by pid
-handle_call({delete_connection_by_pid, Pid}, _From, St) when is_pid(Pid) ->
-    %% Find address associated with Pid
-    case ets_lookup(?PID_TAB, Pid) of
-        [] ->
-	    ?debug("~p:handle_call(del_by_pid): not found: ~p",
-		   [ ?MODULE, Pid]),
-	    { reply, not_found, St};
-
-	[{_, Addr}] ->
-	    ?debug("~p:handle_call(del_by_pid): deleted Pid: ~p, Address: ~p",
-		   [ ?MODULE, Pid, Addr]),
-
-            ets_delete(?PID_TAB, Pid),
-            ets_delete(?ADDR_TAB, Addr),
-	    {reply, ok, St}
-    end;
-
+handle_call({delete_connection_by_pid, Pid}, _From, #st{cs = CS} = St)
+  when is_pid(Pid) ->
+    Res = delete_connection_by_pid_(Pid, CS),
+    {reply, Res, St};
 
 %% Delete connection by address
 handle_call({ delete_connection_by_address, IP, Port}, _From, St) ->
@@ -224,6 +212,9 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({'DOWN', _Ref, process, Pid, _}, #st{cs = CS} = State) ->
+    delete_connection_by_pid_(Pid, CS),
+    {noreply, State};
 handle_info(_Info, State) ->
     ?warning("~p:handle_cast(): Unknown info: ~p", [ ?MODULE, _Info]),
     {noreply, State}.
@@ -268,3 +259,16 @@ ets_delete(Tab, Key) ->
 
 ets_select(Tab, Pat) ->
     ets:select(Tab, Pat).
+
+delete_connection_by_pid_(Pid, CS) ->
+    case ets_lookup(?PID_TAB, Pid) of
+        [] ->
+	    ?debug("del_by_pid: not found: ~p", [ Pid]),
+            not_found;
+	[{_, Addr}] ->
+	    ?debug("del_by_pid: deleted Pid: ~p, Address: ~p", [Pid, Addr]),
+            ets_delete(?PID_TAB, Pid),
+            ets_delete(?ADDR_TAB, Addr),
+            authorize_rpc:remove_connection(CS, Addr),
+            ok
+    end.
