@@ -93,16 +93,20 @@ handle_post_multipart(Socket, Request, Body, _AppMod) ->
     end.
 
 decode_part(P) ->
-    decode_part(P, []).
+    io:fwrite("decode_part()~n"
+	      "---------------------------~n"
+	      "~s~n"
+	      "---------------------------~n", [P]),
+    decode_part(P, #http_chdr{}).
 
 decode_part(P, Acc) ->
     case erlang:decode_packet(httph, P, []) of
 	{ok, {http_header,_,K,_,V}, Rest} ->
-	    decode_part(Rest, [exo_http:set_chdr(K,V,#http_chdr{})|Acc]);
+	    decode_part(Rest, exo_http:set_chdr(K,V,Acc));
 	{ok, http_eoh, Body} ->
-	    {lists:reverse(Acc), Body};
+	    {Acc, Body};
 	{ok, {http_error, _}, _} ->
-	    {lists:reverse(Acc), P}
+	    {Acc, P}
     end.
 
 %% Validated RPC
