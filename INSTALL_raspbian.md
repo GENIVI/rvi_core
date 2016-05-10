@@ -93,10 +93,52 @@ Expected output:
                └─6094 /usr/lib/erlang/erts-7.2/bin/epmd -daemon
 
 
+## GET STARTED WITH SERVICES ##
+
+Find out which services are registered through `rvi_get_services`:
+
+    /usr/lib/rvi_core/rvi_get_services
+
+The command should return no output, since we have not registered any services yet.
+
+Register a service by calling `rvi_service` -- start with "hello":
+
+    /usr/lib/rvi_core/rvi_service hello
+
+Expected output:
+
+    RVI General Service.
+    RVI node URL:         http://localhost:9001
+    Service:              genivi.org/vin/default_vin/hello
+    Press enter to quit: 
+
+In another terminal, call `rvi_get_services` again to see the newly registered service:
+
+    genivi.org/vin/default_vin/hello
+
+Invoke the service through `rvi_call` and the full service name:
+
+    /usr/lib/rvi_core/rvi_call genivi.org/vin/default_vin/hello
+
+In terminal 1 (where you called `rvi_service`), you should see the following output:
+
+    Service invoked!
+    args: {}
+
+In terminal 2 (where you called `rvi_call`), you should see the following output:
+
+    RVI Node:          http://localhost:9001
+    Service:           genivi.org/vin/default_vin/hello
+    args:              {}
+
+You can pass arguments to a service call with the format name=value:
+
+    /usr/lib/rvi_core/rvi_call genivi.org/vin/default_vin/hello \
+    a=b message=hello
+
 ## CREATE A RELEASE ##
 
-The installer configures a release with default (insecure) credentials.
+The installer configures a release with default (insecure) values.
 
-See ```CONFIGURE.md``` for additional details on configuring and
-creating a developer and production release.
-
+See ```CONFIGURE.md``` for details on configuring and creating a
+developer and production release that can be launched.
