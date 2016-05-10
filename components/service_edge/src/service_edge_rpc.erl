@@ -300,6 +300,10 @@ handle_ws_json_rpc(WSock, <<"unregister_service">>, Params, _Arg ) ->
     gen_server:call(?SERVER, { rvi, unregister_local_service, [ SvcName ]}),
     { ok, [ { status, rvi_common:json_rpc_status(ok)} ]};
 
+handle_ws_json_rpc(WSock, <<"get_node_service_prefix">>, Params, _Arg) ->
+    ?debug("websocket_get_node_service_prefix(~p)", [WSock]),
+    get_node_service_prefix_(Params);
+
 handle_ws_json_rpc(_Ws , <<"get_available_services">>, _Params, _Arg ) ->
     ?debug("service_edge_rpc:websocket_get_available()"),
     [ ok, Services ] =
@@ -343,6 +347,9 @@ handle_rpc(<<"unregister_service">>, Args) ->
 	   { method, <<"unregister_service">>}
 	 ]};
 
+handle_rpc(<<"get_node_service_prefix">>, Params) ->
+    ?debug("get_node_service_prefix", []),
+    get_node_service_prefix_(Params);
 
 handle_rpc(<<"get_available_services">>, _Args) ->
     [ Status, Services ] = gen_server:call(?SERVER, { rvi, get_available_services, []}),
@@ -369,6 +376,26 @@ handle_rpc(Other, _Args) ->
     ?warning("service_edge_rpc:handle_rpc(~p): unknown command", [ Other ]),
     {ok,[ { status, rvi_common:json_rpc_status(invalid_command)} ]}.
 
+
+get_node_service_prefix_(Params) ->
+    Prefix = rvi_common:local_service_prefix(),
+    [UUID | _ ] = re:split(Prefix, <<"/">>, [{return, binary}]),
+    GoodRes = fun(R) ->
+		      { ok, [ { status, rvi_common:json_rpc_status(ok) },
+			      { node_service_prefix, R },
+			      { method, <<"get_node_service_prefix">> } ]}
+	      end,
+    case rvi_common:get_json_element(["full"], Params) of
+	{ok, Full} when Full == true; Full == 1 ->
+	    GoodRes(Prefix);
+	{error, _} ->
+	    GoodRes(Prefix);
+	{ok, Full} when Full == false; Full == 0 ->
+	    GoodRes(UUID);
+	_ ->
+	    { ok, [ { status, rvi_common:json_rpc_status(invalid_command) },
+		    { method, <<"get_node_service_prefix">> } ] }
+    end.
 
 handle_notification(<<"service_available">>, Args) ->
     {ok, SvcName} = rvi_common:get_json_element([<<"service">>], Args),
