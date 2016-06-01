@@ -19,6 +19,7 @@
 %% FIXME: Should be rvi_service_discovery behavior
 -export([service_available/3,
 	 service_unavailable/3]).
+-export([publish_node_id/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -132,7 +133,17 @@ schedule_message(CompSpec,
 			{ parameters, Parameters }],
 		       [status, transaction_id], CompSpec).
 
-
+publish_node_id(Cs, NodeId, DLMod) ->
+    P = self(),
+    S = <<"rvi:", NodeId/binary>>,
+    spawn(fun() ->
+                  MRef = erlang:monitor(process, P),
+                  receive
+                      {'DOWN', MRef, _, _, _} ->
+                          service_unavailable(Cs, S, DLMod)
+                  end
+          end),
+    service_available(Cs, S, DLMod).
 
 service_available(CompSpec, SvcName, DataLinkModule) ->
 
@@ -265,7 +276,6 @@ handle_cast( {rvi, service_available, [ SvcName, DataLinkModule ]}, St) ->
     %% to come up
     NSt2 = send_orphaned_messages(SvcName, DataLinkModule, NSt1),
     { noreply, NSt2 };
-
 
 handle_cast( {rvi, service_unavailable, [SvcName, DataLinkModule]},
 	    #st { services_tid = SvcTid } = St) ->
@@ -676,7 +686,19 @@ send_orphaned_messages_(Protocol, ProtocolOpts,
     end.
 
 
-
+find_service(<<R,V,I,":", Rest/binary>>, DLMod, #st{services_tid = SvcTid})
+  when R==$R; R==$r, V==$V; V==$v, I==$I; I==$i ->
+    case re:split(Rest, <<"/">>, [{return, binary}]) of
+	[NodeId | _] ->
+	    case ets:lookup(SvcTid, {<<"rvi:", NodeId/binary>>, DLMod}) of
+		[] ->
+		    not_found;
+		[SvcRec] ->
+		    SvcRec
+	    end;
+	_ ->
+	    not_found
+    end;
 find_service(SvcName, DataLinkMod, #st { services_tid = SvcTid }) ->
     ?debug("sched:find_or_create_service(): ~p:~p", [ DataLinkMod, SvcName]),
 
@@ -703,23 +725,20 @@ find_or_create_service(SvcName, DataLinkMod, St) ->
 	    SvcRec
     end.
 
-
-
 %% Create a new service.
 %% Warning: Will overwrite existing service (and its message table reference).
 %%
 update_service(SvcName, DataLinkMod, Available,
 	       #st { services_tid = SvcsTid, cs = CS }) ->
-
+    Key = {SvcName, DataLinkMod},
     MsgTID  =
-	case ets:lookup(SvcsTid, { SvcName, DataLinkMod }) of
+	case ets:lookup(SvcsTid, Key) of
 	    [] ->  %% The given service does not exist, create a new message TID
 		?debug("sched:update_service(~p:~p): ~p - Creating new",
 		       [ DataLinkMod, SvcName, Available]),
 		ets:new(rvi_messages,
 			[ ordered_set, private,
 			  { keypos, #message.transaction_id } ]);
-
 	    [ TmpSvcRec ] ->
 		%% Grab the existing messagae table ID
 		?debug("sched:update_service(~p:~p): ~p - Updating existing",
@@ -728,7 +747,6 @@ update_service(SvcName, DataLinkMod, Available,
 		#service { messages_tid = TID } = TmpSvcRec,
 		TID
 	end,
-
 
     %% Insert new service to ets table.
     SvcRec = #service {
@@ -740,7 +758,6 @@ update_service(SvcName, DataLinkMod, Available,
 
     ets:insert(SvcsTid, SvcRec),
     SvcRec.
-
 
 
 %% Create a new and unique transaction id
@@ -755,8 +772,7 @@ create_transaction_id(St) ->
 %% Calculate a relative timeout based on the Msec UnixTime TS we are
 %% provided with.
 calc_relative_tout(UnixTimeMS) ->
-    { Mega, Sec, Micro } = now(),
-    Now = Mega * 1000000000 + Sec * 1000 + trunc(Micro / 1000) ,
+    Now = erlang:system_time(milli_seconds),
     ?debug("sched:calc_relative_tout(): TimeoutUnixMS(~p) - Now(~p) = ~p",
 	   [ UnixTimeMS, Now, UnixTimeMS - Now ]),
 

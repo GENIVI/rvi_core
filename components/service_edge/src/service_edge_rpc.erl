@@ -15,7 +15,8 @@
 -export([handle_websocket/3]).
 
 
--export([start_link/0]).
+-export([start_link/0,
+	 register_service/3]).
 
 -export([init/1,
 	 handle_call/3,
@@ -49,7 +50,7 @@
 -include_lib("trace_runner/include/trace_runner.hrl").
 
 -define(SERVER, ?MODULE).
-
+-define(LONG_TIMEOUT, 60000).
 
 -record(st, {
 	  %% Component specification
@@ -93,6 +94,12 @@ init([]) ->
 	    cs = CompSpec
 	   }}.
 
+register_service(CompSpec, SvcName, URL) ->
+    ?debug("register_service()~n", []),
+    rvi_common:request(service_edge, ?MODULE, register_service,
+		       [{<<"service">>, SvcName},
+			{<<"network_address">>, URL}],
+		       [status, service, method], CompSpec).
 
 start_json_server() ->
     Allowed = get_allowed(),
@@ -269,14 +276,16 @@ handle_ws_json_rpc(WSock, <<"message">>, Params, _Arg ) ->
     case gen_server:call(
 	   ?SERVER,
 	   {rvi, handle_local_message,
-	    [ SvcName, Timeout, Parameters | LogId ]}) of
+	    [ SvcName, Timeout, Parameters | LogId ]}, ?LONG_TIMEOUT) of
 	[not_found] ->
 	    {ok, [{status, rvi_common:json(not_found)}]};
 	[Res, TID] ->
 	    ?debug("service_edge_rpc:wse_message(~p) Res:      ~p", [ WSock, Res ]),
 	    { ok, [ { status, rvi_common:json_rpc_status(Res) },
 		    { transaction_id, TID},
-		    { method, <<"message">>}] }
+		    { method, <<"message">>}] };
+	{ok, _} = CompleteResult ->
+	    CompleteResult
     end;
 
 handle_ws_json_rpc(WSock, <<"register_service">>, Params,_Arg ) ->
@@ -335,7 +344,7 @@ handle_rpc(<<"register_service">>, Args) ->
     Opts = rvi_common:get_opt_json_element([<<"opts">>], [], Args),
     LogId = log_id_json_tail(Args),
     [ok, FullSvcName ] = gen_server:call(?SERVER,
-					 { rvi, register_local_service,
+					 { rvi, register_service,
 					   [SvcName, URL, Opts | LogId] }),
     {ok, [ {status, rvi_common:json_rpc_status(ok) },
 	   { service, FullSvcName },
@@ -374,14 +383,21 @@ handle_rpc(<<"message">>, Args) ->
     Parameters = append_files_to_params(Files, Parameters0),
     ?event({message, json_rpc, [SvcName, Timeout, Parameters]}),
     LogId = log_id_json_tail(Args ++ Parameters),
-    [ Res, TID ] = gen_server:call(
-		     ?SERVER,
-		     {rvi, handle_local_message,
-		      [SvcName, Timeout, Parameters | LogId]}),
-    {ok, [ { status, rvi_common:json_rpc_status(Res) },
-	   { transaction_id, TID },
-	   { method, <<"message">>}
-	 ]};
+    case gen_server:call(
+	   ?SERVER, { rvi, message,
+		      [ SvcName, Timeout, Parameters | LogId]},
+	   ?LONG_TIMEOUT) of
+	[Res, TID] ->
+	    ?debug("'message' result: ~p", [[Res, TID]]),
+	    {ok, [ { status, rvi_common:json_rpc_status(Res) },
+		   { transaction_id, TID },
+		   { method, <<"message">>}
+		 ]};
+	[Res] ->
+	    {ok, [ { status, rvi_common:json_rpc_status(Res) } ]};
+	{ok, _} = CompleteResult ->
+	    CompleteResult
+    end;
 
 handle_rpc(Other, _Args) ->
     ?warning("service_edge_rpc:handle_rpc(~p): unknown command", [ Other ]),
@@ -475,7 +491,7 @@ handle_notification(Other, _Args) ->
 %% the only calls invoked by other components, and not the locally
 %% connected services that uses the same HTTP port to transmit their
 %% register_service, and message calls.
-handle_call({ rvi, register_local_service, [SvcName, URL, Opts | T] },
+handle_call({ rvi, register_service, [SvcName, URL, Opts | T] },
 	    _From, St) ->
     ?debug("service_edge_rpc:register_local_service(): service:   ~p ",   [SvcName]),
     ?debug("service_edge_rpc:register_local_service(): address:   ~p ",   [URL]),
@@ -514,12 +530,12 @@ handle_call({rvi, get_available_services, []}, _From, St) ->
 %% [{struct,[{"a","b"}]}]
 %% 13:48:12.943 [debug] service_edge_rpc:local_msg: parameters:      [{struct,[{"a","b"}]}]
 
-handle_call({ rvi, handle_local_message,
+handle_call({ rvi, message,
 	      [SvcName, TimeoutArg, Parameters | Tail] = Args }, From,
 	    #st{pending = Pend} = St) ->
-    ?debug("service_edge_rpc:local_msg: service_name:    ~p", [SvcName]),
-    ?debug("service_edge_rpc:local_msg: timeout:         ~p", [TimeoutArg]),
-    ?debug("service_edge_rpc:local_msg: parameters:      ~p", [Parameters]),
+    ?debug("local_msg: service_name:    ~p", [SvcName]),
+    ?debug("local_msg: timeout:         ~p", [TimeoutArg]),
+    ?debug("local_msg: parameters:      ~p", [Parameters]),
     CS = start_log(Tail, "local_message: ~s", [SvcName], St#st.cs),
     %%
     %% Authorize local message and retrieve a certificate / signature
@@ -580,10 +596,26 @@ handle_cast(Other, St) ->
     ?warning("service_edge_rpc:handle_cast(~p): unknown", [ Other ]),
     {noreply, St}.
 
-handle_info({'DOWN', Ref, _, _, {deferred_reply, Reply}},
+handle_info({'DOWN', Ref, _, _, {deferred_reply, Deferred}},
 	     #st{pending = Pend} = St) ->
+    ?debug("got deferred reply: ~p", [Deferred]),
     case lists:keyfind(Ref, 2, Pend) of
 	{_Pid, Ref, From} = P ->
+	    Reply =
+		case Deferred of
+		    [ok, {_, <<"{\"jsonrpc\"", _/binary>> = JSON}] ->
+			Decoded = jsx:decode(JSON),
+			?debug("Decoded = ~p", [Decoded]),
+			{_, R} = lists:keyfind(<<"result">>, 1, Decoded),
+			?debug("R = ~p", [R]),
+			{ok, [convert_status(X) || X <- R]};
+		    [ok, I] when is_integer(I) ->
+			Deferred;
+		    Other ->
+			?debug("Strange deferred_reply: ~p", [Other]),
+			Other
+		end,
+	    ?debug("Reply = ~p", [Reply]),
 	    gen_server:reply(From, Reply),
 	    {noreply, St#st{pending = Pend -- [P]}};
 	false ->
@@ -596,10 +628,17 @@ handle_info({'DOWN', Ref, _, _, Reason}, #st{pending = Pend} = St) ->
 	    gen_server:reply(From, [internal]),
 	    {noreply, St#st{pending = Pend -- [P]}};
 	false ->
+	    ?debug("got DOWN, but no corresponding pending", []),
 	    {noreply, St}
     end;
 handle_info(_Info, St) ->
     {noreply, St}.
+
+convert_status({<<"status">> = K, St}) ->
+    {K, rvi_common:json_rpc_status(St)};
+convert_status(X) ->
+    X.
+
 
 terminate(_Reason, _St) ->
     ok.
@@ -652,7 +691,7 @@ handle_local_message_([SvcName, TimeoutArg, Parameters|_] = Args, CS) ->
 	    [not_found]
     end.
 
-do_handle_local_message_([SvcName, TimeoutArg, Parameters|_], CS) ->
+do_handle_local_message_([SvcName, TimeoutArg, Parameters0 | _Tail], CS) ->
     %%
     %% Slick but ugly.
     %% If the timeout is more than 24 hrs old when parsed as unix time,
@@ -671,6 +710,8 @@ do_handle_local_message_([SvcName, TimeoutArg, Parameters|_], CS) ->
 	    false -> %% Absolute timeout. Convert to unix time msec
 		TimeoutArg * 1000
 	end,
+    {Synch, Tag, Parameters} = check_if_synch(Parameters0),
+    ?debug("check_if_synch() -> ~p", [{Synch, Tag, Parameters}]),
     %%
     %% Check if this is a local service by trying to resolve its service name.
     %% If successful, just forward it to its service_name.
@@ -685,8 +726,11 @@ do_handle_local_message_([SvcName, TimeoutArg, Parameters|_], CS) ->
 	    Res = forward_message_to_local_service(URL,
 						   SvcName,
 						   Parameters,
+						   Synch, Tag,
 						   CS),
-	    Res;
+	    TimeoutMS = timeout_ms(Timeout),
+	    ?debug("TimeoutMS = ~p", [TimeoutMS]),
+	    rpc_return(Synch, Tag, TimeoutMS, Res);
 
 	_ -> %% SvcName is remote
 	    %% Ask Schedule the request to resolve the network address
@@ -696,7 +740,65 @@ do_handle_local_message_([SvcName, TimeoutArg, Parameters|_], CS) ->
 						       SvcName,
 						       Timeout,
 						       Parameters),
-	    [ok, TID ]
+	    TimeoutMS = timeout_ms(Timeout),
+	    ?debug("TimeoutMS = ~p", [TimeoutMS]),
+	    rpc_return(Synch, Tag, TimeoutMS, [ok, TID ])
+    end.
+
+timeout_ms(UnixT) ->
+    {M,S,U} = os:timestamp(),
+    Now = M * 1000000000 + (S * 1000) + (U div 1000),
+    UnixT - Now.
+
+check_if_synch(Params) ->
+    IsSynch =
+	case lists:keyfind(<<"rvi.synch">>, 1, Params) of
+	    {_, T} when T==true; T==<<"true">> ->
+		{true, 1};
+	    false ->
+		case rvi_common:get_json_element(
+		       ["parameters","rvi.synch"], Params) of
+		    {ok, T} when T==true; T==<<"true">> ->
+			{true, 2};
+		    _ ->
+			false
+		end
+	end,
+    case IsSynch of
+	{true, Level} ->
+	    {ReplyId, Params1} = prepare_rpc_wait(Params, Level),
+	    {true, ReplyId, Params1};
+	false ->
+	    {false, none, Params}
+    end.
+
+prepare_rpc_wait(Params, Level) ->
+    NodeId = rvi_common:node_id(),
+    Seq = integer_to_binary(erlang:unique_integer([positive, monotonic])),
+    ReplyId = <<"rvi:", NodeId/binary, "/", Seq/binary>>,
+    gproc:reg({n,l,{rvi, rpc, ReplyId}}),
+    {ReplyId, replace_synch(Level, Params, {<<"rvi.synch">>, ReplyId})}.
+
+replace_synch(1, Params, New) ->
+    lists:keyreplace(<<"rvi.synch">>, 1, Params, New);
+replace_synch(2, Params, New) ->
+    {_, Ps} = lists:keyfind(<<"parameters">>, 1, Params),
+    Ps1 = lists:keyreplace(<<"rvi.synch">>, 1, Ps, New),
+    lists:keyreplace(<<"parameters">>, 1, Params, {<<"parameters">>, Ps1}).
+
+rpc_return(false, _, _, Res) ->
+    ?debug("rpc_return(false,_,_,_) -> ~p", [Res]),
+    Res;
+rpc_return(true, Tag, Timeout, _OrigRes) ->
+    ?debug("rpc_return(true,~p,~p,_)", [Tag, Timeout]),
+    receive
+	{rvi, rpc_return, Tag, Reply} ->
+	    [ok, Reply];
+	Other ->
+	    ?debug("Received Other = ~p", [Other]),
+	    [ok, internal]
+    after Timeout ->
+	    [timeout]
     end.
 
 register_local_service_(FullSvcName, URL, Opts, T, St) ->
@@ -782,7 +884,10 @@ dispatch_to_local_service(URL, Command, Args) ->
 %% Forward a message to a specific locally connected service.
 %% Called by forward_message_to_local_service/2.
 %%
-forward_message_to_local_service(URL,SvcName, Parameters, CompSpec) ->
+forward_message_to_local_service(URL,SvcName, Parameters, CS) ->
+    forward_message_to_local_service(URL, SvcName, Parameters, false, none, CS).
+
+forward_message_to_local_service(URL, SvcName, Parameters, Synch, Tag, CS) ->
     ?debug("service_edge:forward_to_local(): URL:         ~p", [URL]),
     ?debug("service_edge:forward_to_local(): Parameters:  ~p", [Parameters]),
 
@@ -799,27 +904,39 @@ forward_message_to_local_service(URL,SvcName, Parameters, CompSpec) ->
     ?debug("Service name: ~p (Pfx = ~p)", [LocalSvcName, Pfx]),
     %% Deliver the message to the local service, which can
     %% be either a wse websocket, or a regular HTTP JSON-RPC call
-    spawn(fun() ->
-		  try
+    Me = self(),
+    spawn(
+      fun() ->
+	      try
 		  log_outcome(
-		    rvi_common:get_request_result(
-		      dispatch_to_local_service(URL,
-						message,
-						[{<<"service_name">>, LocalSvcName },
-						 {<<"parameters">>, Parameters }])),
-		    SvcName, CompSpec)
-		  catch
-		     Tag:Err ->
-			  ?error("Caught ~p:~p~n~p",
-				 [Tag,Err,erlang:get_stacktrace()])
-		  end
-	  end),
+		    maybe_reply(
+		      Synch, Me, Tag,
+		      rvi_common:get_request_result(
+			dispatch_to_local_service(
+			  URL,
+			  message,
+			  [{<<"service_name">>, LocalSvcName },
+			   {<<"parameters">>, Parameters }]))),
+		    SvcName, CS)
+	      catch
+		  Tag:Err ->
+		      ?error("Caught ~p:~p~n~p",
+			     [Tag,Err,erlang:get_stacktrace()])
+	      end
+      end),
     timer:sleep(500),
     [ ok, -1 ].
+
 
 normalize_slash(Svc) ->
     {match, [Stripped]} = re:run(Svc, "/*(.*)", [{capture,[1],binary}]),
     <<"/", Stripped/binary>>.
+
+maybe_reply(false, _, _, Res) ->
+    Res;
+maybe_reply(true, Pid, Tag, Res) ->
+    Pid ! {rvi, rpc_return, Tag, Res},
+    Res.
 
 log_outcome({Status, _}, _SvcName, CS) ->
     log("result: ~w", [Status], CS);

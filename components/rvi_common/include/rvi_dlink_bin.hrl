@@ -18,6 +18,7 @@
 -define(DLINK_ARG_CMD,              <<"cmd">>).
 -define(DLINK_ARG_TRANSACTION_ID,   <<"tid">>).
 -define(DLINK_ARG_ADDRESS,          <<"addr">>).
+-define(DLINK_ARG_NODE_ID,          <<"id">>).
 -define(DLINK_ARG_PORT,             <<"port">>).
 -define(DLINK_ARG_VERSION,          <<"ver">>).
 -define(DLINK_ARG_CREDENTIAL,       <<"cred">>).

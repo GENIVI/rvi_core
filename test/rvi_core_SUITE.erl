@@ -816,7 +816,7 @@ generate_cred(sample, KeyDir, CredDir, _Config) ->
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
 	 " --receive='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock'"
-	 " --invoke='jlr.com/vin/abc/lock jlr.com/backend/set_state'"
+	 " --invoke='jlr.com/vin/abc/lock'"
 	 " --jwt_out=", CredDir, "/lock_cred.jwt"
 	 " --cred_out=", KeyDir, "/lock_cred.json"]),
     ok;
@@ -831,7 +831,7 @@ generate_cred(backend, KeyDir, CertDir, _Config) ->
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
 	 " --receive='jlr.com'"
-	 " --invoke='jlr.com'"
+	 " --invoke='jlr.com genivi.org/backend'"
 	 " --jwt_out=", CertDir, "/backend_cred.jwt"
 	 " --cred_out=", KeyDir, "/backend_cred.json"]),
     ok.

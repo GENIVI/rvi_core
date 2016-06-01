@@ -37,6 +37,7 @@
 -export([is_connection_up/2]).
 -export([terminate_connection/1]).
 -export([terminate_connection/2]).
+-export([publish_node_id/3]).
 
 
 -define(SERVER, ?MODULE).
@@ -126,6 +127,9 @@ is_connection_up(IP, Port) ->
 	_Err ->
 	    false
     end.
+
+publish_node_id(FromPid, NodeId, Cs) ->
+    gen_server:cast(FromPid, {publish_node_id, NodeId, Cs}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -264,7 +268,12 @@ handle_cast({activate_socket, Sock}, #st{} = State) ->
     Res = inet:setopts(Sock, [{active, once}]),
     ?debug("connection:activate_socket(): ~p", [Res]),
     {noreply, State};
-
+handle_cast({publish_node_id, NodeId, Cs}, #st{} = St) ->
+    ?debug("publish_node_id (~p, ~p)", [NodeId]),
+    %% Do this from the connection process, so that schedule_rpc can
+    %% monitor the connection and unpublish when it goes away.
+    schedule_rpc:publish_node_id(Cs, NodeId, dlink_tls_rpc),
+    {noreply, St};
 
 handle_cast(_Msg, #st{} = State) ->
     ?warning("~p:handle_cast(): Unknown cast: ~p~nSt=~p", [ ?MODULE, _Msg, State]),

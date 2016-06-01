@@ -30,6 +30,8 @@
 -export([node_address_string/0]).
 -export([node_address_tuple/0]).
 -export([node_msisdn/0]).
+-export([node_id/0]).
+-export([default_node_id/0]).
 -export([get_request_result/1]).
 -export([get_component_specification/0,
 	 get_component_modules/1,
@@ -68,6 +70,7 @@
 -define(NODE_SERVICE_PREFIX, node_service_prefix).
 -define(NODE_ADDRESS, node_address).
 -define(NODE_MSISDN, node_msisdn).
+-define(NODE_ID, node_id).
 
 -record(pst, {
 	  buffer = [],
@@ -90,6 +93,14 @@ json_rpc_status(A) when is_atom(A) ->
 	{I, _} -> I;
 	false  -> 999
     end;
+json_rpc_status(B) when is_binary(B) ->
+    try lists:keyfind(
+	  binary_to_existing_atom(B, latin1), 2, status_values()) of
+	{I, _} -> I;
+	false  -> 999
+    catch
+	error:_ -> 999
+    end;
 json_rpc_status(L) when is_list(L) ->
     undefined.
 
@@ -101,7 +112,8 @@ status_values() ->
      {4, internal},
      {5, already_connected},
      {6, no_route},
-     {7, unauthorized}].
+     {7, unauthorized},
+     {8, timeout}].
 
 get_request_result(R) ->
     ?debug("get_request_result(~p)", [R]),
@@ -452,6 +464,10 @@ sanitize_service_string(Service) when is_list(Service) ->
 	    Res
     end.
 
+bin(I) when is_integer(I) ->
+    integer_to_binary(I);
+bin(A) when is_atom(A) ->
+    atom_to_binary(A, latin1);
 bin(L) ->
     iolist_to_binary(L).
 
@@ -500,6 +516,24 @@ last(B) when is_binary(B) ->
     Sz = byte_size(B)-1,
     <<_:Sz/binary, Last>> = B,
     Last.
+
+node_id() ->
+    case setup:get_env(rvi_core, ?NODE_ID) of
+	{ok, Id} -> bin(Id);
+	undefined ->
+	    default_node_id()
+    end.
+
+default_node_id() ->
+    HashInput = [setup:home(),
+		 node_address_string(),
+		 local_service_prefix()],
+    base64url:encode(
+      crypto:hash_final(
+	lists:foldl(
+	  fun(V, Acc) ->
+		  crypto:hash_update(Acc, bin(V))
+	  end, crypto:hash_init(sha256), HashInput))).
 
 node_address_string() ->
     case application:get_env(rvi_core, ?NODE_ADDRESS) of

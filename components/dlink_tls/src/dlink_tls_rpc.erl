@@ -366,13 +366,15 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
         ?DLINK_CMD_AUTHORIZE ->
 	    ?debug("got authorize ~s:~w", [PeerIP, PeerPort]),
             [ ProtoVersion,
+	      NodeId,
               Credentials ] =
                 opts([?DLINK_ARG_VERSION,
+		      ?DLINK_ARG_NODE_ID,
                       ?DLINK_ARG_CREDENTIALS],
                      Elems, undefined),
 
 	    try
-		process_authorize(FromPid, PeerIP, PeerPort,
+		process_authorize(FromPid, PeerIP, PeerPort, NodeId,
 				  Credentials, ProtoVersion, CS)
 	    catch
 		throw:{protocol_failure, What} ->
@@ -688,7 +690,7 @@ availability_msg(Availability, Services) ->
 status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
 status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
 
-process_authorize(FromPid, PeerIP, PeerPort,
+process_authorize(FromPid, PeerIP, PeerPort, NodeId,
 		  Credentials, ProtoVersion, CompSpec) ->
     ?info("dlink_tls:authorize(): Peer Address:   ~s:~p", [PeerIP, PeerPort ]),
     case ProtoVersion of
@@ -701,7 +703,7 @@ process_authorize(FromPid, PeerIP, PeerPort,
     log("auth ~s:~w", [PeerIP, PeerPort], CompSpec),
     PeerCert = rvi_common:get_value(dlink_tls_peer_cert, not_found, CompSpec),
     authorize_rpc:store_creds(CompSpec, Credentials, Conn, PeerCert),
-    connection_authorized(FromPid, Conn, CompSpec).
+    connection_authorized(FromPid, Conn, NodeId, CompSpec).
 
 send_authorize(Pid, CompSpec) ->
     ?debug("send_authorize() Pid = ~p; CompSpec = ~p", [Pid, abbrev(CompSpec)]),
@@ -709,14 +711,17 @@ send_authorize(Pid, CompSpec) ->
     dlink_tls_conn:send(Pid, rvi_common:pass_log_id(
 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE},
 				{?DLINK_ARG_VERSION, ?DLINK_TLS_VERSION},
+				{?DLINK_ARG_NODE_ID, rvi_common:node_id()},
 				{?DLINK_ARG_CREDENTIALS, Creds}], CompSpec)).
 
-connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
+connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn,
+		      NodeId, CompSpec) ->
     %% If FromPid (the genserver managing the socket) is not yet registered
     %% with the connection manager, this is an incoming connection
     %% from the client. We should respond with our own authorize followed by
     %% a service announce
     log("authorized ~s:~w", [RemoteIP, RemotePort], CompSpec),
+    dlink_tls_conn:publish_node_id(FromPid, NodeId, CompSpec),
     case dlink_tls_connmgr:find_connection_by_pid(FromPid) of
 	not_found ->
 	    ?info("dlink_tls:authorize(): New connection!"),
