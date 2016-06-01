@@ -20,6 +20,7 @@
 -export([notification/5]).
 -export([json_rpc_status/1]).
 -export([get_json_element/2]).
+-export([get_opt_json_element/3]).
 -export([sanitize_service_string/1]).
 -export([local_service_to_string/1]).
 -export([local_service_to_string/2]).
@@ -303,6 +304,13 @@ unstruct([_|_] = Elems)   -> [unstruct(X) || X <- Elems];
 unstruct(X) ->
     X.
 
+get_opt_json_element(ElemPath, Default, JSON) ->
+    case get_json_element(ElemPath, JSON) of
+	{ok, Value} ->
+	    Value;
+	{error, _} ->
+	    Default
+    end.
 
 %% If Path is just a single element, convert to list and try again.
 get_json_element(_, []) ->
@@ -856,7 +864,7 @@ start_msgpack_rpc_client(Component, Module, Opts, XOpts) ->
     Name = {msgpack_rpc_client, Component, Module},
     rvi_msgpack_rpc:start_link([{gproc, {n,l,Name}}|XOpts] ++ Opts).
 
-start_msgpack_rpc_server(Component, Module, Opts, XOpts) ->
+start_msgpack_rpc_server(_Component, Module, Opts, XOpts) ->
     %% Name = {msgpack_rpc_server, Component, Module},
     [Callback, Rest] = take([{callback, fun() -> msgpack_rpc_cb(Module) end}],
 			    XOpts ++ Opts),

@@ -2,7 +2,7 @@
 #   Call service with attachment
 #
 
-URL="http://localhost:8801"
+URL="http://localhost:9001"
 
 if [ "$#" = "2" ]
 then
@@ -26,9 +26,6 @@ BASENAME=$(basename $FILE)
 
 # Create a file containing the actual call
 cat > /tmp/svc_attach.json <<EOF
---${B}$(printf "%b" "\r\n")
-Content-Type: application/json$(printf "%b" "\r\n")
-Content-ID: body
 {
     "jsonrpc": "2.0",
     "method": "message",
@@ -37,18 +34,11 @@ Content-ID: body
     {
         "service_name": "${SVC}",
         "timeout": 20,
-        "parameters": [ {"data":"file:${BASENAME}"} ]
+        "parameters": {"data":"file:${BASENAME}"}
     }
 }
-$(printf "%b" "\r\n")
---${B}$(printf "%b" "\r\n")
-Content-Type: application/octet-stream$(printf "%b" "\r\n")
-Content-ID: ${BASENAME}$(printf "%b" "\r\n")
-$(cat ${FILE})
-$(printf "%b" "\r\n")
---${B}--$(printf "%b" "\r\n")
 EOF
 
-curl -H "Content-Type: multipart/related; boundary=${B}" \
-  --data-binary @/tmp/svc_attach.json $URL
+curl -F "file=@${FILE};filename=${BASENAME}" \
+    -F "file=@/tmp/svc_attach.json;filename=body;type=application/json" $URL
 echo

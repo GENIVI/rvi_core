@@ -7,7 +7,8 @@
 %%
 -module(exoport_exo_http).
 -export([instance/3,
-	 handle_body/4]).
+	 handle_body/4,
+	 inspect_multipart_post/2]).
 
 -include_lib("exo/include/exo_http.hrl").
 -include_lib("lager/include/log.hrl").
@@ -43,14 +44,18 @@ handle_post(Socket, Request, Body, AppMod) ->
 	  when T=="application/json";
 	       T=="application/json-rpc";
 	       T=="application/jsonrequest" ->
-	    handle_post_json(Socket, Request, Body, AppMod);
+	    handle_post_json(Socket, Request, Body, [], AppMod);
 	#http_chdr{content_type = "multipart/" ++ _} ->
+	    ?debug("Multipart:~n"
+		   "Request = ~p~n"
+		   "Body = ~p", [Request, Body]),
 	    handle_post_multipart(Socket, Request, Body, AppMod)
     end.
 
-handle_post_json(Socket, _Request, Body, AppMod) ->
+handle_post_json(Socket, _Request, Body, Attachments, AppMod) ->
     try decode_json(Body) of
-	{call, Id, Method, Args} ->
+	{call, Id, Method, Args0} ->
+	    Args = Args0 ++ Attachments,
 	    try handle_rpc(AppMod, Method, Args) of
 		{ok, Reply} ->
 		    success_response(Socket, Id, Reply);
@@ -65,7 +70,8 @@ handle_post_json(Socket, _Request, Body, AppMod) ->
 			    erlang:get_stacktrace()]),
 		    error_response(Socket, Id, internal_error)
 	    end;
-	{notification, Method, Args} ->
+	{notification, Method, Args0} ->
+	    Args = Args0 ++ Attachments,
 	    handle_notification(AppMod, Method, Args),
 	    exo_http_server:response(Socket, undefined, 200, "OK", "");
 	{error, _} ->
@@ -76,12 +82,36 @@ handle_post_json(Socket, _Request, Body, AppMod) ->
 				     "Internal Error",
 				     "Internal Error")
     end.
+handle_post_multipart(Socket, Request, Body, AppMod) ->
+    try inspect_multipart_post_(Request, Body) of
+	{ok, [BodyPart], Files} ->
+	    handle_post_json(Socket, Request, BodyPart,
+			     pack_attachments(Files), AppMod);
+	{error, Reason} ->
+	    error_response(Socket, Reason)
+    catch
+	error:Other ->
+	    ?error("Error handling multipart post ~p~n~p",
+		   [Other, erlang:get_stacktrace()]),
+	    error_response(Socket, internal_error)
+    end.
 
-handle_post_multipart(Socket, Request, Body, _AppMod) ->
+inspect_multipart_post(Request, Body) ->
+    try inspect_multipart_post_(Request, Body)
+    catch
+	throw:Error ->
+	    {error, Error}
+    end.
+
+inspect_multipart_post_(Request, Body) ->
     case (Request#http_request.headers)#http_chdr.content_type of
 	"multipart/" ++ _ = Type ->
+	    %% re match either boundary=foo or boundary="foo"
+	    %% (modulo whitespace)
 	    {match, [B]} =
-		re:run(Type, "boundary\\s*=\\s*(.+)$", [{capture,[1],binary}]),
+		re:run(Type, "boundary\\s*=\\s*\"?([^\"]+)\"?$",
+		       [{capture,[1],binary}]),
+	    ?debug("Boundary = ~p", [B]),
 	    BoundaryRe = <<"--",B/binary,"\\s*\\r\\n|",
 			   "\\r\\n--",B/binary,"\\s*\\r\\n|",
 			   "\\r\\n--",B/binary,"--\\s*\\r\\n">>,
@@ -89,8 +119,28 @@ handle_post_multipart(Socket, Request, Body, _AppMod) ->
 		     || P <- re:split(Body, BoundaryRe, [{return,binary}]),
 			  P =/= <<>>],
 	    io:fwrite("Parts = ~p~n", [Parts]),
-	    error_response(Socket, internal_error)
+	    multipart_json(Parts);
+	"application/json" ++ _ ->
+	    {ok, [Body], []}
     end.
+
+pack_attachments([]) ->
+    [];
+pack_attachments([_|_] = L) ->
+    [{<<"rvi.files">>,
+      [[
+	{<<"cid">>, to_bin(ID)},
+	{<<"hdrs">>, [hdr_obj(<<"Content-Type">>, Type)
+		      | [hdr_obj(K, V) || {K, V} <- Hs]]},
+	{<<"data">>, to_bin(Body)}
+       ]
+       || {ID, Type, Hs, Body} <- L]}].
+
+to_bin(Str) ->
+    iolist_to_binary(Str).
+
+hdr_obj(K, V) ->
+    { to_bin(K), to_bin(V) }.
 
 decode_part(P) ->
     io:fwrite("decode_part()~n"
@@ -108,6 +158,68 @@ decode_part(P, Acc) ->
 	{ok, {http_error, _}, _} ->
 	    {Acc, P}
     end.
+
+multipart_json(Parts) ->
+    AllParts = [{content_id(H), content_type(H), H#http_chdr.other, Body}
+		|| {H, Body} <- Parts],
+    case [P || {_, T, _, _} = P <- AllParts,
+	       json_content(T)] of
+	[{_, _, _, B} = JPart] ->
+	    %% only one application/json part
+	    {ok, [B], [P || P <- AllParts -- [JPart]]};
+	[_,_|_] = JParts -> % more than one
+	    case [P || {ID, _T, _Hs, _B} = P <- JParts,
+		       is_body_id(ID)] of
+		[{_, _, _, B} = JPart] ->
+		    {ok, [B], [P || P <- AllParts -- [JPart]]};
+		_ ->
+		    throw(invalid_params)
+	    end;
+	[] ->
+	    throw(invalid_params)
+    end.
+
+is_body_id(ID) ->
+    string:to_lower(string:strip(ID)) =:= "body".
+
+json_content(T) ->
+    case T of
+	"application/json" ++ _ ->
+	    true;
+	_ ->
+	    false
+    end.
+
+content_id(#http_chdr{other = Hdrs}) ->
+    case match_hdr("content-id", Hdrs) of
+	{value, V} -> V;
+	false ->
+	    case match_hdr("content-disposition", Hdrs) of
+		{value, V} ->
+		    case re:run(V, "filename=\"(.+)\"", [{capture, [1], list}]) of
+			{match, [FN]} ->
+			    FN;
+			nomatch ->
+			    ""
+		    end;
+		false ->
+		    ""
+	    end
+    end.
+
+content_type(#http_chdr{content_type = T}) ->
+    string:to_lower(string:strip(T)).
+
+match_hdr(H, [{K, V} = X|T]) ->
+    ?debug("match_hdr(~p, ~p)", [H, X]),
+    case string:to_lower(string:strip(K)) of
+	H ->
+	    {value, V};
+	_ ->
+	    match_hdr(H, T)
+    end;
+match_hdr(_, []) ->
+    false.
 
 %% Validated RPC
 handle_rpc(Mod, Method, Args) ->
@@ -158,12 +270,19 @@ success_response(Socket, Id, Reply) ->
 
 error_response(Socket, Error) ->
     %% No Id available
+    {Code, Msg} = pick_error(Error),
     JSON = [{<<"jsonrpc">>, <<"2.0">>},
-	    {<<"error">>, [{<<"code">>, json_error_code(Error)},
-			   {<<"message">>, json_error_msg(Error)}]}],
+	    {<<"error">>, [{<<"code">>, Code},
+			   {<<"message">>, Msg}]}],
     Body = jsx:encode(JSON),
     exo_http_server:response(Socket, undefined, 200, "OK", Body,
 			     [{content_type, "application/json"}]).
+
+pick_error(Error) when is_atom(Error) ->
+    Code = json_error_code(Error),
+    {Code, json_error_msg(Code)};
+pick_error(Error) when is_integer(Error) ->
+    {Error, json_error_msg(Error)}.
 
 error_response(Socket, Id, Error) ->
     JSON = [{<<"jsonrpc">>, <<"2.0">>},

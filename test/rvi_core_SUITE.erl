@@ -38,8 +38,12 @@
     t_start_tls_sample_noverify/1,
     t_register_lock_service/1,
     t_register_sota_service/1,
+    t_register_sota_service_opt_inline/1,
+    t_register_sota_service_opt_reject/1,
+    t_register_sota_service_opt_multipart/1,
     t_call_lock_service/1,
     t_call_sota_service/1,
+    t_call_sota_service_inline/1,
     t_multicall_sota_service/1,
     t_remote_call_lock_service/1,
     t_get_node_service_prefix/1,
@@ -91,8 +95,12 @@ groups() ->
        t_start_basic_sample,
        t_register_lock_service,
        t_register_sota_service,
+       t_register_sota_service_opt_inline,
+       t_register_sota_service_opt_reject,
+       t_register_sota_service_opt_multipart,
        t_call_lock_service,
        t_call_sota_service,
+       t_call_sota_service_inline,
        t_multicall_sota_service,
        t_remote_call_lock_service,
        t_get_node_service_prefix,
@@ -214,18 +222,25 @@ t_backend_keys_and_cert(Config) ->
     CredDir = ensure_dir("basic_backend_creds"),
     generate_device_keys(Dir, Config),
     generate_cred(backend, Dir, CredDir, Config),
-    generate_sota_cred(backend, Dir, CredDir, Config).
+    generate_sota_cred(backend, Dir, CredDir, Config),
+    generate_sota_cred(backend, Dir, CredDir, "_inline", "/inline", Config),
+    generate_sota_cred(backend, Dir, CredDir, "_reject", "/reject", Config),
+    generate_sota_cred(
+      backend, Dir, CredDir, "_multipart", "/multipart", Config).
 
 t_sample_keys_and_cert(Config) ->
     Dir = ensure_dir("basic_sample_keys"),
     generate_device_keys(Dir, Config),
     CredDir = ensure_dir("basic_sample_creds"),
     generate_cred(sample, Dir, CredDir, Config),
-    generate_sota_cred(sample, Dir, CredDir, Config).
+    generate_sota_cred(sample, Dir, CredDir, Config),
+    generate_sota_cred(sample, Dir, CredDir, "_inline", "/inline", Config),
+    generate_sota_cred(sample, Dir, CredDir, "_reject", "/reject", Config),
+    generate_sota_cred(
+      sample, Dir, CredDir, "_multipart", "/multipart", Config).
 
 t_install_backend_node(_Config) ->
     install_backend_node("basic_backend").
-
 
 t_install_sample_node(_Config) ->
     install_sample_node("basic_sample").
@@ -315,12 +330,37 @@ t_register_lock_service(_Config) ->
 
 t_register_sota_service(_Config) ->
     Pid = start_json_rpc_server(9987),
-    reg_service_request("sample", <<"sota">>, <<"http://localhost:9987">>),
+    reg_service_request("sample", <<"/sota">>, <<"http://localhost:9987">>),
     save({service, sota}, Pid),
-    timer:sleep(2000).
+    timer:sleep(1000).
+
+t_register_sota_service_opt_inline(_Config) ->
+    t_register_sota_service_(9988, <<"inline">>).
+
+t_register_sota_service_opt_reject(_Config) ->
+    t_register_sota_service_(9989, <<"reject">>).
+
+t_register_sota_service_opt_multipart(_Config) ->
+    t_register_sota_service_(9990, <<"multipart">>).
+
+t_register_sota_service_(Port, Mode) ->
+    Pid = start_json_rpc_server(Port),
+    ct:log("json_rpc_server(~p): ~p", [Port, Pid]),
+    reg_service_w_attachments(
+      "sample", <<"/sota/", Mode/binary>>,
+      <<"http://localhost:", (integer_to_binary(Port))/binary>>, Mode),
+    save({service, {sota, Mode}}, Pid),
+    timer:sleep(500).
 
 t_call_sota_service(_Config) ->
     call_sota_service_(sota_client, sota_bin()).
+
+t_call_sota_service_inline(_Config) ->
+    call_sota_service_(
+      <<"/sota/inline">>,
+      sota_client_inline,
+      [{<<"mydata">>, <<"file:testfile.txt">>}],
+      [testfile()]).
 
 t_multicall_sota_service(Config) ->
     with_trace(fun t_multicall_sota_service_/1, Config,
@@ -406,25 +446,44 @@ node_prefix_result(Res) ->
 			proplists:get_value(<<"result">>, Res), []).
 
 call_sota_service_(RegName, Data) ->
+    call_sota_service_(<<"/sota">>, RegName, Data).
+
+call_sota_service_(Svc, RegName, Data) ->
+    ct:run("call_sota_service_(Svc = ~p,...)", [Svc]),
     {Mega, Secs, _} = os:timestamp(),
     Timeout = Mega * 1000000 + Secs + 60,
     register(RegName, self()),
     json_rpc_request(service_edge("backend"),
 		     <<"message">>,
-		     [
-		      {<<"service_name">>, <<"jlr.com/vin/abc/sota">>},
-		      {<<"timeout">>, Timeout},
-		      {<<"parameters">>,
-		       [
-			{<<"data">>, Data},
-			{<<"sendto">>, atom_to_binary(RegName, latin1)},
-			{<<"rvi.max_msg_size">>, 100}
-		       ]}
-		     ]),
+		     sota_args(Svc, Timeout, RegName, Data)),
     receive
-	{message, [{service_name, <<"/sota">>},
-		   {data, Data}]} = Res ->
+	{message, [{service_name, Svc},
+		   {data, Data} | T]} = Res ->
 	    ct:log("got json_rpc_result: ~p", [Res]),
+	    ok;
+	{message, Other} ->
+	    ct:log("wrong message: ~p", [Other]),
+	    error({unmatched, Other});
+	Msg ->
+	    ct:log("received: ~p", [Msg]),
+	    error({unexpected, Msg})
+    after 5000 ->
+	    error(timeout)
+    end.
+
+call_sota_service_(Svc, RegName, Data, Files) ->
+    {Mega, Secs, _} = os:timestamp(),
+    Timeout = Mega * 1000000 + Secs + 60,
+    register(RegName, self()),
+    CallRes = json_rpc_request(service_edge("backend"),
+			       <<"message">>,
+			       sota_args(Svc, Timeout, RegName, Data),
+			       Files),
+    ct:log("CallRes = ~p", [CallRes]),
+    receive
+	{message, [{service_name, Svc},
+		   {data, Data}]} = Res ->
+	    ct:log("god json_rpc_result: ~p", [Res]),
 	    ok;
 	{message, Other} ->
 	    ct:log("wrong message: ~p", [Other]),
@@ -432,6 +491,20 @@ call_sota_service_(RegName, Data) ->
     after 5000 ->
 	    error(timeout)
     end.
+
+sota_args(Svc, Timeout, RegName, Data) ->
+    [{<<"service_name">>, join(<<"jlr.com/vin/abc">>, Svc)},
+     {<<"timeout">>, Timeout},
+     {<<"parameters">>,
+      [{<<"data">>, Data},
+       {<<"sendto">>, atom_to_binary(RegName, latin1)},
+       {<<"rvi.max_msg_size">>, 100}
+      ]}
+    ].
+
+join(Pfx, Name) ->
+    re:replace(<<Pfx/binary, "/", Name/binary>>, "/+", "/",
+	       [global, {return, binary}]).
 
 t_call_lock_service(_Config) ->
     CallPid = spawn_cmd(
@@ -485,12 +558,36 @@ unwrap_event(Id, [{<<"ts">>,T},{<<"lvl">>,L},{<<"cmp">>,C},{<<"evt">>,E}]) ->
     {Id, T, binary_to_integer(L), C, E}.
 
 json_rpc_request(URL, Method, Args) ->
-    Req = jsx:encode([{<<"jsonrpc">>, <<"2.0">>},
-		      {<<"id">>, 1},
-		      {<<"method">>, Method},
-		      {<<"params">>, Args}]),
+    json_rpc_request(URL, Method, Args, []).
+
+json_rpc_request(URL, Method, Args, []) ->
+    Req = encode_request(Method, Args),
     Hdrs = [{'Content-Type', "application/json"}],
-    json_result(exo_http:wpost(URL, {1, 1}, Hdrs, Req, 1000)).
+    json_result(exo_http:wpost(URL, {1, 1}, Hdrs, Req, 1000));
+json_rpc_request(URL, Method, Args, Files) ->
+    Req = encode_request(Method, Args),
+    Hdrs = [{'Content-Type', "multipart/related"}],
+    Reqs = [{data, "application/json", Req}
+	    | [file_part(F) || F <- Files]],
+    json_result(exo_http:wpost(URL, {1, 1}, Hdrs, Reqs, 1000)).
+
+encode_request(Method, Args) ->
+    jsx:encode([{<<"jsonrpc">>, <<"2.0">>},
+		{<<"id">>, 1},
+		{<<"method">>, Method},
+		{<<"params">>, Args}]).
+
+file_part(File) ->
+    case file:read_file(File) of
+	{ok, Bin} ->
+	    Base = filename:basename(File),
+	    {data, [{'Content-Type', "application/octet-stream"},
+		    {'Content-Disposition', "filename=\"" ++ Base ++ "\""},
+		    {'Content-Transfer-Encoding', "8bit"},
+		    {'Content-ID', Base}], Bin};
+	Other ->
+	    error(Other)
+    end.
 
 reg_service_request(Node, Svc, URL) ->
     check_reg_svc_response(
@@ -498,6 +595,14 @@ reg_service_request(Node, Svc, URL) ->
 		       <<"register_service">>,
 		       [{<<"service">>, Svc},
 			{<<"network_address">>, URL}])).
+
+reg_service_w_attachments(Node, Svc, URL, Mode) ->
+    check_reg_svc_response(
+      json_rpc_request(service_edge(Node),
+		       <<"register_service">>,
+		       [{<<"service">>, Svc},
+			{<<"network_address">>, URL},
+			{<<"opts">>, [{<<"files">>, Mode}]}])).
 
 check_reg_svc_response(JSON) ->
     ct:log("check_reg_svc: ~p", [JSON]),
@@ -523,15 +628,24 @@ json_result(Other) ->
     ct:log("json_result(~p)", [Other]),
     error({unexpected, Other}).
 
-
 start_json_rpc_server(Port) ->
     {ok, Pid} = exo_http_server:start(Port, [{request_handler,
 					      {?MODULE, handle_body, [foo]}}]),
+    true = erlang:group_leader(erlang:group_leader(), Pid),
     save({server,Port}, Pid),
     Pid.
 
-handle_body(Socket, _Request, Body, _St) ->
-    ct:log("handle_body(Body = ~p)", [Body]),
+handle_body(Socket, Request, Body, St) ->
+    ct:log("handle_body(~p,~p)", [Request, Body]),
+    case exoport_exo_http:inspect_multipart_post(Request, Body) of
+	{ok, [JSON], []} ->
+	    ct:log("No attachments", []),
+	    handle_body_(Socket, Request, Body, St);
+	{ok, [JSON], Files} ->
+	    ct:log("Body = ~p~nFiles = ~p", [JSON, Files])
+    end.
+
+handle_body_(Socket, _Request, Body, _St) ->
     JSON = jsx:decode(Body),
     ct:log("Got JSON Req: ~p", [JSON]),
     case JSON of
@@ -543,23 +657,31 @@ handle_body(Socket, _Request, Body, _St) ->
 	   {<<"parameters">>,
 	    [ {<<"data">>, Data},
 	      {<<"sendto">>, SendTo},
-	      {<<"rvi.max_msg_size">>, _}]}
+	      {<<"rvi.max_msg_size">>, _} | T ]}
 	  ]}] ->
 	    binary_to_existing_atom(SendTo, latin1)
 		! {message, [{service_name, SvcName},
-			     {data, Data}]},
-	    Reply = [{<<"jsonrpc">>, <<"2.0">>},
-		     {<<"id">>, ID},
-		     {<<"result">>, <<"ok">>}],
-	    exo_http_server:response(
-	      Socket, undefined, 200, "OK",
-	      jsx:encode(Reply),
-	      [{'content_type', "application/json"}]);
+			     {data, Data} | T]},
+	    http_reply(Socket, ID, <<"ok">>);
+	[{<<"jsonrpc">>, <<"2.0">>},
+	 {<<"id">>, ID},
+	 {<<"method">>, <<"services_available">>} | _] ->
+	    ct:log("got services_available: ~p", [JSON]),
+	    http_reply(Socket, ID, <<"ok">>);
 	Other ->
 	    exo_http_server:response(
 	      Socket, undefined, 501, "Internal Error", "Internal Error"),
 	    error({unrecognized, Other})
     end.
+
+http_reply(Socket, ID, Result) ->
+    Reply = [{<<"jsonrpc">>, <<"2.0">>},
+	     {<<"id">>, ID},
+	     {<<"result">>, Result}],
+    exo_http_server:response(
+      Socket, undefined, 200, "OK",
+      jsx:encode(Reply),
+      [{'content_type', "application/json"}]).
 
 verify_service_res(Bin) ->
     {match,_} =
@@ -714,7 +836,10 @@ generate_cred(backend, KeyDir, CertDir, _Config) ->
 	 " --cred_out=", KeyDir, "/backend_cred.json"]),
     ok.
 
-generate_sota_cred(sample, KeyDir, CredDir, _Config) ->
+generate_sota_cred(Node, KeyDir, CredDir, Config) ->
+    generate_sota_cred(Node, KeyDir, CredDir, "", "", Config).
+
+generate_sota_cred(sample, KeyDir, CredDir, Suffix, Sub, _Config) ->
     %% Don't put sota_cred.json in the certs directory, since rvi_core
     %% will report a parse failure for it.
     UUID = uuid(),
@@ -727,11 +852,11 @@ generate_sota_cred(sample, KeyDir, CredDir, _Config) ->
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
 	 " --receive='jlr.com/vin/abc/store'"
-	 " --invoke='jlr.com/vin/abc/sota jlr.com/backend/set_state'"
-	 " --jwt_out=", CredDir, "/sota_cred.jwt"
-	 " --cred_out=", KeyDir, "/sota_cred.json"]),
+	 " --invoke='jlr.com/vin/abc/sota", Sub, " jlr.com/backend/set_state'"
+	 " --jwt_out=", CredDir, "/sota_cred", Suffix, ".jwt"
+	 " --cred_out=", KeyDir, "/sota_cred", Suffix, ".json"]),
     ok;
-generate_sota_cred(backend, KeyDir, CertDir, _Config) ->
+generate_sota_cred(backend, KeyDir, CertDir, Suffix, _Sub, _Config) ->
     UUID = uuid(),
     {Start, Stop} = start_stop(),
     cmd([scripts(), "/rvi_create_credential.py"
@@ -743,8 +868,8 @@ generate_sota_cred(backend, KeyDir, CertDir, _Config) ->
 	 " --root_key=", root_keys(), "/root_key.pem"
 	 " --receive='jlr.com'"
 	 " --invoke='jlr.com'"
-	 " --jwt_out=", CertDir, "/sota_backend_cred.jwt"
-	 " --cred_out=", KeyDir, "/sota_backend_cred.json"]),
+	 " --jwt_out=", CertDir, "/sota_backend_cred", Suffix, ".jwt"
+	 " --cred_out=", KeyDir, "/sota_backend_cred", Suffix, ".json"]),
     ok.
 
 subj() ->
@@ -790,6 +915,9 @@ scripts() ->
 
 python() ->
     [root(), "/python"].
+
+testfile() ->
+    root() ++ "/test/testfile.txt".
 
 root_keys() ->
     "root_keys".
