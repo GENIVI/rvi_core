@@ -1,0 +1,28 @@
+%%
+%% Copyright (C) 2016, Jaguar Land Rover
+%%
+%% This program is licensed under the terms and conditions of the
+%% Mozilla Public License, version 2.0.  The full text of the
+%% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
+%%
+
+%% -*- erlang -*-
+{application, rvi_services,
+ [
+  {description, "Internal RVI Core services"},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+		  rvi_common,
+		  service_discovery,
+		  service_edge
+                 ]},
+  {mod, { rvi_services_app, []}},
+  {start_phases, [{register_services, []},
+		  {announce, []}]},
+  {env, [
+	 {rvi_core_await, [{n,l,rvi_services}]}
+	]}
+ ]}.
