@@ -20,6 +20,7 @@
     t_install_sms_sample_node/1,
     t_install_tls_backend_node/1,
     t_install_tls_sample_node/1,
+    t_install_tls_sample2_node/1,
     t_install_tlsj_backend_node/1,
     t_install_tlsj_sample_node/1,
     t_install_tls_backend_noverify_node/1,
@@ -32,6 +33,7 @@
     t_start_bt_sample/1,
     t_start_tls_backend/1,
     t_start_tls_sample/1,
+    t_start_tls_sample2/1,
     t_start_tlsj_backend/1,
     t_start_tlsj_sample/1,
     t_start_tls_backend_noverify/1,
@@ -45,6 +47,8 @@
     t_call_sota_service/1,
     t_call_sota_service_inline/1,
     t_multicall_sota_service/1,
+    t_call_sota_service_synch/1,
+    t_call_cred_mgmt/1,
     t_remote_call_lock_service/1,
     t_get_node_service_prefix/1,
     t_check_rvi_log/1,
@@ -82,6 +86,7 @@ groups() ->
        t_install_sms_sample_node,
        t_install_tls_backend_node,
        t_install_tls_sample_node,
+       t_install_tls_sample2_node,
        t_install_tlsj_backend_node,
        t_install_tlsj_sample_node,
        t_install_tls_backend_noverify_node,
@@ -110,6 +115,7 @@ groups() ->
       [
        t_start_tls_backend,
        t_start_tls_sample,
+       t_start_tls_sample2,
        t_register_lock_service,
        t_register_sota_service,
        t_call_lock_service,
@@ -117,6 +123,8 @@ groups() ->
        t_call_sota_service,
        t_multicall_sota_service,
        t_get_node_service_prefix,
+       t_call_sota_service_synch,
+       t_call_cred_mgmt,
        t_check_rvi_log,
        t_no_errors
       ]},
@@ -257,6 +265,9 @@ t_install_tls_backend_node(_Config) ->
 t_install_tls_sample_node(_Config) ->
     install_sample_node("tls_sample").
 
+t_install_tls_sample2_node(_Config) ->
+    install_sample_node("tls_sample2").
+
 t_install_tlsj_backend_node(_Config) ->
     install_backend_node("tlsj_backend").
 
@@ -307,6 +318,9 @@ t_start_tls_backend(_Config) ->
 
 t_start_tls_sample(_Config) ->
     start_sample("tls_sample").
+
+t_start_tls_sample2(_Config) ->
+    generic_start(sample2, "tls_sample2").
 
 t_start_tlsj_backend(_Config) ->
     start_backend("tlsj_backend").
@@ -362,6 +376,14 @@ t_call_sota_service_inline(_Config) ->
       [{<<"mydata">>, <<"file:testfile.txt">>}],
       [testfile()]).
 
+t_call_sota_service_synch(_Config) ->
+    call_sota_service_(
+      <<"/sota">>,
+      sota_client_synch,
+      <<"the data">>,
+      [{<<"rvi.synch">>, true}],
+      []).
+
 t_multicall_sota_service(Config) ->
     with_trace(fun t_multicall_sota_service_/1, Config,
      	       "t_multicall_sota_service").
@@ -378,6 +400,9 @@ t_multicall_sota_service_(_Config) ->
 		     client5]],
     Ref = erlang:send_after(5000, self(), collect_timeout),
     collect(Pids, Ref).
+
+t_call_cred_mgmt(Config) ->
+    ok.
 
 collect([{_, Ref} | T] = L, TRef) ->
     receive
@@ -449,7 +474,7 @@ call_sota_service_(RegName, Data) ->
     call_sota_service_(<<"/sota">>, RegName, Data).
 
 call_sota_service_(Svc, RegName, Data) ->
-    ct:run("call_sota_service_(Svc = ~p,...)", [Svc]),
+    ct:log("call_sota_service_(Svc = ~p,...)", [Svc]),
     {Mega, Secs, _} = os:timestamp(),
     Timeout = Mega * 1000000 + Secs + 60,
     register(RegName, self()),
@@ -472,18 +497,22 @@ call_sota_service_(Svc, RegName, Data) ->
     end.
 
 call_sota_service_(Svc, RegName, Data, Files) ->
+    call_sota_service_(Svc, RegName, Data, [], Files).
+
+call_sota_service_(Svc, RegName, Data, XArgs, Files) ->
+    ct:log("call_sota_service_(Svc = ~p,...)", [Svc]),
     {Mega, Secs, _} = os:timestamp(),
     Timeout = Mega * 1000000 + Secs + 60,
     register(RegName, self()),
     CallRes = json_rpc_request(service_edge("backend"),
 			       <<"message">>,
-			       sota_args(Svc, Timeout, RegName, Data),
+			       sota_args(Svc, Timeout, RegName, XArgs, Data),
 			       Files),
     ct:log("CallRes = ~p", [CallRes]),
     receive
 	{message, [{service_name, Svc},
-		   {data, Data}]} = Res ->
-	    ct:log("god json_rpc_result: ~p", [Res]),
+		   {data, Data} | _]} = Res ->
+	    ct:log("Got json_rpc_result: ~p", [Res]),
 	    ok;
 	{message, Other} ->
 	    ct:log("wrong message: ~p", [Other]),
@@ -493,12 +522,18 @@ call_sota_service_(Svc, RegName, Data, Files) ->
     end.
 
 sota_args(Svc, Timeout, RegName, Data) ->
+    sota_args(Svc, Timeout, RegName, [], Data).
+
+sota_args(Svc, Timeout, RegName, XArgs, Data) ->
+    ct:log("sota_args(~p, ~p, ~p, ~p, ~p)", [Svc, Timeout, RegName,
+					     XArgs, Data]),
     [{<<"service_name">>, join(<<"jlr.com/vin/abc">>, Svc)},
      {<<"timeout">>, Timeout},
      {<<"parameters">>,
       [{<<"data">>, Data},
        {<<"sendto">>, atom_to_binary(RegName, latin1)},
        {<<"rvi.max_msg_size">>, 100}
+       | XArgs
       ]}
     ].
 
@@ -662,7 +697,13 @@ handle_body_(Socket, _Request, Body, _St) ->
 	    binary_to_existing_atom(SendTo, latin1)
 		! {message, [{service_name, SvcName},
 			     {data, Data} | T]},
-	    http_reply(Socket, ID, <<"ok">>);
+	    case lists:keymember(<<"rvi.synch">>, 1, T) of
+		true ->
+		    http_reply(Socket, ID, [{<<"status">>, 0},
+					    {<<"answer">>, <<"OK">>}]);
+		false ->
+		    http_reply(Socket, ID, <<"ok">>)
+	    end;
 	[{<<"jsonrpc">>, <<"2.0">>},
 	 {<<"id">>, ID},
 	 {<<"method">>, <<"services_available">>} | _] ->
@@ -674,14 +715,18 @@ handle_body_(Socket, _Request, Body, _St) ->
 	    error({unrecognized, Other})
     end.
 
-http_reply(Socket, ID, Result) ->
+http_reply(Socket, ID, Msg) ->
     Reply = [{<<"jsonrpc">>, <<"2.0">>},
 	     {<<"id">>, ID},
-	     {<<"result">>, Result}],
+	     {<<"result">>, [{<<"status">>, status_reply(Msg)},
+			     {<<"message">>, Msg}]}],
     exo_http_server:response(
       Socket, undefined, 200, "OK",
       jsx:encode(Reply),
       [{'content_type', "application/json"}]).
+
+status_reply(<<"ok">>) -> 0;
+status_reply(_) -> 99.
 
 verify_service_res(Bin) ->
     {match,_} =
@@ -815,8 +860,8 @@ generate_cred(sample, KeyDir, CredDir, _Config) ->
 	 " --start='", Start, "'"
 	 " --stop='", Stop, "'"
 	 " --root_key=", root_keys(), "/root_key.pem"
-	 " --receive='jlr.com/vin/abc/unlock jlr.com/vin/abc/lock'"
-	 " --invoke='jlr.com/vin/abc/lock'"
+	 " --receive='jlr.com/vin/+/unlock jlr.com/vin/+/lock'"
+	 " --invoke='jlr.com/vin/+/lock'"
 	 " --jwt_out=", CredDir, "/lock_cred.jwt"
 	 " --cred_out=", KeyDir, "/lock_cred.json"]),
     ok;
@@ -903,7 +948,11 @@ env(backend) ->
 env(sample) ->
     [env(),
      " RVI_BACKEND=127.0.0.1"
-     " RVI_MY_NODE_ADDR=127.0.0.1:9000"].
+     " RVI_MY_NODE_ADDR=127.0.0.1:9000"];
+env(sample2) ->
+    [env(),
+     " RVI_BACKEND=127.0.0.1"
+     " RVI_PORT=9100"].
 
 
 

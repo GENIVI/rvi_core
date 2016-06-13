@@ -269,7 +269,7 @@ handle_cast({activate_socket, Sock}, #st{} = State) ->
     ?debug("connection:activate_socket(): ~p", [Res]),
     {noreply, State};
 handle_cast({publish_node_id, NodeId, Cs}, #st{} = St) ->
-    ?debug("publish_node_id (~p, ~p)", [NodeId]),
+    ?debug("publish_node_id (~p)", [NodeId]),
     %% Do this from the connection process, so that schedule_rpc can
     %% monitor the connection and unpublish when it goes away.
     schedule_rpc:publish_node_id(Cs, NodeId, dlink_tls_rpc),

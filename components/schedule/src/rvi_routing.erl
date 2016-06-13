@@ -204,7 +204,6 @@ find_routes_(Rt, _Svc, CurRoutes, CurMatchLen) ->
     ?warning("rvi_routing(): Incorrect route entry: ~p", [Rt]),
     { CurRoutes, CurMatchLen }.
 
-
 find_routes(Routes, Service) ->
     ?debug("find_routes(~p, ~p)", [Routes, Service]),
     case find_routes_(Routes, Service, undefined, 0) of

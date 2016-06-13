@@ -81,13 +81,10 @@
 
 json_rpc_status([I] = Str) when I >= $0, I =< $9 ->
     try json_rpc_status(list_to_integer(Str))
-    catch error:_ -> undefined
+    catch error:_ -> 999
     end;
 json_rpc_status(I) when is_integer(I)->
-    case lists:keyfind(I, 1, status_values()) of
-	{_, St} -> St;
-	false   -> undefined
-    end;
+    I;
 json_rpc_status(A) when is_atom(A) ->
     case lists:keyfind(A, 2, status_values()) of
 	{I, _} -> I;
@@ -102,7 +99,10 @@ json_rpc_status(B) when is_binary(B) ->
 	error:_ -> 999
     end;
 json_rpc_status(L) when is_list(L) ->
-    undefined.
+    case lists:keyfind(<<"status">>, 1, L) of
+	{_, St} -> json_rpc_status(St);
+	_ -> 999
+    end.
 
 status_values() ->
     [{0, ok},

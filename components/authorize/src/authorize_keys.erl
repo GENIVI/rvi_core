@@ -289,6 +289,12 @@ normalize_conn(local) ->
     local;
 normalize_conn({IP, Port} = Conn) when is_binary(IP), is_binary(Port) ->
     Conn;
+normalize_conn({{A,B,C,D}, Port}) ->
+    {iolist_to_binary([integer_to_binary(A),<<".">>,
+		       integer_to_binary(B),<<".">>,
+		       integer_to_binary(C),<<".">>,
+		       integer_to_binary(D)]),
+     to_bin(Port)};
 normalize_conn({IP, Port}) ->
     {to_bin(IP), to_bin(Port)}.
 

@@ -260,7 +260,7 @@ handle_call(Other, _From, St) ->
 %%--------------------------------------------------------------------
 
 
-handle_cast( {rvi, service_available, [ SvcName, DataLinkModule ]}, St) ->
+handle_cast( {rvi, service_available, [ SvcName, DataLinkModule|_]}, St) ->
 
     %% Find or create the service.
     ?debug("sched:service_available(): ~p:~s", [ DataLinkModule, SvcName ]),
@@ -277,7 +277,7 @@ handle_cast( {rvi, service_available, [ SvcName, DataLinkModule ]}, St) ->
     NSt2 = send_orphaned_messages(SvcName, DataLinkModule, NSt1),
     { noreply, NSt2 };
 
-handle_cast( {rvi, service_unavailable, [SvcName, DataLinkModule]},
+handle_cast( {rvi, service_unavailable, [SvcName, DataLinkModule|_]},
 	    #st { services_tid = SvcTid } = St) ->
 
     %% Grab the service
@@ -450,7 +450,8 @@ queue_message(#message{service = SvcName, timeout = Timeout} = Msg,
 
     ?debug("sched:q(~p:~s): timeout:      ~p", [DLMod, SvcName, Timeout]),
 
-    SvcRec = find_or_create_service(SvcName, DLMod, St),
+    #service{key = {Service,_}} = SvcRec =
+	find_or_create_service(SvcName, DLMod, St),
 
 
     %%
@@ -465,7 +466,7 @@ queue_message(#message{service = SvcName, timeout = Timeout} = Msg,
 	     timeout_tref = 0
 	    },
 
-    case DLMod:setup_data_link(St#st.cs, SvcName, DLOpt) of
+    case DLMod:setup_data_link(St#st.cs, Service, DLOpt) of
 	[ ok, DLTimeout ] ->
 
 	    TOut = select_timeout(calc_relative_tout(Timeout), DLTimeout),
@@ -493,8 +494,6 @@ queue_message(#message{service = SvcName, timeout = Timeout} = Msg,
 	    ?debug("sched:q(~p:~s): failed to setup: ~p", [ DLMod, SvcName, Err]),
 	    queue_message(Msg1, RemainingRoutes, St)
     end.
-
-
 
 %% Send messages to locally connected service
 send_message(local, _,  _, _,   Msg, St) ->
@@ -619,16 +618,18 @@ send_orphaned_messages(SvcName, local, St) ->
 send_orphaned_messages(SvcName, DataLinkMod, St) ->
 
     %% See if there is an orphaned queue for SvcName
-    case { find_service(SvcName, orphaned, St),
-	   rvi_routing:get_service_protocols(SvcName, DataLinkMod) } of
-	{ not_found, _ } -> %% No orphaned messages destined for the service
-	    ?debug("sched:send_orph(~p:~p): No orphaned messages waiting",
-		   [DataLinkMod, SvcName]),
+    case find_service(SvcName, orphaned, St) of
+	not_found ->
 	    St;
+	SvcRec ->
+	    send_orphaned_messages(SvcName, SvcRec, DataLinkMod, St)
+    end.
 
-	%% We have messages waiting for the service, but no protocol has been configured
-	%% for transmitting them over the given data link module
-	{ _, [] } ->
+send_orphaned_messages(SvcName, SvcRec, DataLinkMod, St) ->
+    case rvi_routing:get_service_protocols(SvcName, DataLinkMod) of
+	%% We have messages waiting for the service, but no protocol has been
+	%% configured for transmitting them over the given data link module
+	[] ->
 	    ?debug("sched:send_orph(~p:~p): No protocol configured. Skipped",
 		   [DataLinkMod, SvcName]),
 	    St;
@@ -637,13 +638,11 @@ send_orphaned_messages(SvcName, DataLinkMod, St) ->
 	%% we have at least one protocol that we can use over
 	%% the given data link
 	%% Start chugging out messages
-	{ SvcRec,  [{ Proto, ProtoOpts, DataLinkOpts }  | _]} ->
+	[{ Proto, ProtoOpts, DataLinkOpts }  | _] ->
 	    send_orphaned_messages_(Proto, ProtoOpts,
 				    DataLinkMod, DataLinkOpts,
 				    SvcRec, St)
-   end.
-
-
+    end.
 
 send_orphaned_messages_(Protocol, ProtocolOpts,
 			DataLinkMod, DataLinkOpts,
@@ -686,10 +685,10 @@ send_orphaned_messages_(Protocol, ProtocolOpts,
     end.
 
 
-find_service(<<R,V,I,":", Rest/binary>>, DLMod, #st{services_tid = SvcTid})
-  when R==$R; R==$r, V==$V; V==$v, I==$I; I==$i ->
+find_service(<<"rvi:", Rest/binary>>, DLMod, #st{services_tid = SvcTid}) ->
     case re:split(Rest, <<"/">>, [{return, binary}]) of
 	[NodeId | _] ->
+	    ?debug("NodeId = ~p", [NodeId]),
 	    case ets:lookup(SvcTid, {<<"rvi:", NodeId/binary>>, DLMod}) of
 		[] ->
 		    not_found;

@@ -21,6 +21,7 @@
 -export([get_all_services/1,
 	 get_services_by_module/2,
 	 get_modules_by_service/2,
+	 is_service_available/2,
 	 subscribe/2,
 	 unsubscribe/2,
 	 register_services/3,
@@ -89,6 +90,11 @@ get_modules_by_service(CompSpec, Service) ->
 		       [ { service, Service }],
 		       [status, modules], CompSpec).
 
+is_service_available(CompSpec, Service) ->
+    rvi_common:request(service_discovery, ?MODULE,
+		       is_service_available,
+		       [ { service, Service }],
+		       [status, result], CompSpec).
 
 register_services(CompSpec, Services, DataLinkModule) ->
     ?debug("register_services(Mod=~p): ~p", [DataLinkModule, Services]),
@@ -183,7 +189,7 @@ handle_rpc(<<"get_services_by_module">>, Args) ->
 handle_rpc(<<"get_modules_by_service">>, Args) ->
     LogId = rvi_common:get_json_log_id(Args),
     {ok, Service } = rvi_common:get_json_element(["service"], Args),
-    ?debug("svc_disc:get_modules_by_service(json-rpc): ~p ", [Service]),
+    ?debug("get_modules_by_service(json-rpc): ~p ", [Service]),
     [ok, Modules ] = gen_server:call(?SERVER,
 				      { rvi,
 					get_modules_by_service,
@@ -191,8 +197,15 @@ handle_rpc(<<"get_modules_by_service">>, Args) ->
 
     {ok, [ {status, rvi_common:json_rpc_status(ok)} , { modules, { array, Modules } }]};
 
-
-
+handle_rpc(<<"is_service_available">>, Args) ->
+    LogId = rvi_common:get_json_log_id(Args),
+    {ok, Service} = rvi_common:get_json_element(["service"], Args),
+    ?debug("service_availability(json-rpc): ~p ", [Service]),
+    [ok, Avail] = gen_server:call(
+		    ?SERVER,
+		    {rvi, is_service_available, [Service, LogId]}),
+    {ok, [ {status, rvi_common:json_rpc_status(ok)},
+	   {result, Avail}]};
 
 %%
 %% Handle the rest.
@@ -225,6 +238,8 @@ handle_call_({rvi, get_services_by_module, [Module | _LogId]}, _From, St) ->
 handle_call_({rvi, get_modules_by_service, [Service | _LogId]}, _From, St) ->
     {reply,  [ok, get_modules_by_service_(Service)], St };
 
+handle_call_({rvi, is_service_available, [Service | _LogId]}, _From, St) ->
+    {reply, [ok, ets:member(?SERVICE_TABLE, Service)], St};
 
 handle_call_(Other, _From, St) ->
     ?warning("svc_disc:handle_call(~p): unknown", [ Other ]),

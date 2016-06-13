@@ -28,5 +28,6 @@
 -define(DLINK_ARG_MODULE,           <<"mod">>).
 -define(DLINK_ARG_AVAILABLE,        <<"av">>).
 -define(DLINK_ARG_UNAVAILABLE,      <<"un">>).
+-define(DLINK_ARG_COST,             <<"cost">>).
 -define(DLINK_ARG_STATUS,           <<"stat">>).
 -define(DLINK_ARG_DATA,             <<"data">>).

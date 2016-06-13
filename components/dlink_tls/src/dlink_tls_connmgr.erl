@@ -45,22 +45,26 @@
 %%%===================================================================
 
 add_connection(IP, Port, Pid) ->
-    gen_server:call(?SERVER, { add_connection, IP, Port, Pid}).
+    gen_server:call(?SERVER, { add_connection, ip(IP), Port, Pid}).
 
 delete_connection_by_pid(Pid) ->
     gen_server:call(?SERVER, { delete_connection_by_pid, Pid } ).
 
 delete_connection_by_address(IP, Port) ->
-    gen_server:call(?SERVER, { delete_connection_by_address, IP, Port } ).
+    gen_server:call(?SERVER, { delete_connection_by_address, ip(IP), Port } ).
 
 find_connection_by_pid(Pid) ->
     gen_server:call(?SERVER, { find_connection_by_pid, Pid } ).
 
 find_connection_by_address(IP, Port) ->
-    gen_server:call(?SERVER, { find_connection_by_address, IP, Port } ).
+    gen_server:call(?SERVER, { find_connection_by_address, ip(IP), Port } ).
 
 connections() ->
     gen_server:call(?SERVER, connections).
+
+ip(IP) ->
+    {ok, Addr} = inet:ip(IP),
+    Addr.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -181,7 +185,7 @@ handle_call({find_connection_by_address, IP, Port}, _From, St) ->
     end;
 
 handle_call(connections, _From, St) ->
-    {reply, ets_select(?ADDR_TAB, [{ {'$1','_'}, [], ['$1'] }]), St};
+    {reply, ets_select(?ADDR_TAB, [{ '_', [], ['$_'] }]), St};
 
 handle_call(_Request, _From, State) ->
     ?warning("~p:handle_call(): Unknown call: ~p", [ ?MODULE, _Request]),
