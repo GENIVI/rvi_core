@@ -4,12 +4,12 @@
 # Copyright (C) 2014, Jaguar Land Rover
 #
 # This program is licensed under the terms and conditions of the
-# Mozilla Public License, version 2.0.  The full text of the 
+# Mozilla Public License, version 2.0.  The full text of the
 # Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
 #
-# 
+#
 # Simple RVI service caller
-#  
+#
 
 import sys
 from rvilib import RVI
@@ -25,12 +25,12 @@ def usage():
     print
     print "Example: ./callrvi.py -n http://rvi1.nginfotpdx.net:9001 \\"
     print "                      jlr.com/vin/aaron/4711/test/ping \\"
-    print "                      arg1=val1 arg2=val2"                    
+    print "                      arg1=val1 arg2=val2"
 
     sys.exit(255)
 
 
-# 
+#
 # Check that we have the correct arguments
 #
 opts, args= getopt.getopt(sys.argv[1:], "n:")
@@ -71,4 +71,5 @@ print "args:             ", rvi_args
 #
 # Send the messge.
 #
-rvi.message(service, rvi_args)
+response = rvi.message(service, rvi_args)
+print "Response:          ", response

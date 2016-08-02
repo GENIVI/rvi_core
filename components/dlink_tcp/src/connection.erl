@@ -202,8 +202,6 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({send, Data},  #st{packet_mod = PMod, packet_st = PSt} = St) ->
-    ?debug("~p:handle_cast(send): Sending: ~p",
-	   [ ?MODULE, Data]),
     {ok, Encoded, PSt1} = PMod:encode(Data, PSt),
     gen_tcp:send(St#st.sock, Encoded),
 
@@ -212,8 +210,6 @@ handle_cast({send, Data, Opts}, #st{sock = Socket,
 				    packet_mod = PMod,
 				    packet_st = PSt,
 				    frag_opts = FragOpts} = St) ->
-    ?debug("handle_cast({send, Data, ~p, ...), FragOpts = ~p",
-	   [Opts, FragOpts]),
     {ok, Bin, PSt1} = PMod:encode(Data, PSt),
     St1 = St#st{packet_st = PSt1},
     rvi_frag:send(Bin, Opts ++ FragOpts, ?MODULE,

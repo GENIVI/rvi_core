@@ -277,32 +277,42 @@ connect_and_retry_remote( IP, Port, CompSpec) ->
     end.
 
 
-announce_local_service_(_CompSpec, [], _Service, _Availability) ->
+announce_services_(_CompSpec, [], _Services, _Cost, _Availability) ->
     ok;
 
-announce_local_service_(CompSpec,
-			[ConnPid | T],
-			Service, Availability) ->
+announce_services_(CompSpec,
+			[{Conn, ConnPid} | T],
+			Services, Cost, Availability) ->
 
-    AvailabilityMsg = availability_msg(Availability, [Service]),
-    Res = dlink_tls_conn:send(
-            ConnPid,
-	    rvi_common:pass_log_id(
-	      [	{ ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE }
-		| AvailabilityMsg ], CompSpec)),
+    ?debug("announce_services(~p, ~p, ~p)", [Conn, ConnPid, Services]),
+    case authorize_rpc:filter_by_service(
+	   CompSpec, Services, Conn) of
+	[ok, [_]] ->
+	    ?debug("will announce", []),
+	    AvailabilityMsg = availability_msg(Availability, Services),
+	    Res = dlink_tls_conn:send(
+		    ConnPid,
+		    rvi_common:pass_log_id(
+		      [	{ ?DLINK_ARG_CMD, ?DLINK_CMD_SERVICE_ANNOUNCE },
+			{ ?DLINK_ARG_COST, Cost }
+			| AvailabilityMsg ], CompSpec)),
 
-    ?debug("dlink_tls:announce_local_service(~p: ~p) -> ~p  Res: ~p",
-	   [ Availability, Service, ConnPid, Res]),
+	    ?debug("announce_services(~p: ~p) -> ~p  Res: ~p",
+		   [ Availability, Services, ConnPid, Res]);
+	_Other ->
+	    ?debug("WON'T announce (~p)", [_Other]),
+	    ignore
+    end,
 
     %% Move on to next connection.
-    announce_local_service_(CompSpec,
-			    T,
-			    Service, Availability).
+    announce_services_(CompSpec,
+		      T,
+		      Services, Cost, Availability).
 
 announce_local_service_(CompSpec, Service, Availability) ->
-    announce_local_service_(CompSpec,
-			    get_connections(),
-			    Service, Availability).
+    announce_services_(CompSpec,
+		       dlink_tls_connmgr:connections(),
+		       [Service], link_cost(CompSpec), Availability).
 
 %% We lost the socket connection.
 %% Unregister all services that were routed to the remote end that just died.
@@ -366,13 +376,15 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
         ?DLINK_CMD_AUTHORIZE ->
 	    ?debug("got authorize ~s:~w", [PeerIP, PeerPort]),
             [ ProtoVersion,
+	      NodeId,
               Credentials ] =
                 opts([?DLINK_ARG_VERSION,
+		      ?DLINK_ARG_NODE_ID,
                       ?DLINK_ARG_CREDENTIALS],
                      Elems, undefined),
 
 	    try
-		process_authorize(FromPid, PeerIP, PeerPort,
+		process_authorize(FromPid, PeerIP, PeerPort, NodeId,
 				  Credentials, ProtoVersion, CS)
 	    catch
 		throw:{protocol_failure, What} ->
@@ -397,13 +409,21 @@ handle_socket(FromPid, PeerIP, PeerPort, data, Elems, CompSpec) ->
         ?DLINK_CMD_SERVICE_ANNOUNCE ->
 	    ?debug("got service_announce ~s:~w", [PeerIP, PeerPort]),
 	    [ Status,
-	      Services ] =
+	      Services,
+	      Cost0 ] =
                 opts([?DLINK_ARG_STATUS,
-                      ?DLINK_ARG_SERVICES],
+                      ?DLINK_ARG_SERVICES,
+		      ?DLINK_ARG_COST],
                      Elems, undefined),
 
+	    Cost = case Cost0 of
+		       _ when is_integer(Cost0) ->
+			   Cost0;
+		       _ -> link_cost(CS)
+		   end,
 	    log("sa from ~s:~w", [PeerIP, PeerPort], CS),
-	    process_announce(Status, Services, FromPid, PeerIP, PeerPort, CompSpec);
+	    process_announce(Status, Services, Cost,
+			     FromPid, PeerIP, PeerPort, CompSpec);
 
         ?DLINK_CMD_RECEIVE ->
             [ _TransactionID,
@@ -556,7 +576,8 @@ handle_call({rvi, send_data, [ProtoMod, Service, Data, DataLinkOpts] = Args},
 	    {reply, [no_route], St};
 
 	%% FIXME: What to do if we have multiple connections to the same service?
-	[ConnPid | _T] ->
+	[_|_] = Conns ->
+	    ConnPid = cheapest_conn(Conns),
  	    Res = dlink_tls_conn:send(
 		    ConnPid, [{?DLINK_ARG_TRANSACTION_ID, Tid},
 			      {?DLINK_ARG_CMD, ?DLINK_CMD_RECEIVE},
@@ -633,7 +654,13 @@ get_services_by_connection(ConnPid) ->
     end.
 
 
+get_connections_by_service(<<"rvi:", _/binary>> = Service) ->
+    [Svc|_] = binary:split(Service, [<<"/">>]),
+    get_connections_by_service_(Svc);
 get_connections_by_service(Service) ->
+    get_connections_by_service_(Service).
+
+get_connections_by_service_(Service) ->
     ?debug("get_connections_by_service(~p,~n~p)",
 	   [Service, ets:tab2list(?SERVICE_TABLE)]),
     case ets:lookup(?SERVICE_TABLE, Service) of
@@ -645,24 +672,41 @@ get_connections_by_service(Service) ->
 	    []
     end.
 
+cheapest_conn([{Pid, Cost}|Conns]) ->
+    cheapest_conn(Conns, Cost, Pid).
 
-add_services(SvcNameList, ConnPid) ->
+cheapest_conn([{P, C}|T], Cost, Pid) ->
+    if C < Cost ->
+	    cheapest_conn(T, C, P);
+       true ->
+	    cheapest_conn(T, Cost, Pid)
+    end;
+cheapest_conn([], Cost, Pid) ->
+    ?debug("cheapest connection: ~p (Cost = ~p)", [Pid, Cost]),
+    Pid.
+
+add_services(SvcNameList, Cost, ConnPid) ->
     %% Create or replace existing connection table entry
     %% with the sum of new and old services.
     ?debug("add_services(~p, ~p)", [SvcNameList, ConnPid]),
     ets:insert(?CONNECTION_TABLE,
 	       #connection_entry {
 		  connection = ConnPid,
-		  services = SvcNameList ++ get_services_by_connection(ConnPid)
+		  services = union(SvcNameList,
+				   get_services_by_connection(ConnPid))
 	      }),
 
     %% Add the connection to the service entry for each servic.
     [ ets:insert(?SERVICE_TABLE,
 	       #service_entry {
 		  service = SvcName,
-		  connections = [ConnPid | get_connections_by_service(SvcName)]
+		  connections = [{ConnPid, Cost}
+				 | get_connections_by_service(SvcName)]
 		 }) || SvcName <- SvcNameList ],
     ok.
+
+union(A, B) ->
+    A ++ (B -- A).
 
 
 delete_services(ConnPid, SvcNameList) ->
@@ -674,11 +718,14 @@ delete_services(ConnPid, SvcNameList) ->
 
     %% Loop through all services and update the conn table
     %% Update them with a new version where ConnPid has been removed
-    [ ets:insert(?SERVICE_TABLE,
-		 #service_entry {
-		  service = SvcName,
-		  connections = get_connections_by_service(SvcName) -- [ConnPid]
-		 }) || SvcName <- SvcNameList ],
+    [ ets:insert(
+	?SERVICE_TABLE,
+	#service_entry {
+	   service = SvcName,
+	   connections = [S || {_,P} = S
+				   <- get_connections_by_service(SvcName),
+			       P =/= ConnPid]
+	  }) || SvcName <- SvcNameList ],
     ok.
 
 availability_msg(Availability, Services) ->
@@ -686,9 +733,13 @@ availability_msg(Availability, Services) ->
      { ?DLINK_ARG_SERVICES, Services }].
 
 status_string(available  ) -> ?DLINK_ARG_AVAILABLE;
-status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE.
+status_string(unavailable) -> ?DLINK_ARG_UNAVAILABLE;
+status_string(S) when S == ?DLINK_ARG_AVAILABLE;
+		      S == ?DLINK_ARG_UNAVAILABLE ->
+    S.
 
-process_authorize(FromPid, PeerIP, PeerPort,
+
+process_authorize(FromPid, PeerIP, PeerPort, NodeId,
 		  Credentials, ProtoVersion, CompSpec) ->
     ?info("dlink_tls:authorize(): Peer Address:   ~s:~p", [PeerIP, PeerPort ]),
     case ProtoVersion of
@@ -701,7 +752,7 @@ process_authorize(FromPid, PeerIP, PeerPort,
     log("auth ~s:~w", [PeerIP, PeerPort], CompSpec),
     PeerCert = rvi_common:get_value(dlink_tls_peer_cert, not_found, CompSpec),
     authorize_rpc:store_creds(CompSpec, Credentials, Conn, PeerCert),
-    connection_authorized(FromPid, Conn, CompSpec).
+    connection_authorized(FromPid, Conn, NodeId, CompSpec).
 
 send_authorize(Pid, CompSpec) ->
     ?debug("send_authorize() Pid = ~p; CompSpec = ~p", [Pid, abbrev(CompSpec)]),
@@ -709,14 +760,18 @@ send_authorize(Pid, CompSpec) ->
     dlink_tls_conn:send(Pid, rvi_common:pass_log_id(
 			       [{?DLINK_ARG_CMD, ?DLINK_CMD_AUTHORIZE},
 				{?DLINK_ARG_VERSION, ?DLINK_TLS_VERSION},
+				{?DLINK_ARG_NODE_ID, rvi_common:node_id()},
 				{?DLINK_ARG_CREDENTIALS, Creds}], CompSpec)).
 
-connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn, CompSpec) ->
+connection_authorized(FromPid, {RemoteIP, RemotePort} = Conn,
+		      NodeId, CompSpec) ->
     %% If FromPid (the genserver managing the socket) is not yet registered
     %% with the connection manager, this is an incoming connection
     %% from the client. We should respond with our own authorize followed by
     %% a service announce
     log("authorized ~s:~w", [RemoteIP, RemotePort], CompSpec),
+    dlink_tls_conn:publish_node_id(FromPid, NodeId, CompSpec),
+    add_services([<<"rvi:", NodeId/binary>>], 0, FromPid),
     case dlink_tls_connmgr:find_connection_by_pid(FromPid) of
 	not_found ->
 	    ?info("dlink_tls:authorize(): New connection!"),
@@ -756,16 +811,25 @@ process_data(_FromPid, RemoteIP, RemotePort, ProtocolMod, Data, CompSpec) ->
     Proto = binary_to_existing_atom(ProtocolMod, latin1),
     Proto:receive_message(CompSpec, {RemoteIP, RemotePort}, Data).
 
-process_announce(Avail, Svcs, FromPid, IP, Port, CompSpec) ->
+process_announce(Avail, Svcs, Cost, FromPid, IP, Port, CompSpec) ->
     ?debug("dlink_tls:service_announce(~p): Address:       ~p:~p", [Avail,IP,Port]),
     ?debug("dlink_tls:service_announce(~p): Services:      ~p", [Avail,Svcs]),
+    ?debug("dlink_tls:service_announce(~p): Cost:          ~p", [Cost]),
+    Connections = dlink_tls_connmgr:connections() -- [FromPid],
     case Avail of
 	?DLINK_ARG_AVAILABLE ->
-	    add_services(Svcs, FromPid),
+	    add_services(Svcs, Cost, FromPid),
 	    service_discovery_rpc:register_services(CompSpec, Svcs, ?MODULE);
 	?DLINK_ARG_UNAVAILABLE ->
 	    delete_services(FromPid, Svcs),
 	    service_discovery_rpc:unregister_services(CompSpec, Svcs, ?MODULE)
+    end,
+    MaxCost = max_cost(CompSpec),
+    case Cost + routing_cost(CompSpec) + link_cost(CompSpec) of
+	NewCost when NewCost > MaxCost ->
+	    ignore;
+	NewCost ->
+	    announce_services_(CompSpec, Connections, Svcs, NewCost, Avail)
     end,
     ok.
 
@@ -776,13 +840,15 @@ delete_connection(Conn) ->
 
     %% Replace each existing connection entry that has
     %% SvcName with a new one where the SvcName is removed.
-    lists:map(fun(SvcName) ->
-		      Existing = get_connections_by_service(SvcName),
-		      ets:insert(?SERVICE_TABLE, #
-				     service_entry {
-				       service = SvcName,
-				       connections = Existing -- [ Conn ]
-				      })
+    lists:map(
+      fun(SvcName) ->
+	      Existing = get_connections_by_service(SvcName),
+	      ets:insert(?SERVICE_TABLE, #
+			     service_entry {
+			       service = SvcName,
+			       connections = lists:keydelete(
+					       Conn, 2, Existing)
+			      })
 	      end, SvcNameList),
 
     %% Delete the connection
@@ -791,16 +857,21 @@ delete_connection(Conn) ->
 
 
 
-get_connections('$end_of_table', Acc) ->
-    Acc;
+%% get_connections('$end_of_table', Acc) ->
+%%     Acc;
 
-get_connections(Key, Acc) ->
-    get_connections(ets:next(?CONNECTION_TABLE, Key), [ Key | Acc ]).
+%% get_connections(Key, Acc) ->
+%%     get_connections(ets:next(?CONNECTION_TABLE, Key), [ Key | Acc ]).
 
 
-get_connections() ->
-    get_connections(ets:first(?CONNECTION_TABLE), []).
+%% get_connections() ->
+%%     get_connections(ets:first(?CONNECTION_TABLE), []).
 
+link_cost(_CS) -> 1.
+
+routing_cost(_CS) -> 1.
+
+max_cost(_CS) -> 10.
 
 get_credentials(CompSpec) ->
     case authorize_rpc:get_credentials(CompSpec) of

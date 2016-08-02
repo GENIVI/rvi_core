@@ -85,7 +85,7 @@ get_credentials(CompSpec) ->
 
 remove_connection(CompSpec, Conn) ->
     rvi_common:notification(authorize, ?MODULE, remove_connection,
-			    [{conn, Conn}], [status], CompSpec).
+			    [{conn, Conn}], CompSpec).
 
 store_creds(CompSpec, Creds, Conn) ->
     store_creds(CompSpec, Creds, Conn, undefined).

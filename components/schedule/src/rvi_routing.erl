@@ -204,7 +204,6 @@ find_routes_(Rt, _Svc, CurRoutes, CurMatchLen) ->
     ?warning("rvi_routing(): Incorrect route entry: ~p", [Rt]),
     { CurRoutes, CurMatchLen }.
 
-
 find_routes(Routes, Service) ->
     ?debug("find_routes(~p, ~p)", [Routes, Service]),
     case find_routes_(Routes, Service, undefined, 0) of
@@ -262,6 +261,7 @@ find_protocols_(DataLink, [ {{ _Pr, _PrOp }, { _DL, _DLOp }}  | T], Acc) ->
 
 
 find_protocols(AllRoutes, Service, DataLink) ->
+    ?debug("find_protocols(~p, ~p)", [AllRoutes, Service]),
     SvcRoutes = find_routes(AllRoutes, Service),
     Res = find_protocols_(DataLink, SvcRoutes, []),
     ?debug("find_protocols(~p:~p): -> ~p", [ DataLink, Service, Res]),
