@@ -11,7 +11,7 @@ Attribution-ShareAlike 4.0 International.
 
 **Version 0.5.0**
 
-# CONFIGURING AN RVI NODE 
+# CONFIGURING AN RVI NODE
 
 This document describes the process of configuring an RVI node so that it
 can serve locally connected services, and also find other RVI nodes in a network.
@@ -38,9 +38,19 @@ To bring up an RVI node so that it can be used by locally
 connected services and communicate with other RVI nodes, the following
 steps must be taken.
 
-<b>1. Specify the node service prefix</b><br>
-This node will handle traffic to all services that start with the
-given prefix.
+<b>1. Specify the node Id and service prefix</b><br>
+
+RVI service names have the structure `domain/type/uuid/...`, where
+the first three parts are mandatory and form a globally unique node Id.
+The node service prefix may contain more parts. Note, however, that
+the prefix `domain/type/uuid/rvi` is reserved for RVI-internal services.
+
+Example: `genivi.org/mobile/c60465c4-6324-11e6-b617-000c29690f82`
+
+A convenient way to configure the prefix is to use the predefined `$NODE_ID`
+pattern, e.g. `{node_service_prefix, "genivi.org/vehicle/$NODE_ID"}`. RVI will
+use the contents of a file named rvi_node_id, if it exists, otherwise create
+such a file, storing the output of the Linux utility `uuidgen`.
 
 <b>2. Provide paths to keys, certificates and service credentials</b><br>
 RVI Core uses X.509 keys certificates for authentication, and credentials
@@ -74,7 +84,7 @@ production release.
 ## CONFIGURATION FILE LOCATION AND FORMATS
 
 There is a single configuration file, with the setup for all
-components and modules in the node, used for each release. 
+components and modules in the node, used for each release.
 A documented example file is provided as `priv/config/rvi_sample.config`
 
 The configuration file consists of an array of erlang tuples (records
@@ -188,7 +198,7 @@ Some forms of substitution are supported by `setup`, see (the docs on variable e
 RVI Core supports some additional substitution of its own. All substitution is done automatically when RVI starts, so the running applications see the final results of the substitutions.
 
 All string values under the rvi tuple tree are scanned
-for specific dokens during startup. If a token is 
+for specific dokens during startup. If a token is
 found, it will be replaced with a value referenced by it.
 Tokens can one of the following:
 
@@ -197,32 +207,32 @@ Tokens can one of the following:
   the referenced file is read. The line (without the newline)
   replaces the token.<br>
   Example:<br>
-  `{ node_service_prefix, "jlr.com/vin/$rvi_file(/etc/vin,default_vin)"}`
+  `{ node_service_prefix, "genivi.org/vin/$rvi_file(/etc/vin,default_vin)"}`
 
   will be substituted with the first line from the
   file `/etc/vin`:
 
-  `{ node_service_prefix, "jlr.com/vin/2GKEG25HXP4093669"}`
-  
+  `{ node_service_prefix, "genivi.org/vin/2GKEG25HXP4093669"}`
+
   If `/etc/vin` cannot be opened, the value `default_vin`
   will be used instead.
 
 <div class="pagebreak"></div>
 
-* `$rvi_env(EnvironemtnName,Default)` - Environment variable<br>
-  When an `$rvi_env()` token is encountered, the value of 
+* `$rvi_env(EnvironmentName,Default)` - Environment variable<br>
+  When an `$rvi_env()` token is encountered, the value of
   the Linux process environment variable (such as $HOME) is read
   to replace the token.<br>
 
   Example:<br>
-    `{ node_service_prefix, "jlr.com/vin/$rvi_env(VIN,default_vin)"}`
+    `{ node_service_prefix, "genivi.org/vin/$rvi_env(VIN,default_vin)"}`
 
     will be substituted with the value of the `$VIN` environment
     variable:
 
 
-    `{ node_service_prefix, "jlr.com/vin/2GKEG25HXP4093669"}`
-  
+    `{ node_service_prefix, "genivi.org/vin/2GKEG25HXP4093669"}`
+
     If VIN is not a defined environment variable, the value
     `default_vin` will be used instead.
 
@@ -235,11 +245,11 @@ Tokens can one of the following:
   world wide unique.
 
   Example:<br>
-    `{ node_service_prefix, "jlr.com/vin/$uuid(default_vin)"}`
+    `{ node_service_prefix, "genivi.org/vin/$rvi_uuid(default_vin)"}`
 
   will be substituted with the value of the root disk UUID:
-    `{ node_service_prefix, "jlr.com/vin/afc0a6d8-0264-4f8a-bb3e-51ff8655b51c"} `
-  
+    `{ node_service_prefix, "genivi.org/vin/afc0a6d8-0264-4f8a-bb3e-51ff8655b51c"} `
+
   If the root UUID cannot be retrieved, the value `default_vin`
   will be used instead.
 
@@ -254,7 +264,7 @@ When a service sends traffic to another service, the local RVI node
 will prefix match the name of the destination service against the
 service prefix of all known nodes in the system. The node with the
 longest matching prefix will receive the traffic in order to have it
-forwarded to the targeted service that is connected to it. 
+forwarded to the targeted service that is connected to it.
 
 The prefix always starts with an organisational ID that identifies the
 entity that manages the service. Best practises is to use the domain
@@ -267,19 +277,19 @@ prefix identifying what their role is.
 
 Below are a few examples of prefixes:
 
-`jaguarlandrover.com/vin/sajwa71b37sh1839/` - A JLR vehcile with
+`genivi.org/vin/sajwa71b37sh1839/` - A GENIVI vehcile with
 the given vin.<br>
 
-`jaguarlandrover.com/mobile/+19492947872/` - A mobile device with
-a given number, managed by JLR, hosting an RVI node.<br>
+`genivi.org/mobile/+19492947872/` - A mobile device with
+a given number, managed by GENIVI, hosting an RVI node.<br>
 
-`jaguarlandrover.com/sota/` - JLR's global software over the air
+`genivi.org/sota/` - GENIVI's global software over the air
 server.<br>
 
-`jaguarlandrover.com/3rd_party/` - JLR's 3rd party application
+`genivi.org/3rd_party/` - GENIVI's 3rd party application
 portal.<br>
 
-`jaguarlandrover.com/diagnostic/` - JLR's diagnostic server.<br>
+`genivi.org/diagnostic/` - GENIVI's diagnostic server.<br>
 
 The prefix for an RVI node is set in the `node_service_prefix` tuple.
 
@@ -294,10 +304,10 @@ An example entry is given below:
     ...
     { rvi_core, [
       ...
-      <b>{ node_service_prefix, "jaguarlandrover.com/backend/" }</b>
+      <b>{ node_service_prefix, "genivi.org/backend/" }</b>
     ]}
   ]}
-] 
+]
 </pre>
 
 #PROVIDE PATHS TO KEYS, CERTIFICATES AND SERVICE CREDENTIALS
@@ -368,10 +378,10 @@ An example tuple is given below:
       ...
       { components, [
         ...
-        { data_link, [ 
+        { data_link, [
          ...
 	     { dlink_tls_rpc, gen_server,
-	      [ 
+	      [
 	        ...
             <b>{ server_opts, [ { ip, "192.168.11.234"},
                                 { port, 8807 },
@@ -383,12 +393,12 @@ An example tuple is given below:
     }]
   }]
 }
-] 
+]
 </pre>
 
 If `dlink_tcp_rpc` is to listen to the port on all network
 interfaces, the `ip` tuple can be omitted.
-   
+
 
 The `persistent_connections` section lists the IP:Port pair of all
 remote RVI nodes that this node should maintain a connection with. If the
@@ -405,26 +415,26 @@ Routing rules determining how to get a message targeting a specific
 service to its destination.
 
 A routing rule specifies a number of different way to reach an RVI
-node hosting a specific service prefix, such as `jlr.com/vin/ABCD/sota/`.
+node hosting a specific service prefix, such as `genivi.org/vin/ABCD/sota/`.
 
 Please note that if a remotely initiated (== client) data link is
 available and has announced that the targeted service is available,
 that data link will be used regardless of what it is.
-     
+
 Service name prefix that rules are specified for
 The service prefix with the longest match against the service targeted
 by the message will be used.
 
-Example: Targeted service = `jlr.com/backend/sota/get_updates`
+Example: Targeted service = `genivi.org/backend/sota/get_updates`
 
-Prefix 1: `{ "jlr.com/backend", [...]}`<br>
-Prefix 2: `{ "jlr.com/backend/sota", [...]}`<br>
+Prefix 1: `{ "genivi.org/backend", [...]}`<br>
+Prefix 2: `{ "genivi.org/backend/sota", [...]}`<br>
 
-In this case, Prefix 2 will be used. 
+In this case, Prefix 2 will be used.
 
 This allows you to setup different servers for different types of
-services (SOTA, remote door unlock, HVAC etc).  
-	
+services (SOTA, remote door unlock, HVAC etc).
+
 Make sure to have a default routin rule if you don't want your message
 to error out immediately. With a default the message will be queued
 until it times out, waiting for a remote node to connect and announce
@@ -451,22 +461,22 @@ specific address, add the following rule.
   { "", [
     { proto_json_rpc, dlink_tcp_rpc}
   ]},
-  <b>{ "jlr.com/backend/",  [
+  <b>{ "genivi.org/backend/",  [
 	   { proto_json_rpc, { dlink_tcp_rpc, [ { target, "38.129.64.31:8807" } ]}}
   ]}</b>
 ]}
 </pre>
 
 This rule specifies that any message to a service starting
-with `jlr.com/backend` shall first be encoded using `proto_json_rpc`, 
+with `genivi.org/backend` shall first be encoded using `proto_json_rpc`,
 and transmitted using `dlink_tcp_rpc`. The `dlink_tcp_rcp` data link
-module will be instructed to send all messages targeting `jlr.com/backend/...` to the
+module will be instructed to send all messages targeting `genivi.org/backend/...` to the
 IP-address:port `38.129.64.31:8807`.
 
 <div class="pagebreak"></div>
 
 To setup Vehicle-to-Vehicle communication, where a vehicle can reach
-services on other vehicle's starting with `jlr.com/vin/`, add the
+services on other vehicle's starting with `genivi.org/vin/`, add the
 following rule.
 
 <pre>
@@ -474,10 +484,10 @@ following rule.
   { "", [
     { proto_json_rpc, dlink_tcp_rpc}
   ]},
-  { "jlr.com/backend/",  [
+  { "genivi.org/backend/",  [
 	   { proto_json_rpc, { dlink_tcp_rpc, [ { target, "38.129.64.31:8807" } ]}}
   ]},
-  <b>{ "jlr.com/vin/", [
+  <b>{ "genivi.org/vin/", [
 	   { proto_json_rpc, { dlink_tcp_rpc, [ broadcast, { interface, "wlan0" } ] } },
 	   { proto_json_rpc, { dlink_3g_rpc, [ initiate_outbound ]} },
 	   { proto_sms_rpc, { dlink_sms_rpc, [ { max_msg_size, 140 } ] } }
@@ -487,10 +497,10 @@ following rule.
 </pre>
 
 
-This rule specifies that any message to a service starting 
-with `jlr.com/vin` shall first be encoded using the protocol - data
+This rule specifies that any message to a service starting
+with `genivi.org/vin` shall first be encoded using the protocol - data
 link pair `proto_json_rpc` - `dlink_tcp_rpc`, where WiFi
-broadcasts shall be used (thrugh `wlan0` and `broadcast`) to
+broadcasts shall be used (through `wlan0` and `broadcast`) to
 find other vehiclces.
 
 If that does not work, a 3G connection to the vehicle shall be
@@ -506,7 +516,7 @@ maximizing message size to 140 bytes.
 # SPECIFY SERVICE EDGE URL #
 
 The Service Edge URL is that which will be used by locally connected
-services to interact, through JSON-RPC, with the RVI node. 
+services to interact, through JSON-RPC, with the RVI node.
 
 In cases where JSON-RPC is used instead of Erlang-internal gen\_server calls,
 other components in the RVI node use the same URL to send traffic
@@ -529,8 +539,8 @@ An example entry is gven below:
       ...
       { components, [
         ...
- 	    { service_edge, [ 
-	      <b>{ service_edge_rpc, json_rpc, [ 
+ 	    { service_edge, [
+	      <b>{ service_edge_rpc, json_rpc, [
 	        { json_rpc_address, { "127.0.0.1", 8801 } },
 	        { websocket, [ { port, 8808}]}
 	      ]}</b>
@@ -570,8 +580,8 @@ external node address chapter:
       { components, [
         ...
         <b>
- 	    { service_edge, [ 
-	      { service_edge_rpc, json_rpc, [ 
+ 	    { service_edge, [
+	      { service_edge_rpc, json_rpc, [
 	        { json_rpc_address, { "127.0.0.1", 8801 } },
 	        ...
 	      ]}
@@ -587,7 +597,7 @@ external node address chapter:
 	      ]}
         ]},
 	    { authorize, [
-		  { authorize_rpc, json_rpc, [ 
+		  { authorize_rpc, json_rpc, [
 	        { json_rpc_address, { "127.0.0.1", 8804 } }
 	      ]}
 	    ]},
@@ -597,7 +607,7 @@ external node address chapter:
 	      ]}
 	    ]},
 	    { data_link, [
-	      { dlink_tcp_rpc, json_rpc,  [ 
+	      { dlink_tcp_rpc, json_rpc,  [
 	        { json_rpc_address, { "127.0.0.1", 8806 } },
 	        ...
           ]}
@@ -655,8 +665,8 @@ between Servie Edge and other RVI components.
       { components, [
         ...
         <b>
- 	    { service_edge, [ 
-	      <b>{ service_edge_rpc, gen_server, [ 
+ 	    { service_edge, [
+	      <b>{ service_edge_rpc, gen_server, [
 	        { json_rpc_address, { "127.0.0.1", 8801 } },
 	        ...
 	      ]}
@@ -674,7 +684,7 @@ between Servie Edge and other RVI components.
 	      { proto_json_rpc, gen_server, [] }
 	    ]},
 	    { data_link, [
-	      { dlink_tcp_rpc, gen_server,  [ 
+	      { dlink_tcp_rpc, gen_server,  [
 	        ...
           ]}
 		]}
@@ -706,8 +716,8 @@ Below is the previous configuration example with such a setup.
       ...
       { components, [
         ...
- 	    { service_edge, [ 
-	      { service_edge_rpc, json_rpc, [ 
+ 	    { service_edge, [
+	      { service_edge_rpc, json_rpc, [
 	        { json_rpc_address, { "127.0.0.1", 8801 } },
 	        <b>{ websocket, [ { port, 8808}]}</b>
 	      ]}</b>
@@ -792,7 +802,7 @@ following command can be run from the build root:
     ./script/setup_rvi_node.sh -n prod_rel -c prod.config
 
 Once executed (and no errors were found in test.config), a
-subdirectory called `rel/prod_rel` has been created. 
+subdirectory called `rel/prod_rel` has been created.
 
 The `prod_rel` directory contains a complete erlang runtime
 system, the RVI application, and the configuration data generated from
@@ -808,16 +818,16 @@ The newly built product release is started using the
 `rel/prod_rel/rvi` tool:
 
     ./rel/prod_rel/rvi start
-	
+
 Stopping is done in a similar manner:
 
     ./rel/prod_rel/rvi stop
-	
+
 
 To check if a node is up, retrieve its process ID with:
 
     ./rel/prod_rel/rvi getpid
-	
+
 
 To attach to the console of a started node in order to inspect it run:
 
@@ -825,7 +835,7 @@ To attach to the console of a started node in order to inspect it run:
 
 
 *Note that you need to exit from the console with Ctrl-d. Pressing
-Ctrl-c will bring down the node itself.* 
+Ctrl-c will bring down the node itself.*
 
 # Loggings
 
@@ -834,7 +844,7 @@ To get debug output on a console, start a development release, or attach to a
 production release, and set the log level manually:
 
     1> lager:set_loglevel(lager_console_backend, debug)
-	
+
 Replace debug with info, notice, warning, or error for different log
 levels. A production release will also produce logs to
 `rel/[release]/log/erlang.log.?`.
@@ -847,16 +857,15 @@ You can configure the log level through the lager configuration entry:
 <pre>
  {env,
   [
-   {lager, 
-   [ { handlers, 
+   {lager,
+   [ { handlers,
       [ {lager_console_backend, debug} ]
       }
    ]}
    ...
 </pre>
 
-Additional handlers can also be added for different log destinations. 
+Additional handlers can also be added for different log destinations.
 
 See Basho's lager documentation at
 [github](https://github.com/basho/lager) for details on logging.
-
