@@ -210,7 +210,7 @@ service.
 
 `Synch` is a boolean, where `true` means that the service reply shall be
 routed back to the client. This is accomplished by the client-side RVI
-node creating a temporary "service" on the form `Id/rvi/reply/Seq`, and
+node creating a temporary "service" on the form `Id/rvi/int/reply/Seq`, and
 passing it along as `ReplyId`, where `Id` is the unique node id provided
 in the `"au"` message, and `Seq` uniquely allows the client node to pair
 the reply to the corresponding request.

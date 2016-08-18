@@ -1,0 +1,29 @@
+# Sequence diagram description
+#
+# The sequence diagram description below is translated to
+# a PNG image by mscgen (http://www.mcternan.me.uk/mscgen/)
+#
+# Recompile updated diagrams to a png image with:
+#
+#   mscgen -T png -o images/rvi_provisioning.png msc/rvi_provisioning.msc
+#
+
+msc {
+  width="800";
+  "Vehicle", "Guest", "PS";
+  "Guest" => "Guest" [ label = "Create unsigned cert", ID="1" ];
+  "Guest" => "PS" [ label = "HTTPS POST: CSR(Cert) -> Signed_Cert + Cred", ID="2" ];
+  --- [ label = "Guest able to connect", ID="3" ];
+  ...;
+  "Vehicle" => "PS" [ label = "Authorize Guest [Services]", ID="4" ];
+  ...;
+  "Guest" <-> "PS" [ label = "RVI connect", ID="5" ];
+  ...;
+  "Guest" -> "PS" [ label = "{cmd:sa,stat:av,svcs:[Guest/creds]}", ID="6" ];
+  "Guest" <- "PS" [ label = "{cmd:sa,stat:av,svcs:[PS/get_creds]}", ID="7" ];
+  "Guest" -> "PS"  [ label = "PS/get_creds []", ID="8" ];
+  "Guest" <- "PS" [ label = "Guest/creds [C1,...Cn]", ID="9" ];
+  --- [ label = "Guest provisioned", ID="10" ];
+  "Vehicle" <-> "Guest" [ label = "RVI Connect", ID="11" ];
+  ...;
+}
