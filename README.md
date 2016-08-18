@@ -40,7 +40,7 @@ For a detailed description of the RVI Core Peer-to-peer protocol, please check t
 [PDF](doc/pdf/rvi_protocol.pdf)
 
 For a summary of RVI security aspects, please read the **rvi_security documentation**:
-[Markdown](doc/rvi_security.md) | [PDF](doc/rvi_security.pdf)
+[Markdown](doc/rvi_security.md) | [PDF](doc/pdf/rvi_security.pdf)
 
 Technical RVI disussions are held at the GENIVI project mailing list:
 [GENIVI](https://lists.genivi.org/mailman/listinfo/genivi-projects)
