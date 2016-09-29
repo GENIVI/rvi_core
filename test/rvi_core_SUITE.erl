@@ -543,7 +543,8 @@ handle_body(Socket, _Request, Body, _St) ->
 	   {<<"parameters">>,
 	    [ {<<"data">>, Data},
 	      {<<"sendto">>, SendTo},
-	      {<<"rvi.max_msg_size">>, _}]}
+	      {<<"rvi.max_msg_size">>, _}]},
+	   {<<"src">>, _}
 	  ]}] ->
 	    binary_to_existing_atom(SendTo, latin1)
 		! {message, [{service_name, SvcName},

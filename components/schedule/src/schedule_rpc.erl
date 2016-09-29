@@ -13,7 +13,7 @@
 -include_lib("rvi_common/include/rvi_common.hrl").
 %% API
 -export([start_link/0]).
--export([schedule_message/4]).
+-export([schedule_message/4, schedule_message/5]).
 
 %% Invoked by service discovery
 %% FIXME: Should be rvi_service_discovery behavior
@@ -64,6 +64,7 @@
 	  routes,         %% Routes retrieved for this
 	  timeout_tref,   %% Reference to erlang timer associated with this message.
 	  log_id,
+	  extra = [],
 	  parameters
 	 }).
 
@@ -120,18 +121,22 @@ init([]) ->
 start_json_server() ->
     rvi_common:start_json_rpc_server(schedule, ?MODULE, schedule_sup).
 
+schedule_message(CompSpec, SvcName, Timeout, Parameters) ->
+    schedule_message(CompSpec, SvcName, Timeout, [], Parameters).
+
 schedule_message(CompSpec,
 		 SvcName,
 		 Timeout,
+		 Extra,
 		 Parameters) ->
 
     rvi_common:request(schedule, ?MODULE,
 		       schedule_message,
 		       [{ service, SvcName },
 			{ timeout, Timeout },
+			{ extra, Extra },
 			{ parameters, Parameters }],
 		       [status, transaction_id], CompSpec).
-
 
 
 service_available(CompSpec, SvcName, DataLinkModule) ->
@@ -156,6 +161,7 @@ handle_rpc(<<"schedule_message">>, Args) ->
     {ok, SvcName} = rvi_common:get_json_element(["service"], Args),
     {ok, Timeout} = rvi_common:get_json_element(["timeout"], Args),
     {ok, Parameters} = rvi_common:get_json_element(["parameters"], Args),
+    Extra = rvi_common:get_opt_json_element(["extra"], [], Args),
     LogId = rvi_common:get_json_log_id(Args),
 
     ?debug("schedule_rpc:schedule_request(): service:     ~p", [ SvcName]),
@@ -165,6 +171,7 @@ handle_rpc(<<"schedule_message">>, Args) ->
     [ok, TransID] = gen_server:call(?SERVER, { rvi, schedule_message,
 					       [ SvcName,
 						 Timeout,
+						 Extra,
 						 Parameters,
 						 LogId ]}),
 
@@ -208,6 +215,7 @@ handle_notification(Other, _Args) ->
 handle_call( { rvi, schedule_message,
 	       [SvcName,
 		Timeout,
+		Extra,
 		Parameters | LogId] }, _From, St) ->
 
     ?debug("sched:sched_msg(): service:     ~p", [SvcName]),
@@ -222,6 +230,7 @@ handle_call( { rvi, schedule_message,
     Msg = #message{transaction_id = TransID,
 		   service = SvcName,
 		   timeout = Timeout,
+		   extra = Extra,
 		   parameters = Parameters,
 		   log_id = LogId},
     {_, NSt2 }= queue_message(Msg,
@@ -495,6 +504,7 @@ send_message(local, _,  _, _,   Msg, St) ->
     service_edge_rpc:handle_remote_message(St#st.cs,
 					   Msg#message.service,
 					   Msg#message.timeout,
+					   Msg#message.extra,
 					   Msg#message.parameters),
     {ok, St};
 
@@ -514,6 +524,7 @@ send_message(DataLinkMod, DataLinkOpts,
 	   ProtoOpts,
 	   DataLinkMod,
 	   DataLinkOpts,
+	   Msg#message.extra,
 	   Msg#message.parameters) of
 
 	%% Success
@@ -755,7 +766,7 @@ create_transaction_id(St) ->
 %% Calculate a relative timeout based on the Msec UnixTime TS we are
 %% provided with.
 calc_relative_tout(UnixTimeMS) ->
-    { Mega, Sec, Micro } = now(),
+    { Mega, Sec, Micro } = os:timestamp(),
     Now = Mega * 1000000000 + Sec * 1000 + trunc(Micro / 1000) ,
     ?debug("sched:calc_relative_tout(): TimeoutUnixMS(~p) - Now(~p) = ~p",
 	   [ UnixTimeMS, Now, UnixTimeMS - Now ]),
