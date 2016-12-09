@@ -1,0 +1,141 @@
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+%% Copyright (C) 2016, Jaguar Land Rover
+%%
+%% This program is licensed under the terms and conditions of the
+%% Mozilla Public License, version 2.0.  The full text of the
+%% Mozilla Public License is at https://www.mozilla.org/MPL/2.0/
+
+%% Usage: From a setup .config file:
+%% {ok, Instructions} = file:script("$PRIV/config/load_ini.config",
+%%                                  [{'FILE', YourINIfile}])
+%% Then, either append or prepend Instructions to the other config
+%% instructions.
+%%
+
+
+%% ==================================================
+%% Windows INI format parser
+%% ==================================================
+
+Compact =
+fun(Gs) ->
+	lists:foldl(
+	  fun({G,Vs}, Acc) ->
+		  case orddict:find(G, Acc) of
+		      {ok, Vs0} -> orddict:store(G, Vs0 ++ Vs, Acc);
+		      error     -> orddict:store(G, Vs, Acc)
+		  end
+	  end, orddict:new(), Gs)
+end.
+
+Heading =
+fun(L) when is_binary(L) ->
+	case re:run(L, "\\[\\h*([^\\h]+)\\h*\\]", [{capture,[1],binary}]) of
+	    {match, [H]} ->
+		H;
+	    nomatch ->
+		false
+	end
+end.
+
+Cmd =
+fun(V) ->
+	case os:cmd(binary_to_list(<<"echo ", V/binary>>)) of
+	    "/bin/sh:" ++ _ ->
+		V;
+	    Res ->
+		re:replace(Res, "^(.*)\\n$", "\\1", [{return, binary}])
+	end
+end.
+
+Var =
+fun(L) ->
+	case re:run(L, "\\h*([^\\h]+)\\h*=\\h*(.*)",
+		    [{capture,[1,2],binary}]) of
+	    {match, [K, V]} ->
+		{K, Cmd(V)};
+	    _ ->
+		false
+	end
+end.
+
+Collect =
+fun C([H|T] = Ls, G, Acc) ->
+	case Var(H) of
+	    {K, V} -> C(T, G, [{K,V}|Acc]);
+	    false  -> {{G, lists:reverse(Acc)}, Ls}
+	end;
+    C([], G, Acc) ->
+	{{G, lists:reverse(Acc)}, []}
+end.
+
+Group =
+fun Grp([H|T] = Ls) ->
+    case Heading(H) of
+        false ->
+            {G, T1} = Collect(Ls, <<>>, []),
+            [G | Grp(T1)];
+        Head when is_binary(Head) ->
+            {G, T1} = Collect(T, Head, []),
+            [G | Grp(T1)]
+    end;
+    Grp([]) ->
+    []
+end.
+
+Parse =
+fun(B) ->
+	Lines =
+	    [L ||
+		L <- re:split(B, "\\n", [{return,binary}, notempty]),
+		L =/= <<>>],  %% may still contain a trailing <<>>
+	Compact(Group(Lines))
+end.
+
+%% ==================================================
+%% End parser
+%% ==================================================
+Str = fun(B) -> binary_to_list(B) end.
+
+SystemGrp =
+fun({K, V}) ->
+	case lists:member(K, [<<"device_key">>, <<"root_cert">>,
+			      <<"device_cert">>, <<"cred_dir">>,
+			      <<"node_address">>, <<"node_service_prefix">>,
+			      <<"node_id">>]) of
+	    true ->
+		[{binary_to_atom(K, latin1), Str(V)}];
+	    false ->
+		io:fwrite("Unknown config: ~p", [{K, V}])
+	end
+end.
+
+ServiceEdgeGrp =
+fun(_) ->
+	[]
+end.
+
+
+Map =
+fun(Groups) ->
+	lists:flatmap(
+	  fun({G, Vars}) when G == <<>>; G == <<"system">> ->
+		  [{set_env,
+		    [{rvi_core,
+		      lists:flatmap(SystemGrp, Vars)}]}];
+	     ({<<"service_edge">>, Vars}) ->
+		  [{set_env,
+		    [{rvi_core,
+		      lists:map(ServiceEdgeGrp, Vars)}]}];
+	     (Other) ->
+		  io:fwrite("Unknown config: ~p", [Other]),
+		  []
+	  end, Groups)
+end.
+
+case file:read_file(FILE) of
+    {ok, B} ->
+	Map(Parse(B));
+    {error, _} = Error ->
+	Error
+end.
