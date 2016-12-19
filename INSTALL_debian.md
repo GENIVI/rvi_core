@@ -3,7 +3,7 @@ Copyright (C) 2014-2016, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-**Version 0.5.0**
+**Version 0.5.1**
 
 # INSTALLATION OF RVI (DEBIAN) #
 
@@ -77,7 +77,7 @@ Download the RVI package from https://github.com/PDXostc/rvi_core/releases.
 
 Then install RVI via dpkg:
 
-    sudo dpkg -i rvi_0.5.0-1_amd64.deb
+    sudo dpkg -i rvi_0.5.1-1_amd64.deb
 
 ----
 

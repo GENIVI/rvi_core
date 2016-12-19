@@ -13,7 +13,7 @@ choices.
 
 For a high level description, with an exhaustive master use-case
 walkthrough, please see the High Level Design document 
-[here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf) (**NOTE: HLD not updated to reflect RVI Core 0.5.0**)
+[here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf) (**NOTE: HLD not updated to reflect RVI Core 0.5.1**)
 
 Packages are available for some distributions. See installation
 instructions for [Ubuntu](INSTALL_ubuntu.md), [Debian](INSTALL_debian.md),

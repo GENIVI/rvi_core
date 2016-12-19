@@ -37,7 +37,7 @@ SRC_LIST=BUILD.md \
 	deps \
 	TODO 
 
-VERSION=0.5.0
+VERSION=0.5.1
 
 all: deps compile escript
 

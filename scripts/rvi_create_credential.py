@@ -267,7 +267,7 @@ cred = {
 
 
 
-encoded = jwt.encode(cred, root_key.exportKey("PEM"), algorithm='RS256')
+encoded = jwt.encode(cred, root_key.exportKey("PEM"), algorithm='HS256')
 
 # Validate
 try:
