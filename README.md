@@ -12,7 +12,7 @@ choices.
 # ADDITIONAL DOCUMENTATION AND RESOURCES#
 
 For a high level description, with an exhaustive master use-case
-walkthrough, please see the High Level Design document 
+walkthrough, please see the High Level Design document
 [here](https://wiki.automotivelinux.org/_media/eg-rvi/15-456-poc-rvi-hld_reva.pdf) (**NOTE: HLD not updated to reflect RVI Core 0.5.0**)
 
 Packages are available for some distributions. See installation
@@ -20,11 +20,11 @@ instructions for [Ubuntu](INSTALL_ubuntu.md), [Debian](INSTALL_debian.md),
 and [Raspbian](INSTALL_raspbian.md).
 
 For build instructions, please check the **build instructions**:
-[Markdown](BUILD.md) | 
+[Markdown](BUILD.md) |
 [PDF](doc/pdf/BUILD.pdf)
 
 For configuration and launch instructions, please check the **configuration documentation**:
-[Markdown](CONFIGURE.md) | 
+[Markdown](CONFIGURE.md) |
 [PDF](doc/pdf/CONFIGURE.pdf)
 
 For instructions on how to create RVI Core certificates, keys and credentials, please check the **certificates documentation**:
@@ -38,6 +38,9 @@ For instructions on using the Services API, please check the **services document
 For a detailed description of the RVI Core Peer-to-peer protocol, please check the **rvi_protocol documentation**:
 [Markdown](doc/rvi_protocol.md) |
 [PDF](doc/pdf/rvi_protocol.pdf)
+
+For a summary of RVI security aspects, please read the **rvi_security documentation**:
+[Markdown](doc/rvi_security.md) | [PDF](doc/pdf/rvi_security.pdf)
 
 Technical RVI disussions are held at the GENIVI project mailing list:
 [GENIVI](https://lists.genivi.org/mailman/listinfo/genivi-projects)
@@ -98,7 +101,7 @@ own technology.
 ## INTERCHANGEABILITY ##
 The only fixed parts of the entire RVI project are the JSON-RPC
 protocol specifications used between the components themselves and
-their connected services. 
+their connected services.
 
 GENIVI provides an RVI implementation as a starting point and a
 reference. The adopting organization is free to use, rewrite, or
@@ -156,7 +159,7 @@ The robustness and scalability, in conjunction with the built-in
 Erlang feature of runtime code upgrades, is a part of Erlang's
 five-nines uptime design that is rapidly becoming a core requirement
 of the automotive industry.
- 
+
 * **Proven embedded system solution**<br>
 Erlang has been adapted to operate well in embedded environments
 with unreliable power, limited resources, and the need to integrate
@@ -174,7 +177,7 @@ interfacing with the RVI system.
 Performance is **not** a goal of the RVI reference
 implementation. Instead, code readability and component
 interchangeability takes priority in order to ease design
-understanding and adoption. 
+understanding and adoption.
 
 One example is the use of JSON-RPC (over HTTP) to handle internal
 communication between components in a single Erlang node.
@@ -185,29 +188,6 @@ comparison with the current JSON-RPC implementation. That route,
 however, would force all components of the RVI system to be
 implemented in Erlang, thus severely limiting an organization's
 abilities to replace individual components with their own versions.
-
-
-## CODE STRATEGY ##
-All code in the RVI reference implementation and its demonstrations are
-written with a minimum of complexity and "magic". Readability is
-paramount, even if it severely impacts performance and memory usage.
-
-
-All components in the RVI are kept small and distinct, with a
-well-defined JSON-RPC external interface and simple call flows.
-
-Only three external modules (lager, bert and exo) are used by the
-code, with two more (setup and edown) used for release and
-documentation management.
-
-The reason for minimizing external module usage is to make the code
-comprehensible and minimize the time a developer has to traverse
-through obscure libraries trying to understand what a specific call
-flow actually does.
-
-The entire reference implementation (as of the first alpha release) is
-2800 lines of code, broken down into six standalone modules and one
-library of shared primitive functions.
 
 ## JSON-RPC ##
 JSON-RPC is used for all communication between components in an RVI

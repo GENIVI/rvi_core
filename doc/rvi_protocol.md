@@ -133,6 +133,7 @@ and a set of services that the sender has the right to have invoked.
 ```json
 {"cmd"  : "au",
  "ver"  : "1.1",
+ "id"   : "genivi.org/mobile/c60465c4-6324-11e6-b617-000c29690f82",
  "creds": [ "eyJhbGci..." ]
 }
 ```
@@ -149,11 +150,23 @@ received from the remote party.
 ```json
 {"cmd"  : "sa",
  "stat" : "av" | "un",
+ "cost" : 1,
  "svcs" : [ "genivi.com/vin/d32cef88-.../hvac/seat_heat_left", ... ]
 }
 ```
 
 The `"stat"` attribute can have the value `"av"` (available) or `"un"` (unavailable) and indicates the status of all services listed in `"svcs"`.
+
+The `"cost"` argument reflects the number of hops traversed, possibly also
+including link cost and routing cost. Normally, link cost and routing cost
+will be 1 each. An RVI node may relay a service announcement message to other
+connected nodes, provided they are authorized to invoke the services listed.
+Note that each connected node may be authorized to see a different subset of
+the included services. When relaying an announcement, the node should add
+link cost and routing cost to the received cost.
+
+A max cost should be configured, to e.g. avoid routing loops. Any service
+announcements that would exceed the max cost should not be sent.
 
 ## Message command
 The ```message``` command contains a service name and a number of
@@ -173,12 +186,18 @@ functions are (for now) outside the scope of the RVI Core protocol.
 Note: The `"tid"` attribute is currently not checked by RVI.
 
 The content of `Data` is parsed and then encoded according to the
-protocol used to forward the message. The modules `proto_json_rpc` and
-`proto_msgpack` expect it to be a 'struct' (or corresponding), as follows:
+protocol used to forward the message. The module `"rvi"` expects it to be
+a 'struct' (or corresponding), as follows:
 
 ```json
 {"service"  : ServiceName,
  "timeout"  : Timeout,
+ "synch"    : Synch,
+ "reply_id" : ReplyId,
+ "route"    : Route,
+ "files"    : [F1, ... Fn],
+ "max_msg_size" : Sz,
+ "reliable" : true | false,
  "parameters: Parameters
 }
 ```
@@ -187,11 +206,44 @@ protocol used to forward the message. The modules `proto_json_rpc` and
 (unix time) in seconds.
 
 `Parameters` is a 'struct' containing named arguments to be passed to the
-service. It _can_ also contain RVI-specific arguments, named as `"rvi.Opt"`.
-Currently supported RVI options are
+service.
 
-* `"rvi.max_msg_size"` (integer > 0)
-* `"rvi.reliable"`     (true | false)
+`Synch` is a boolean, where `true` means that the service reply shall be
+routed back to the client. This is accomplished by the client-side RVI
+node creating a temporary "service" on the form `Id/rvi/int/reply/Seq`, and
+passing it along as `ReplyId`, where `Id` is the unique node id provided
+in the `"au"` message, and `Seq` uniquely allows the client node to pair
+the reply to the corresponding request.
+
+`Route` is a list (array) of node identifiers, representing the reply
+path of the message. If `Synch = false`, there is no need to maintain
+the route entry, but if it is present, any relay node should prepend
+its node id to the list before relaying the message.
+
+The `"files"` entry contains a list (array) of file objects, representing
+any attachments included in the request/message.
+
+```json
+{"cid"   : Filename,
+ "hdrs"  : [ { Key: Value }, ...],
+ "data"  : Data
+}
+```
+
+If the client needs to refer to an attached file inside the request body,
+it can use the pattern `file:Filename`. The `"hdrs"` list, if present,
+contains HTTP headers used to pass the attachments via JSON-RPC (HTTP).
+If the target service also uses HTTP, it can elect to receive exactly the
+headers used by the client.
+
+`MaxMsgSize` indicates if the message needs to be fragmented. Note that
+the connection used may have its own `max_msg_size` setting; in that case,
+the smallest value is used.
+
+`Reliable` indicates that, regardless of max message size setting, the
+fragmentation protocol should be used for reliable delivery, even if it
+means sending only one fragment. This offers protection against packet
+loss and message retransmission.
 
 <div class="pb"></div>
 
@@ -265,7 +317,7 @@ will currently be unreliable when using JSON encoding, due to escaping of
 binary data.
 
 When including these options in the "parameters" list of a message invocation,
-the names can be prefixed with "rvi.", e.g. "rvi.max_msg_size", or 
+the names can be prefixed with "rvi.", e.g. "rvi.max_msg_size", or
 "rvi.reliable".
 
 **TODO**: Introduce timers. Currently there are none.
