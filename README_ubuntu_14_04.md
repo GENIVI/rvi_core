@@ -10,7 +10,7 @@ wget ttps://packages.erlang-solutions.com/erlang/esl-erlang/FLAVOUR_1_general/es
 sudo dpkg -i esl-erlang_18.2-1~ubuntu~precise_amd64.deb
 
 4. Install RVI
-sudo dpkg -i rvi_0.5.0-1ubuntu1_amd64.deb
+sudo dpkg -i rvi_0.5.1-1ubuntu1_amd64.deb
 
 5. Setup device keys
 Assumes that root key pair is already generated.

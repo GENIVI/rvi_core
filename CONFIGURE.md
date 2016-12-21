@@ -9,7 +9,7 @@ Copyright (C) 2014-2016, Jaguar Land Rover
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
 
-**Version 0.5.0**
+**Version 0.5.1**
 
 # CONFIGURING AN RVI NODE 
 
