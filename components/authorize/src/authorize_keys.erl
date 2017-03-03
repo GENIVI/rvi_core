@@ -21,6 +21,7 @@
 -export([cache_authorizations/1,
 	 remove_cached_authorizations/1,
 	 remove_cached_authorizations_for_conn/1,
+	 remove_creds_for_conn/1,
 	 update_authorization_cache/2]).
 
 -export([remove_connection/1]).
@@ -159,6 +160,9 @@ remove_cached_authorizations(Svcs) ->
 remove_cached_authorizations_for_conn(Conn) ->
     remove_cached_authorizations_for_conn_(normalize_conn(Conn)).
 
+remove_creds_for_conn(Conn) ->
+    remove_creds_for_conn_(normalize_conn(Conn)).
+
 update_authorization_cache(Conn, CS) ->
     gen_server:cast(?MODULE, {update_authorization_cache, Conn, CS}).
 
@@ -247,9 +251,10 @@ handle_cast({update_authorization_cache, Conn0, CS}, S) ->
     update_authorization_cache_(Conn, CS),
     {noreply, S};
 handle_cast({remove_connection, Conn0}, S) ->
-    Conn = normalize_conn(Conn0),
-    ets:select_delete(?CACHE, [{ {{'_', Conn}, '_'}, [], [true] }]),
-    ets:select_delete(?CREDS, [{ {{Conn, '_'}, '_'}, [], [true] }]),
+    %% Don't remove the credentials
+    %% Conn = normalize_conn(Conn0),
+    %% ets:select_delete(?CACHE, [{ {{'_', Conn}, '_'}, [], [true] }]),
+    %% ets:select_delete(?CREDS, [{ {{Conn, '_'}, '_'}, [], [true] }]),
     {noreply, S};
 handle_cast(_, S) ->
     {noreply, S}.
@@ -679,6 +684,10 @@ update_authorization_cache_(Conn, CS) ->
 
 remove_cached_authorizations_for_conn_(Conn) ->
     ets:select_delete(?CACHE, [{ {{'_', Conn}, '_'}, [], [true] }]),
+    ok.
+
+remove_creds_for_conn_(Conn) ->
+    ets:select_delete(?CREDS, [{ {{Conn, '_'}, '_'}, [], [true] }]),
     ok.
 
 can_invoke(Svc, #cred{right_to_invoke = In}) ->
