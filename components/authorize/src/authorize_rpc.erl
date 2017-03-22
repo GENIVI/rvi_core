@@ -85,7 +85,7 @@ get_credentials(CompSpec) ->
 
 remove_connection(CompSpec, Conn) ->
     rvi_common:notification(authorize, ?MODULE, remove_connection,
-			    [{conn, Conn}], [status], CompSpec).
+			    [{conn, Conn}], CompSpec).
 
 store_creds(CompSpec, Creds, Conn) ->
     store_creds(CompSpec, Creds, Conn, undefined).
@@ -323,6 +323,7 @@ do_store_creds(Creds, Conn, PeerCert, LogId, CS) ->
     ?debug("Storing ~p creds for conn ~p~nPeerCert = ~w",
 	   [length(Creds), Conn, authorize_keys:abbrev(PeerCert)]),
     authorize_keys:remove_cached_authorizations_for_conn(Conn),
+    authorize_keys:remove_creds_for_conn(Conn),
     lists:foreach(fun(Cred) ->
 			  store_cred(Cred, Conn, PeerCert, LogId)
 		  end, Creds),
