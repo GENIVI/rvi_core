@@ -1,7 +1,9 @@
-Copyright (C) 2014-2016 Jaguar Land Rover
+Copyright (C) 2014-2017 Jaguar Land Rover
 
 This document is licensed under Creative Commons
 Attribution-ShareAlike 4.0 International.
+
+[![Build Status](https://travis-ci.org/GENIVI/rvi_core.svg?branch=develop)](https://travis-ci.org/GENIVI/rvi_core)
 
 # REMOTE VEHICLE INTERACTION (RVI) #
 
