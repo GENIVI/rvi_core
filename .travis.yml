@@ -1,6 +1,9 @@
 sudo: true
 language: erlang
-otp_release: 18.1
+otp_release: 
+  - 20.0
+  - 19.3
+  - 18.1
 before_install:
   - sudo apt-get -y update
   - sudo apt-get -y install python-dev libffi-dev
