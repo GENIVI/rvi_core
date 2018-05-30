@@ -28,16 +28,16 @@ make compile
 ./scripts/setup_rvi_node.sh -n rvi_tizen -c ./packaging/tizen.config
 %install
 rm -rf $RPM_BUILD_ROOT
-mkdir -p $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION
-cp -ar rel/rvi_tizen $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION
-cp -ar python $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION
+mkdir -p $RPM_BUILD_ROOT/usr/share/rvi-$RPM_PACKAGE_VERSION
+cp -ar rel/rvi_tizen $RPM_BUILD_ROOT/usr/share/rvi-$RPM_PACKAGE_VERSION
+cp -ar python $RPM_BUILD_ROOT/usr/share/rvi-$RPM_PACKAGE_VERSION
 mkdir -p $RPM_BUILD_ROOT/usr/lib/systemd/system/
 mkdir -p $RPM_BUILD_ROOT/etc/systemd/system/multi-user.target.wants/
 install ./scripts/rvi.service $RPM_BUILD_ROOT/usr/lib/systemd/system/rvi.service 
 ln -fsr $RPM_BUILD_ROOT/usr/lib/systemd/system/rvi.service \
     $RPM_BUILD_ROOT/etc/systemd/system/multi-user.target.wants/rvi.service
-ln -fsr $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/releases/$RPM_PACKAGE_VERSION/sys.config \
-       $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/sys.config 
+ln -fsr $RPM_BUILD_ROOT/usr/share/rvi-$RPM_PACKAGE_VERSION/releases/$RPM_PACKAGE_VERSION/sys.config \
+       $RPM_BUILD_ROOT/usr/share/rvi-$RPM_PACKAGE_VERSION/sys.config 
 mkdir -p $RPM_BUILD_ROOT/home/app/content/Documents
 echo "default_vin" > $RPM_BUILD_ROOT/home/app/content/Documents/vin
 
@@ -50,4 +50,4 @@ rm -rf $RPM_BUILD_ROOT
 %attr(644,app,users) /home/app/content/Documents/vin
 /usr/lib/systemd/system/rvi.service 
 /etc/systemd/system/multi-user.target.wants/rvi.service
-/opt/rvi-0.5.1
+/usr/share/rvi-0.5.1

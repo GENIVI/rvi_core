@@ -63,9 +63,9 @@ $0 -r root_cert -d device_cert -c credentials \\
 Install a built RVI system into a target directory
 
 NOTE: The last component of 'taget_dir' must be named 'rvi_core'
-       Example: /opt/rvi_core
+       Example: /usr/share/rvi_core
 
--l log_dir      - Log directory. Default: ${target_dir}/log.
+-l log_dir      - Log directory. Default: /run/log/rvi_core (not permanent)
 
 -s prefix_strip - See below. Default: nil.
 
@@ -178,7 +178,7 @@ EXAMPLE INSTALLATION
      -r priv/certificates/insecure_root_cert.crt \\
      -d priv/certificates/insecure_device_cert.crt \\
      -c priv/credentials/insecure_credential.jwt \\
-     /opt/rvi_core
+     /usr/share/rvi_core
 
 
   WARNING: This example installation will provide no protection
@@ -307,7 +307,7 @@ done
 #
 if [ -z "${LOG_DIR}" ]
 then
-    LOG_DIR=${TARGET_DIR}/log
+    LOG_DIR=/run/log/rvi_core
 fi
 
 # Wipe old target dir.

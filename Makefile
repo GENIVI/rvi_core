@@ -172,7 +172,7 @@ ifndef STRIPPATH
 		-r priv/certificates/insecure_root_cert.crt \
 		-d priv/certificates/insecure_device_cert.crt \
 		-c priv/credentials/insecure_credential.jwt \
-		$(DESTDIR)/opt/rvi_core
+		$(DESTDIR)/usr/share/rvi_core
 else
 	./scripts/rvi_install \
 		-k priv/keys/insecure_device_key.pem \
@@ -180,8 +180,8 @@ else
 		-d priv/certificates/insecure_device_cert.crt \
 		-c priv/credentials/insecure_credential.jwt \
 		-s $(STRIPPATH) \
-		$(DESTDIR)/opt/rvi_core
+		$(DESTDIR)/usr/share/rvi_core
 endif
 
-	install -m 0755 -d $(DESTDIR)/etc/opt/rvi/
-	install -m 0644 priv/config/rvi_sample.config $(DESTDIR)/etc/opt/rvi/rvi_sample.config
+	install -m 0755 -d $(DESTDIR)/etc/rvi/
+	install -m 0644 priv/config/rvi_sample.config $(DESTDIR)/etc/rvi/rvi_sample.config
