@@ -104,7 +104,8 @@ then
 	else
 	    RUNDIR=${RVI_RUNDIR}
 	fi
-	install -d --mode=0755 ${RUNDIR}
+	mkdir -m 755 -p ${RUNDIR}
+
 	cd ${RUNDIR}
 	RVI_LOGDIR="${RVI_LOGDIR}" ${RVI_BINDIR}/setup_gen rvi ${CONFIG_FILE} rvi
     )
@@ -122,7 +123,8 @@ LAUNCH="${ERL} -boot ${RUNDIR}/rvi/start -sname ${SNAME} -config ${RUNDIR}/rvi/s
 
 case "${CMD}" in
    start)
-	 install -D -d --mode 0755  ${RVI_LOGDIR}
+	 mkdir -m 755 -p ${RVI_LOGDIR}
+
 	 exec run_erl -daemon ${RUNDIR}/ ${RVI_LOGDIR} "exec ${LAUNCH}"
 	 ;;
 
