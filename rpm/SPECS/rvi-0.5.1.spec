@@ -30,7 +30,7 @@ make compile
 
 %install
 rm -rf $RPM_BUILD_ROOT
-mkdir -p $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION
+mkdir -p $RPM_BUILD_ROOT/usr/share/rvi-$RPM_PACKAGE_VERSION
 cp -ar rel/rvi-$RPM_PACKAGE_VERSION $RPM_BUILD_ROOT/opt/
 
 # Create a standard debian setup for start/stop.
@@ -52,8 +52,8 @@ ln -fsr $RPM_BUILD_ROOT/etc/init.d/rvi $RPM_BUILD_ROOT/etc/rc5.d/S50-rvi
 ln -fsr $RPM_BUILD_ROOT/etc/init.d/rvi $RPM_BUILD_ROOT/etc/rc6.d/K20-rvi
 
 # Make global config file easier to access.
-ln -fsr $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/releases/1/sys.config \
-       $RPM_BUILD_ROOT/opt/rvi-$RPM_PACKAGE_VERSION/sys.config 
+ln -fsr $RPM_BUILD_ROOT/usr/share/rvi-$RPM_PACKAGE_VERSION/releases/1/sys.config \
+       $RPM_BUILD_ROOT/usr/share/rvi-$RPM_PACKAGE_VERSION/sys.config 
 %post
 
 %clean
@@ -69,4 +69,4 @@ rm -rf $RPM_BUILD_ROOT
 /etc/rc4.d
 /etc/rc5.d
 /etc/rc6.d
-/opt/rvi-0.5.1
+/usr/share/rvi-0.5.1
